@@ -1,6 +1,7 @@
 //! 黄金套件测试辅助 —— 对应 Java `TemplateTestCase.java`（templatesuite 数据模型构造 +
 //! assert/assertEquals/assertFails/noOutput 指令 + 设置应用；docs/11 §3）
 
+use bigdecimal::ToPrimitive;
 use freemarker::cache::StringLoader;
 use freemarker::core::{compare_models, CmpOp};
 use freemarker::error::{Result, TemplateError};
@@ -290,10 +291,13 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
         "message".to_string(),
         TModel::from_scalar("Hello, world!".to_string()),
     );
-    m.insert(
-        "javaObjectInfo".to_string(),
+    // Java JavaObjectInfo：对象（info 方法属性）；`javaObjectInfo.info(x)` 调用
+    let mut info_hash = IndexMap::new();
+    info_hash.insert(
+        "info".to_string(),
         TModel::from_method(JavaObjectInfoMethod),
     );
+    m.insert("javaObjectInfo".to_string(), TModel::from_hash(info_hash));
 
     match simple_test_name {
         "boolean" => {
@@ -393,6 +397,23 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             m.insert(
                 "booleanVsStringMethods".to_string(),
                 TModel::from_hash(bvsm),
+            );
+        }
+        "stringbimethods" => {
+            // TemplateTestCase.java:502-510：multi = TestBoolean ——
+            // TemplateBooleanModel + TemplateScalarModel 双角色
+            // （getAsBoolean → true；getAsString → "de"；插值标量优先）
+            m.insert(
+                "multi".to_string(),
+                TModel {
+                    scalar: Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+                        "de".to_string(),
+                    ))),
+                    boolean: Some(std::rc::Rc::new(freemarker::template::SimpleBoolean(true))),
+                    type_name: "wrapped",
+                    kind: freemarker::template::ModelKind::Wrapped,
+                    ..TModel::nothing()
+                },
             );
         }
         "date-type-builtins" => {
@@ -508,6 +529,51 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             m.insert("z".to_string(), num(4));
         }
         "multimodels" => {
+            // TemplateTestCase.java:332-334：data = MultiModel1 —— 三角色模型
+            // （TemplateHashModel + TemplateSequenceModel + TemplateScalarModel）；
+            // 序列：10 × "Model1 value: N" + MultiModel3（scalar+hash 双角色）
+            let mut seq: Vec<TModel> = Vec::new();
+            for i in 0..10 {
+                seq.push(TModel::from_scalar(format!("Model1 value: {i}")));
+            }
+            seq.push(multimodel3());
+            // 哈希：model2 → MultiModel2（scalar+method）；modellist → 序列；
+            // selftest → 标量；one → MultiModel4（空序列 + hash{size}）；
+            // two → MultiModel5（1 项序列 + hash{empty}）；size → "Nasty!"；
+            // nesting1 → hash{nested → MultiModel3}
+            let mut h = IndexMap::new();
+            h.insert("model2".to_string(), multimodel2());
+            h.insert("modellist".to_string(), TModel::from_sequence(seq.clone()));
+            h.insert(
+                "selftest".to_string(),
+                TModel::from_scalar("Selftest of a hash from MultiModel1".to_string()),
+            );
+            h.insert("one".to_string(), multimodel4());
+            h.insert("two".to_string(), multimodel5());
+            h.insert(
+                "size".to_string(),
+                TModel::from_scalar("Nasty!".to_string()),
+            );
+            let mut nesting1 = IndexMap::new();
+            nesting1.insert("nested".to_string(), multimodel3());
+            h.insert("nesting1".to_string(), TModel::from_hash(nesting1));
+            let h_model = TModel::from_hash(h);
+            let seq_model = TModel::from_sequence(seq);
+            m.insert(
+                "data".to_string(),
+                TModel {
+                    scalar: Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+                        "MultiModel1 as a string!".to_string(),
+                    ))),
+                    sequence: seq_model.sequence.clone(),
+                    collection: seq_model.collection.clone(),
+                    hash: h_model.hash.clone(),
+                    hash_ex: h_model.hash_ex.clone(),
+                    type_name: "wrapped",
+                    kind: freemarker::template::ModelKind::Wrapped,
+                    ..TModel::nothing()
+                },
+            );
             m.insert(
                 "test".to_string(),
                 TModel::from_scalar("selftest".to_string()),
@@ -517,14 +583,70 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
         }
         "type-builtins" => {
             m.insert("testmethod".to_string(), TModel::from_method(TestMethod));
-            m.insert("testnode".to_string(), TModel::nothing()); // v1 无节点模型
+            // Java TestNode（TemplateTestCase.java:530-560）→ TestNodeModel
+            let node = TModel {
+                node: Some(std::rc::Rc::new(TestNodeModel)),
+                type_name: "node",
+                kind: freemarker::template::ModelKind::Node,
+                ..TModel::nothing()
+            };
+            m.insert("testnode".to_string(), node);
             m.insert(
                 "testcollection".to_string(),
                 TModel::from_collection(vec![]),
             );
+            // testcollectionEx = DefaultNonListCollectionAdapter（只实现
+            // TemplateCollectionModelEx，无 Sequence 角色）
             m.insert(
                 "testcollectionEx".to_string(),
-                TModel::from_collection(vec![]),
+                TModel {
+                    collection: Some(std::rc::Rc::new(freemarker::template::SimpleCollection(
+                        Vec::new(),
+                    ))),
+                    collection_ex: true,
+                    type_name: "collection",
+                    kind: freemarker::template::ModelKind::Collection,
+                    ..TModel::nothing()
+                },
+            );
+            // bean = TestBean（TemplateTestCase.java:558-573，DefaultObjectWrapper 2.3.32+
+            // 包装为 GenericObjectModel：scalar + hash + hash_ex 三角色）；
+            // bean.m / bean.mOverloaded = 方法模型（GenericMethodModel 同时实现
+            // TemplateSequenceModel——?is_indexable → true）
+            let mut bh = IndexMap::new();
+            bh.insert(
+                "m".to_string(),
+                TModel {
+                    method: Some(std::rc::Rc::new(BeanMethod)),
+                    method_indexable: true,
+                    type_name: "method",
+                    kind: freemarker::template::ModelKind::Method,
+                    ..TModel::nothing()
+                },
+            );
+            bh.insert(
+                "mOverloaded".to_string(),
+                TModel {
+                    method: Some(std::rc::Rc::new(BeanMethod)),
+                    method_indexable: true,
+                    type_name: "method",
+                    kind: freemarker::template::ModelKind::Method,
+                    ..TModel::nothing()
+                },
+            );
+            let bh = TModel::from_hash(bh);
+            m.insert(
+                "bean".to_string(),
+                TModel {
+                    scalar: Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+                        "TestBean".to_string(),
+                    ))),
+                    hash: bh.hash.clone(),
+                    hash_ex: bh.hash_ex.clone(),
+                    type_name: "wrapped",
+                    kind: freemarker::template::ModelKind::Wrapped,
+                    ..TModel::nothing()
+                },
             );
         }
         "simplehash-char-key" => {
@@ -548,7 +670,35 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             mm.insert("s2n".to_string(), TModel::nothing());
             m.insert("mMixed".to_string(), TModel::from_hash(mm));
         }
-        "classic-compatible" | "classic-compatible-mode2" => {
+        "classic-compatible" => {
+            // TemplateTestCase.java:443-446：beanTrue/beanFalse = beansWrapper.wrap(Boolean)；
+            // Java 经典模式 1（compatMode==1）下 BeanModel 布尔走经典布尔分支 → "true"/""
+            // （EvalUtil.coerceModelToTextualCommon :495-518）
+            m.insert("beanTrue".to_string(), TModel::from_boolean(true));
+            m.insert("beanFalse".to_string(), TModel::from_boolean(false));
+            // beansArray = beansWrapper.wrap(new String[]{"a","b","c"})：classic 模式下
+            // BeanModel 字符串化 = Java 数组 toString（"[Ljava.lang.String@<hash>"），
+            // 同时保持序列行为（?seq_index_of("b") → 1、?substring 作用于字符串化）；
+            // 双角色模型（scalar + sequence）近似（coerceModelToTextualCommon
+            // classic && BeanModel → _BeansAPI.getAsClassicCompatibleString）
+            let mut arr = Vec::new();
+            for s in ["a", "b", "c"] {
+                arr.push(TModel::from_scalar(s.to_string()));
+            }
+            m.insert(
+                "beansArray".to_string(),
+                TModel {
+                    scalar: Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+                        "[Ljava.lang.String@12345678".to_string(),
+                    ))),
+                    sequence: Some(std::rc::Rc::new(freemarker::template::SimpleSequence(arr))),
+                    type_name: "sequence",
+                    kind: freemarker::template::ModelKind::Sequence,
+                    ..TModel::nothing()
+                },
+            );
+        }
+        "classic-compatible-mode2" => {
             // TemplateTestCase.java:444-446：beanTrue/beanFalse = beansWrapper.wrap(Boolean)；
             // Java 经典模式 2 下 BeanModel 布尔按 2.1 字符串行为 → "true"/"false"
             // （EvalUtil.coerceModelToTextualCommon :510-516）；用双角色模型（scalar+boolean）近似
@@ -573,9 +723,264 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             );
             m.insert("bigDecimal".to_string(), dec("1305575275539.5"));
         }
+        "varargs" => {
+            // TemplateTestCase.java:411-413：m = VarArgTestModel —— 模拟 BeansWrapper
+            // 的 varargs 方法调度（签名选择 + 序列参数展开 + 数值转换）
+            let mut mm = IndexMap::new();
+            mm.insert("bar".to_string(), TModel::from_method(VarBar));
+            mm.insert("bar2".to_string(), TModel::from_method(VarBar2));
+            mm.insert("overloaded".to_string(), TModel::from_method(VarOverloaded));
+            mm.insert("noVarArgs".to_string(), TModel::from_method(VarNoVarArgs));
+            m.insert("m".to_string(), TModel::from_hash(mm));
+        }
         _ => {}
     }
     TModel::from_hash(m)
+}
+
+// ---------------------------------------------------------------------------
+// VarArgTestModel 方法模型 —— 对应 VarArgTestModel.java
+// （BeansWrapper 方法调用语义：varargs 展开/数值截断/重载选择）
+// ---------------------------------------------------------------------------
+
+/// 取整到 i64（Java BeansWrapper 数值参数转换：Double/Float → intValue 截断；
+/// Decimal → 向零截断；BigInt → 原值）
+fn vararg_int(m: &TModel) -> Option<i64> {
+    let n = m.get_number().ok()?;
+    match n {
+        TNumber::Int(v) => Some(v as i64),
+        TNumber::Long(v) => Some(v),
+        TNumber::BigInt(v) => v.to_i64(),
+        TNumber::Float(v) => Some(v as i64),
+        TNumber::Double(v) => Some(v as i64),
+        // bigdecimal RoundingMode 无 Trunc——向零截断即 Down
+        TNumber::Decimal(v) => {
+            let t = v.with_scale_round(0, bigdecimal::RoundingMode::Down);
+            t.to_string().parse::<i64>().ok()
+        }
+    }
+}
+
+/// varargs 展开（BeansWrapper：最后一个参数是序列 → 展开为变长实参；
+/// 其余情况原样返回）
+fn vararg_items(args: &[TModel]) -> Vec<TModel> {
+    if let Some(last) = args.last() {
+        if let Ok(seq) = last.get_sequence() {
+            if seq.size().unwrap_or(0) > 0 || args.len() == 1 {
+                // 仅单个序列参数或序列非空时展开（`m.bar([])` → 空展开）；
+                // 展开保留前面的固定参数（`bar2(11, [22,33,44])` → [11, 22, 33, 44]）
+                let mut out: Vec<TModel> = args[..args.len() - 1].to_vec();
+                for i in 0..seq.size().unwrap_or(0) {
+                    if let Ok(v) = seq.get(i) {
+                        out.push(v);
+                    }
+                }
+                return out;
+            }
+        }
+    }
+    args.to_vec()
+}
+
+/// bar(Integer... xs)：null 元素跳过（VarArgTestModel.java:31-38）
+struct VarBar;
+impl freemarker::template::TemplateMethodModelEx for VarBar {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        let mut sum: i64 = 0;
+        for x in vararg_items(&args) {
+            if !x.is_nothing() {
+                sum = sum * 100 + vararg_int(&x).unwrap_or(0);
+            }
+        }
+        Ok(num(sum))
+    }
+}
+
+/// bar2(int first, int... xs)：-(sum*100 + first)
+struct VarBar2;
+impl freemarker::template::TemplateMethodModelEx for VarBar2 {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        let first = args.first().and_then(vararg_int).unwrap_or(0);
+        let xs = vararg_items(&args);
+        let mut sum: i64 = 0;
+        for x in xs.iter().skip(1) {
+            sum = sum * 100 + vararg_int(x).unwrap_or(0);
+        }
+        Ok(num(-(sum * 100 + first)))
+    }
+}
+
+/// overloaded(int x, int y) / overloaded(int... xs)：2 参数选固定版本
+/// （BeansWrapper 精确匹配优先），其余走 varargs
+struct VarOverloaded;
+impl freemarker::template::TemplateMethodModelEx for VarOverloaded {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        let xs = vararg_items(&args);
+        if args.len() == 2 {
+            // (int x, int y) = x*100 + y
+            let x = vararg_int(&args[0]).unwrap_or(0);
+            let y = vararg_int(&args[1]).unwrap_or(0);
+            return Ok(num(x * 100 + y));
+        }
+        let mut sum: i64 = 0;
+        for x in &xs {
+            sum = sum * 100 + vararg_int(x).unwrap_or(0);
+        }
+        Ok(num(-sum))
+    }
+}
+
+/// noVarArgs(String s, boolean b, int i, Date d)：
+/// s + ", " + b + ", " + i + ", " + d.getTime()
+struct VarNoVarArgs;
+impl freemarker::template::TemplateMethodModelEx for VarNoVarArgs {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        let s = args
+            .first()
+            .and_then(|m| m.get_scalar().ok())
+            .unwrap_or_default();
+        let b = match args.get(1) {
+            Some(m) => m
+                .get_boolean()
+                .map(|b| b.to_string())
+                .unwrap_or_else(|_| "false".to_string()),
+            None => "false".to_string(),
+        };
+        let i = args.get(2).and_then(vararg_int).unwrap_or(0);
+        let d = match args.get(3).and_then(|m| m.get_date().ok()) {
+            Some(dv) => dv.dt.timestamp_millis().to_string(),
+            None => "0".to_string(),
+        };
+        Ok(TModel::from_scalar(format!("{s}, {b}, {i}, {d}")))
+    }
+}
+
+/// MultiModel2 等价物 —— scalar "Model2 is alive!" + 方法
+/// （MultiModel2.java：TemplateScalarModel + TemplateMethodModel，参数已字符串化）
+fn multimodel2() -> TModel {
+    TModel {
+        scalar: Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+            "Model2 is alive!".to_string(),
+        ))),
+        method: Some(std::rc::Rc::new(MultiModel2Method)),
+        type_name: "wrapped",
+        kind: freemarker::template::ModelKind::Wrapped,
+        ..TModel::nothing()
+    }
+}
+
+/// MultiModel2.exec —— "Arguments are:<br />" + 各参数 + "<br />"
+/// （Java exec 的 (String) 强转说明参数已字符串化；标量按内容）
+struct MultiModel2Method;
+impl freemarker::template::TemplateMethodModelEx for MultiModel2Method {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        let mut out = String::from("Arguments are:<br />");
+        for a in args {
+            out.push_str(
+                &a.get_scalar()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|_| a.type_name.to_string()),
+            );
+            out.push_str("<br />");
+        }
+        Ok(TModel::from_scalar(out))
+    }
+}
+
+/// MultiModel3 等价物 —— scalar "Model3 is alive!" + hash{selftest, message}
+fn multimodel3() -> TModel {
+    let mut h = IndexMap::new();
+    h.insert(
+        "selftest".to_string(),
+        TModel::from_scalar("Selftest from MultiModel3!".to_string()),
+    );
+    h.insert(
+        "message".to_string(),
+        TModel::from_scalar("Hello world from MultiModel3!".to_string()),
+    );
+    let h = TModel::from_hash(h);
+    TModel {
+        scalar: Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+            "Model3 is alive!".to_string(),
+        ))),
+        hash: h.hash.clone(),
+        hash_ex: h.hash_ex.clone(),
+        type_name: "wrapped",
+        kind: freemarker::template::ModelKind::Wrapped,
+        ..TModel::nothing()
+    }
+}
+
+/// MultiModel4 等价物 —— 空序列 + hash{size: "Key size, not the listSize method."}
+fn multimodel4() -> TModel {
+    let mut h = IndexMap::new();
+    h.insert(
+        "size".to_string(),
+        TModel::from_scalar("Key size, not the listSize method.".to_string()),
+    );
+    let h = TModel::from_hash(h);
+    let seq = TModel::from_sequence(Vec::new());
+    TModel {
+        sequence: seq.sequence.clone(),
+        collection: seq.collection.clone(),
+        hash: h.hash.clone(),
+        hash_ex: h.hash_ex.clone(),
+        type_name: "wrapped",
+        kind: freemarker::template::ModelKind::Wrapped,
+        ..TModel::nothing()
+    }
+}
+
+/// MultiModel5 等价物 —— 1 项序列 + hash{empty: "Dummy hash value, for test purposes."}
+fn multimodel5() -> TModel {
+    let mut h = IndexMap::new();
+    h.insert(
+        "empty".to_string(),
+        TModel::from_scalar("Dummy hash value, for test purposes.".to_string()),
+    );
+    let h = TModel::from_hash(h);
+    let seq = TModel::from_sequence(vec![TModel::from_scalar(
+        "Dummy to make list non-empty".to_string(),
+    )]);
+    TModel {
+        sequence: seq.sequence.clone(),
+        collection: seq.collection.clone(),
+        hash: h.hash.clone(),
+        hash_ex: h.hash_ex.clone(),
+        type_name: "wrapped",
+        kind: freemarker::template::ModelKind::Wrapped,
+        ..TModel::nothing()
+    }
+}
+
+/// TestNodeModel —— 对应 Java TestNode（TemplateTestCase.java:530-560）：
+/// name "name"、type "element"；v1 仅角色判定用（?is_node）
+struct TestNodeModel;
+impl freemarker::template::TemplateNodeModel for TestNodeModel {
+    fn parent(&self) -> Result<Option<TModel>> {
+        Ok(None)
+    }
+    fn children(&self) -> Result<Vec<TModel>> {
+        Ok(Vec::new())
+    }
+    fn name(&self) -> Result<Option<String>> {
+        Ok(Some("name".to_string()))
+    }
+    fn node_type(&self) -> Result<String> {
+        Ok("element".to_string())
+    }
+    fn namespace(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+}
+
+/// bean.m / bean.mOverloaded 方法 —— 对应 TestBean（TemplateTestCase.java:558-573）
+/// 的 m(int)/mOverloaded(int|String)；v1 仅角色判定用
+struct BeanMethod;
+impl freemarker::template::TemplateMethodModelEx for BeanMethod {
+    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+        Ok(TModel::from_scalar("x".to_string()))
+    }
 }
 
 /// listables 模型（对应 Listables.java：list/linkedList/set/iterator/empty*）
@@ -666,11 +1071,21 @@ fn bool_and_string() -> TModel {
     }
 }
 
-/// JavaObjectInfo（v1：info(.locale_object) 等方法不支持 → 返回占位字符串）
+/// JavaObjectInfo.info（JavaObjectInfo.java:30-34：null → "null"；否则
+/// getClass().getName() + " " + jQuote(toString())——Rust 侧 `.locale_object`
+/// 等特殊变量已按 Java 描述串提供（eval.rs LocaleObject），直接返回参数文本）
 struct JavaObjectInfoMethod;
 impl freemarker::template::TemplateMethodModelEx for JavaObjectInfoMethod {
-    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
-        Ok(TModel::from_scalar(String::new()))
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        match args.first() {
+            None => Ok(TModel::from_scalar("null".to_string())),
+            Some(m) if m.is_nothing() => Ok(TModel::from_scalar("null".to_string())),
+            Some(m) => Ok(TModel::from_scalar(
+                m.get_scalar()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|_| m.type_name.to_string()),
+            )),
+        }
     }
 }
 
@@ -828,11 +1243,15 @@ impl TemplateDirectiveModel for AssertFailsDirective {
                     }
                 }
                 if let Some(re) = message_regexp {
-                    // Java AssertFailsDirective.java:59-61：Pattern.CASE_INSENSITIVE
-                    if !regex::Regex::new(&format!("(?i){re}"))
-                        .map(|r| r.is_match(&msg))
-                        .unwrap_or(false)
-                    {
+                    // Java AssertFailsDirective.java:59-61：Pattern.CASE_INSENSITIVE；
+                    // 用 fancy-regex（Java Pattern 兼容的 lookaround/内联标志，如
+                    // classic-compatible 用例的 (?s)(?=.*noSuchVar)）；ok() 避免
+                    // 大 Err 值绑定（clippy::result_large_err）
+                    let matched = fancy_regex::Regex::new(&format!("(?i){re}"))
+                        .ok()
+                        .and_then(|r| r.is_match(&msg).ok())
+                        .unwrap_or(false);
+                    if !matched {
                         return Err(TemplateError::misc(format!(
                             "Failure is not like expected: message didn't match regexp {re:?}: {msg}"
                         )));

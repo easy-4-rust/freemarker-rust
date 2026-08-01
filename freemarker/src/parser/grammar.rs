@@ -38,7 +38,7 @@ pub fn parse_expression(cfg: &Rc<Configuration>, src: &str) -> Result<crate::cor
     let wrapped = format!("${{{src}}}");
     let t = parse(cfg, "eval", &wrapped)?;
     match t.root.first().map(|e| &e.kind) {
-        Some(ElementKind::Interpolation(e)) => Ok(e.clone()),
+        Some(ElementKind::Interpolation { expr, .. }) => Ok(expr.clone()),
         _ => Err(crate::error::TemplateError::misc(format!(
             "Failed to parse the expression: {src:?}"
         ))),
@@ -75,6 +75,9 @@ struct Parser<'a> {
     tag_pos: (u32, u32),
     /// 命名参数值表达式嵌套深度（NAMED_PARAMETER_EXPRESSION 语义：`!`+空白终止）
     named_arg_depth: u32,
+    /// 就地元素（`<#sep>`）自动收尾时上抛的外层块停止信号（Java Sep() 的
+    /// MixedContentElements：END_SEP 可选，父块结束标签/终止指令由外层块接手）
+    pending_stop: Option<BlockStop>,
 }
 
 impl<'a> Parser<'a> {
@@ -95,6 +98,7 @@ impl<'a> Parser<'a> {
             last_tok_end: (1, 1),
             tag_pos: (1, 1),
             named_arg_depth: 0,
+            pending_stop: None,
         }
     }
 
@@ -425,15 +429,36 @@ impl<'a> Parser<'a> {
         end_tags: &[&str],
         dir_terms: &[&str],
     ) -> Result<(Vec<Element>, BlockStop)> {
+        self.parse_block_impl(end_tags, dir_terms, false)
+    }
+
+    /// `<#sep>` 就地元素专用：Java Sep() 的 MixedContentElements（FTL.jj 2974-2995）——
+    /// `<END_SEP>` 可选，除显式 `</#sep>` 外，任意父块结束标签 / `else` 类终止指令
+    /// 都自动收尾（`<#list xs>${x}<#sep>, </#list>`、`<#sep>, </#items>`、
+    /// `<#sep>, <#else>Empty</#list>` 三种形态，list3/list-bis 用例）
+    fn parse_sep_block(&mut self) -> Result<(Vec<Element>, BlockStop)> {
+        self.parse_block_impl(&["sep"], &[], true)
+    }
+
+    fn parse_block_impl(
+        &mut self,
+        end_tags: &[&str],
+        dir_terms: &[&str],
+        auto_close: bool,
+    ) -> Result<(Vec<Element>, BlockStop)> {
         let mut els: Vec<Element> = Vec::new();
         loop {
+            // 嵌套就地元素（#sep）已把外层块的结束标签/终止指令上抛（pending_stop）
+            if let Some(stop) = self.pending_stop.take() {
+                return Ok((els, stop));
+            }
             let (text, stop, line, col) = self.next_text_chunk()?;
             if !text.is_empty() {
                 els.push(self.text_element(text, line, col));
             }
             match stop {
                 TextStop::Eof => {
-                    if end_tags.is_empty() {
+                    if auto_close || end_tags.is_empty() {
                         return Ok((els, BlockStop::Eof));
                     }
                     return Err(self.err(
@@ -485,6 +510,12 @@ impl<'a> Parser<'a> {
                                 self.expect_tag_end_raw()?;
                                 return Ok((els, BlockStop::EndTag(lname)));
                             }
+                            if auto_close {
+                                // Java Sep()：`[LOOKAHEAD(1) end = <END_SEP>]` 可选 ——
+                                // 父块结束标签自动收尾，停止信息上抛给外层块
+                                self.expect_tag_end_raw()?;
+                                return Ok((els, BlockStop::EndTag(lname)));
+                            }
                             return Err(self.err(
                                 line,
                                 col,
@@ -505,11 +536,23 @@ impl<'a> Parser<'a> {
                             if dir_terms.iter().any(|t| *t == lname) {
                                 return Ok((els, BlockStop::Dir(lname)));
                             }
+                            if auto_close
+                                && matches!(
+                                    lname.as_str(),
+                                    "else" | "elseif" | "case" | "default" | "recover"
+                                )
+                            {
+                                // Java MixedContentElements：else/elseif/case/default/recover
+                                // 不是元素产生式（FreemarkerDirective 之外）→ 终止本块
+                                return Ok((els, BlockStop::Dir(lname)));
+                            }
                             els.push(self.dispatch_directive(
                                 &lname,
                                 self.tag_pos.0,
                                 self.tag_pos.1,
                             )?);
+                            // 嵌套就地元素（#sep）可能把外层块停止信号放进 pending_stop，
+                            // 下一轮循环顶部取出返回
                         }
                     }
                 }
@@ -553,7 +596,8 @@ impl<'a> Parser<'a> {
         )
     }
 
-    /// `${expr}` / `#{expr}` 插值（StringOutput/NumericalOutput 坍缩为 Interpolation）
+    /// `${expr}` / `#{expr[ ; mNMN]}` 插值（StringOutput / NumericalOutput；契约上
+    /// 两者坍缩为 Interpolation，旧式 `#{}` 携带小数位格式信息）
     fn parse_interpolation(&mut self) -> Result<Element> {
         let (line, col) = self.lexer.line_col();
         // 消费 `${` 或 `#{`（scan_text_chunk 已保证）
@@ -562,6 +606,7 @@ impl<'a> Parser<'a> {
         if self.lexer.bump() != Some('{') {
             return Err(self.err(line, col, "Expected \"{\" after the interpolation opening."));
         }
+        let legacy = c == '#';
         let prev_ctx = self.ctx;
         self.ctx = ExprCtx::Interp;
         let e = self.expression();
@@ -572,7 +617,35 @@ impl<'a> Parser<'a> {
                 return Err(err);
             }
         };
+        // 旧式 `#{...}`（Java NumericalOutput，FTL.jj 2627-2703）：`; fmt` 格式串 +
+        // numberLiteralOnly 字面量校验
+        let mut legacy_fmt: Option<(u32, u32)> = None;
         let r = (|| {
+            if legacy {
+                number_literal_only(self, &e)?;
+                if self.peek_tok()?.0 == Tok::Semicolon {
+                    self.next_tok()?;
+                    let (t, l, c2) = self.next_tok()?;
+                    let Tok::Ident(fmt) = t else {
+                        // JavaCC：`[ <SEMICOLON> fmt = <ID> ]` —— 非 ID → 词法错误，
+                        // 消息逐字（JavaCC 引号原始 token 图像，ProbeP2 实测
+                        // `Encountered "12", but was expecting pattern: <ID>`）
+                        let found = match &t {
+                            Tok::Number(raw) => format!("\"{raw}\""),
+                            other => tok_desc(other),
+                        };
+                        return Err(self.err(
+                            l,
+                            c2,
+                            format!("Encountered {found}, but was expecting pattern: <ID>"),
+                        ));
+                    };
+                    legacy_fmt = Some(parse_legacy_number_format(self, &fmt, l, c2)?);
+                } else {
+                    // 无格式串：Java NumericalOutput(exp, autoEscOF) → (0, 50)
+                    legacy_fmt = Some((0, 50));
+                }
+            }
             let (t, l, c2) = self.next_tok()?;
             if t != Tok::InterpEnd {
                 return Err(self.err(
@@ -589,12 +662,15 @@ impl<'a> Parser<'a> {
         self.ctx = prev_ctx;
         r?;
         Ok(Element::new(
-            ElementKind::Interpolation(e),
+            ElementKind::Interpolation {
+                expr: e,
+                legacy_min_frac: legacy_fmt.map(|f| f.0),
+                legacy_max_frac: legacy_fmt.map(|f| f.1),
+            },
             Span::new(line, col),
         ))
     }
 
-    // -----------------------------------------------------------------------
     // 指令分发（FreemarkerDirective 产生式）
     // -----------------------------------------------------------------------
 
@@ -942,6 +1018,7 @@ impl<'a> Parser<'a> {
             has_loop_var: has_var,
             is_foreach: false,
             is_items: false,
+            items_open: false,
         });
         if has_var {
             self.loop_nesting += 1;
@@ -1032,6 +1109,7 @@ impl<'a> Parser<'a> {
             has_loop_var: true,
             is_foreach: true,
             is_items: false,
+            items_open: false,
         });
         self.loop_nesting += 1;
         let r = (|| {
@@ -1094,33 +1172,26 @@ impl<'a> Parser<'a> {
             var2 = Some(v2);
         }
         self.expect_tag_end()?;
-        // Java Items()：peekIteratorBlockContext 校验 + 上下文标记
+        // Java Items()：peekIteratorBlockContext 校验（FTL.jj 2925-2942：
+        // iterCtx.loopVarName != null → 按 kind 分派错误消息）
         if self.iter_stack.is_empty() {
             return Err(self.err(line, col, "#items must be inside a #list block."));
         }
         let ctx = self.iter_stack.last_mut().expect("已判非空");
-        if ctx.has_loop_var {
-            return Err(self.err(
-                line,
-                col,
-                "The parent #list of the #items must not have \"as loopVar\" parameter.",
-            ));
+        if ctx.has_loop_var || ctx.items_open {
+            let msg = if ctx.is_foreach {
+                "#foreach doesn't support nested #items."
+            } else if ctx.is_items {
+                "Can't nest #items into each other when they belong to the same #list."
+            } else {
+                "The parent #list of the #items must not have \"as loopVar\" parameter."
+            };
+            return Err(self.err(line, col, msg));
         }
-        if ctx.is_foreach {
-            return Err(self.err(
-                line,
-                col,
-                "The deprecated #foreach directive doesn't support nested #items.",
-            ));
-        }
-        if ctx.is_items {
-            return Err(self.err(
-                line,
-                col,
-                "Can't nest #items into each other when they belong to the same #list.",
-            ));
-        }
+        // Java Items()：iterCtx.kind = ITERATOR_BLOCK_KIND_ITEMS（:2943）——
+        // 进入后不重置，供 `#list` 无 as 的结束校验（list_body 的 entered_items）
         ctx.is_items = true;
+        ctx.items_open = true;
         self.loop_nesting += 1;
         let r = (|| {
             let (body, stop) = self.parse_block(&["items"], &[])?;
@@ -1141,11 +1212,17 @@ impl<'a> Parser<'a> {
             }
         })();
         self.loop_nesting -= 1;
+        // Java Items()：END_ITEMS 后 iterCtx.loopVarName = null（FTL.jj 2966-2968）——
+        // 同一 #list 中顺序多个 #items 合法（list3 用例 switch 的不同分支）；
+        // "已进入过" 校验由 is_items（kind）承担，嵌套校验由 items_open 承担
+        if let Some(ctx) = self.iter_stack.last_mut() {
+            ctx.items_open = false;
+        }
         r
     }
 
     /// `<#sep> body </#sep>`（就地元素 —— 对应 Java Sep()，FTL.jj 2974-2995：
-    /// 当前迭代 hasNext 时渲染 body；可嵌套在 list/items 体内）
+    /// 当前迭代 hasNext 时渲染 body；`</#sep>` 可选，父块结束标签自动收尾）
     fn sep_directive(&mut self) -> Result<Element> {
         let (line, col) = self.tag_pos;
         if self.iter_stack.is_empty() {
@@ -1156,11 +1233,16 @@ impl<'a> Parser<'a> {
             ));
         }
         self.expect_tag_end_raw()?;
-        let (body, stop) = self.parse_block(&["sep"], &[])?;
+        let (body, stop) = self.parse_sep_block()?;
         match stop {
-            BlockStop::EndTag(_) => {}
-            BlockStop::Eof => return Err(self.err(line, col, "Unclosed <#sep> block.")),
-            _ => return Err(self.err(line, col, "Unexpected directive in the #sep block.")),
+            // 显式 `</#sep>`（Java `end = <END_SEP>`）
+            BlockStop::EndTag(n) if n == "sep" => {}
+            // Java Sep()：`[LOOKAHEAD(1) end = <END_SEP>]` 可选 —— 父块结束标签 /
+            // `<#else>` 等终止指令 / EOF 自动收尾，停止信息上抛给外层块
+            // （外层 parse_block 循环顶部的 pending_stop 检查接手）
+            BlockStop::EndTag(_) | BlockStop::Dir(_) | BlockStop::EndCall(_) | BlockStop::Eof => {
+                self.pending_stop = Some(stop);
+            }
         }
         Ok(Element::new(
             ElementKind::Sep { body },
@@ -3188,7 +3270,7 @@ impl<'a> Parser<'a> {
                 | ElementKind::Nested { body: None, .. }
                 | ElementKind::Global { body: None, .. }
                 | ElementKind::Local { body: None, .. }
-                | ElementKind::Interpolation(_)
+                | ElementKind::Interpolation { .. }
                 | ElementKind::Assignments(_)
                 | ElementKind::Assign { .. }
                 | ElementKind::Break
@@ -3294,7 +3376,7 @@ fn is_trim_element(el: &Element) -> bool {
 fn leaf_heeds_opening(el: &Element) -> bool {
     match &el.kind {
         ElementKind::Text { text, .. } | ElementKind::NoParse { text, .. } => heeds_opening(text),
-        ElementKind::Interpolation(_) => true,
+        ElementKind::Interpolation { .. } => true,
         _ => false,
     }
 }
@@ -3436,7 +3518,7 @@ fn first_leaf(el: &Element) -> Option<Term> {
             heeds: heeds_trailing(text),
             line: el.span.line,
         }),
-        ElementKind::Interpolation(_) => Some(Term {
+        ElementKind::Interpolation { .. } => Some(Term {
             // Java DollarVariable.heedsTrailingWhitespace = true（DollarVariable.java:132-135）
             heeds: true,
             line: el.span.line,
@@ -3488,7 +3570,13 @@ fn first_leaf(el: &Element) -> Option<Term> {
 }
 
 fn first_leaf_slice(els: &[Element]) -> Option<Term> {
-    els.first().and_then(first_leaf)
+    // 跳过 trim 标记（`<#t>`/`<#nt>`/`<#lt>`）：Java postParseCleanup 把
+    // TrimInstruction 从树中移除（TemplateElement.java:404-420），prev/next
+    // TerminalNode 链直达其后的叶——`<#list>...${x}<#t></#list>` 的末叶是
+    // ${x} 而非 TrimLineStart（heeds=false 会错误放行行首剥离）
+    els.iter()
+        .find(|e| !is_trim_element(e))
+        .and_then(first_leaf)
 }
 
 /// 元素的末个终结叶（Java getLastLeaf；Text 用**原始**结束行 ——
@@ -3504,7 +3592,7 @@ fn last_leaf(el: &Element) -> Option<Term> {
             heeds: heeds_opening(text),
             line: *orig_end_line,
         }),
-        ElementKind::Interpolation(_) => Some(Term {
+        ElementKind::Interpolation { .. } => Some(Term {
             // Java DollarVariable.heedsOpeningWhitespace = true（DollarVariable.java:127-130）
             heeds: true,
             line: el.span.line,
@@ -3573,7 +3661,11 @@ fn last_leaf(el: &Element) -> Option<Term> {
 }
 
 fn last_leaf_slice(els: &[Element]) -> Option<Term> {
-    els.last().and_then(last_leaf)
+    // 同 first_leaf_slice：跳过 trim 标记（Java 已从树中移除 TrimInstruction）
+    els.iter()
+        .rev()
+        .find(|e| !is_trim_element(e))
+        .and_then(last_leaf)
 }
 
 /// Java `TextBlock.heedsOpeningWhitespace`（TextBlock.java:215-226）：从文本末尾反向扫描，
@@ -3691,11 +3783,187 @@ struct IterCtx {
     has_loop_var: bool,
     /// 所属是否为 `<#foreach>`（Java：foreach 不支持嵌套 #items）
     is_foreach: bool,
-    /// 该 #list 是否已进入过 #items（Java iterCtx.kind == ITERATOR_BLOCK_KIND_ITEMS）
+    /// 该 #list 是否已进入过 #items（Java iterCtx.kind == ITERATOR_BLOCK_KIND_ITEMS，
+    /// 进入后不重置 —— `#list` 无 as 的结束校验用）
     is_items: bool,
+    /// 是否有未闭合的 #items 块（Java iterCtx.loopVarName != null；`</#items>` 时
+    /// 重置 —— 同一 #list 中顺序多个 #items 是合法的，list3 用例的 switch 分支）
+    items_open: bool,
 }
 
 /// token → 赋值操作符（多赋值续项前瞻用；非赋值符返回 None）
+/// Java `numberLiteralOnly`（FTL.jj 454-459）：`#{...}` 内不允许字符串/列表/哈希/布尔
+/// 字面量。错误消息逐字对齐 notStringLiteral :399-408 / notListLiteral :440-451 /
+/// notHashLiteral :430-438 / notBooleanLiteral :421-428（canonical 形式见
+/// literal_canonical）。
+fn number_literal_only(p: &Parser, e: &Expr) -> Result<()> {
+    use crate::core::ExprKind as K;
+    let (l, c) = (e.span.line, e.span.col);
+    let msg = match &e.kind {
+        K::Str(_) | K::InterpStr(_) => {
+            format!(
+                "Found string literal: {}. Expecting: number",
+                literal_canonical(e)
+            )
+        }
+        K::ListLit(_) => {
+            format!(
+                "Found list literal: {}. Expecting number",
+                literal_canonical(e)
+            )
+        }
+        K::HashLit(_) => {
+            format!(
+                "Found hash literal: {}. Expecting number",
+                literal_canonical(e)
+            )
+        }
+        K::Bool(_) => {
+            format!("Found: {} literal. Expecting number", literal_canonical(e))
+        }
+        _ => return Ok(()),
+    };
+    Err(p.err(l, c, msg))
+}
+
+/// 字面量 canonical 形式（Java `Expression.getCanonicalForm` 的字面量子集；
+/// 供 `#{}` 字面量校验消息逐字对齐）
+fn literal_canonical(e: &Expr) -> String {
+    use crate::core::ExprKind as K;
+    match &e.kind {
+        K::Str(s) => format!("\"{s}\""),
+        K::InterpStr(parts) => {
+            let inner: String = parts
+                .iter()
+                .map(|p| match p {
+                    StrPart::Text(t) => t.clone(),
+                    StrPart::Interp(i) => format!("${{{}}}", literal_canonical(i)),
+                })
+                .collect();
+            format!("\"{inner}\"")
+        }
+        K::Num(n) => n.to_plain_string(),
+        K::Bool(b) => b.to_string(),
+        K::ListLit(items) => format!(
+            "[{}]",
+            items
+                .iter()
+                .map(literal_canonical)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        K::HashLit(pairs) => format!(
+            "{{{}}}",
+            pairs
+                .iter()
+                .map(|(k, v)| format!("{}: {}", literal_canonical(k), literal_canonical(v)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        other => crate::core::environment::expr_desc(&Expr::new(other.clone(), e.span)),
+    }
+}
+
+/// 旧式 `#{e ; fmt}` 格式串解析 —— 对应 Java NumericalOutput 的
+/// StringTokenizer 循环（FTL.jj 2645-2687）：`m`/`M` 交替分隔数字；
+/// 错误消息逐字对齐：
+/// - "Invalid format specifier {fmt}"（结构非法 / m、M 重复）
+/// - "Invalid number in the format specifier {fmt}"（数字解析失败）
+/// - "Invalid format specification, at least one of m and M must be specified!"
+/// - "Invalid format specification, min cannot be greater than max!"
+/// - "Cannot specify more than 50 fraction digits"
+fn parse_legacy_number_format(p: &Parser, fmt: &str, l: u32, c: u32) -> Result<(u32, u32)> {
+    // StringTokenizer(fmt, "mM", true)：分隔符 m/M 作为独立 token
+    let mut tokens: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for ch in fmt.chars() {
+        if ch == 'm' || ch == 'M' {
+            if !cur.is_empty() {
+                tokens.push(std::mem::take(&mut cur));
+            }
+            tokens.push(ch.to_string());
+        } else {
+            cur.push(ch);
+        }
+    }
+    if !cur.is_empty() {
+        tokens.push(cur);
+    }
+    let mut typ: Option<char> = None;
+    let mut min_frac: Option<u32> = None;
+    let mut max_frac: Option<u32> = None;
+    for tok in &tokens {
+        match typ {
+            Some(t) => {
+                // Java：Integer.parseInt(token) 失败 → "Invalid number..."
+                let n: u32 = match tok.parse() {
+                    Ok(n) => n,
+                    Err(_) => {
+                        return Err(p.err(
+                            l,
+                            c,
+                            format!("Invalid number in the format specifier {fmt}"),
+                        ))
+                    }
+                };
+                match t {
+                    'm' => {
+                        // Java：minFrac != -1 → "Invalid formatting string" → 包装为
+                        // "Invalid format specifier {fmt}"
+                        if min_frac.is_some() {
+                            return Err(p.err(l, c, format!("Invalid format specifier {fmt}")));
+                        }
+                        min_frac = Some(n);
+                    }
+                    'M' => {
+                        if max_frac.is_some() {
+                            return Err(p.err(l, c, format!("Invalid format specifier {fmt}")));
+                        }
+                        max_frac = Some(n);
+                    }
+                    _ => unreachable!("m/M 分隔符 token"),
+                }
+                typ = None;
+            }
+            None => {
+                if tok == "m" {
+                    typ = Some('m');
+                } else if tok == "M" {
+                    typ = Some('M');
+                } else {
+                    return Err(p.err(l, c, format!("Invalid format specifier {fmt}")));
+                }
+            }
+        }
+    }
+    // Java :2687-2701：maxFrac 缺省 = minFrac；minFrac 缺省 = 0
+    let max_frac = match max_frac {
+        Some(v) => v,
+        None => match min_frac {
+            Some(v) => v,
+            None => {
+                return Err(p.err(
+                    l,
+                    c,
+                    "Invalid format specification, at least one of m and M must be specified!",
+                ))
+            }
+        },
+    };
+    let min_frac = min_frac.unwrap_or(0);
+    if min_frac > max_frac {
+        return Err(p.err(
+            l,
+            c,
+            "Invalid format specification, min cannot be greater than max!",
+        ));
+    }
+    if min_frac > 50 || max_frac > 50 {
+        return Err(p.err(l, c, "Cannot specify more than 50 fraction digits"));
+    }
+    Ok((min_frac, max_frac))
+}
+
 fn assign_op_of(t: &Tok) -> Option<AssignOp> {
     match t {
         Tok::Eq => Some(AssignOp::Equals),
@@ -4077,7 +4345,7 @@ mod tests {
     fn expr_of(src: &str) -> ExprKind {
         let t = parse_ok(&format!("${{{src}}}"));
         match &t.root[0].kind {
-            ElementKind::Interpolation(e) => e.kind.clone(),
+            ElementKind::Interpolation { expr, .. } => expr.kind.clone(),
             k => panic!("expected interpolation, got {k:?}"),
         }
     }
@@ -4673,7 +4941,7 @@ mod tests {
         assert_eq!(seq.kind, ident("xs"));
         assert_eq!(var, "x");
         assert!(var2.is_none());
-        assert!(matches!(body[0].kind, ElementKind::Interpolation(_)));
+        assert!(matches!(body[0].kind, ElementKind::Interpolation { .. }));
         assert!(else_.is_none());
 
         // items/sep 是就地元素（Java Items/Sep 模型），不再抽入 List 字段
@@ -4694,7 +4962,10 @@ mod tests {
             panic!("expected Items at body[0], got {:?}", body[0].kind);
         };
         assert_eq!(var, "x");
-        assert!(matches!(items_body[0].kind, ElementKind::Interpolation(_)));
+        assert!(matches!(
+            items_body[0].kind,
+            ElementKind::Interpolation { .. }
+        ));
         let ElementKind::Sep { body: sep_body } = &body[1].kind else {
             panic!("expected Sep at body[1], got {:?}", body[1].kind);
         };
@@ -4747,9 +5018,178 @@ mod tests {
         // #items 嵌套 #items → 报错
         let msg = parse_err("<#list xs><#items as x><#items as y></#items></#items></#list>");
         assert!(msg.contains("Can't nest #items"), "{msg}");
-        // #foreach 内 #items → 报错（Java：foreach 不支持嵌套 items）
+        // #foreach 内 #items → 报错（Java：foreach 不支持嵌套 items，消息逐字）
         let msg = parse_err("<#foreach x in xs><#items as y></#items></#foreach>");
-        assert!(msg.contains("#items"), "{msg}");
+        assert!(
+            msg.contains("#foreach doesn't support nested #items."),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn list3_sequential_items_and_sep_auto_close() {
+        // list3：同一 #list 中顺序多个 #items 合法（Java FTL.jj：END_ITEMS 后
+        // iterCtx.loopVarName = null，:2966-2968；运行时由
+        // IterationContext.alreadyEntered 校验，IteratorBlock.java:250-254）
+        let t = parse_ok("<#list xs><#items as x>${x}</#items><#items as y>${y}</#items></#list>");
+        let ElementKind::List { body, .. } = &t.root[0].kind else {
+            panic!("expected List");
+        };
+        assert!(matches!(body[0].kind, ElementKind::Items { .. }));
+        assert!(matches!(body[1].kind, ElementKind::Items { .. }));
+        // list3 用例形态：switch 不同分支内的多个 #items（macro hits）
+        let t = parse_ok(
+            "<#list xs><#switch s><#case \"a\"><#items as x>${x}</#items><#break><#default><#items as x>${x}</#items></#switch></#list>",
+        );
+        assert_eq!(t.root.len(), 1);
+        // 真正嵌套（items 体内部再开 items）仍报错
+        let msg = parse_err("<#list xs><#items as x><#items as y></#items></#items></#list>");
+        assert!(msg.contains("Can't nest #items"), "{msg}");
+        // #sep 自动闭合（Java Sep() 的 END_SEP 可选，FTL.jj 2988-2990）：
+        // `</#list>`（list-bis 第 20/24/35/48 行形态）
+        let t = parse_ok("<#list xs as x>${x}<#sep>, </#list>");
+        let ElementKind::List { body, .. } = &t.root[0].kind else {
+            panic!("expected List");
+        };
+        assert!(matches!(body[1].kind, ElementKind::Sep { .. }));
+        // `</#items>`（list3 第 69 行形态）
+        let t = parse_ok("<#list xs><#items as x>${x}<#sep>, </#items></#list>");
+        assert_eq!(t.root.len(), 1);
+        // `<#else>`（list3 第 67-68 行形态：else 归属外层 list）
+        let t = parse_ok("<#list xs as x>${x}<#sep>, <#else>empty</#list>");
+        let ElementKind::List { else_, .. } = &t.root[0].kind else {
+            panic!("expected List");
+        };
+        assert!(else_.is_some(), "sep 自动闭合后 else 仍归外层 list");
+        // `</#if>`（sep 在 if 体内，Java 同样允许 —— Sep 的 MixedContentElements
+        // 在非元素 token 处终止）
+        let t = parse_ok("<#list xs as x><#if x == 'a'>${x}<#sep>X</#if>${x}</#list>");
+        assert_eq!(t.root.len(), 1);
+        // 显式 `</#sep>` 照常
+        let t = parse_ok("<#list xs as x>${x}<#sep>, </#sep></#list>");
+        assert_eq!(t.root.len(), 1);
+        // 未闭合 #sep 且模板结束 → 外层 #list 报未闭合
+        let msg = parse_err("<#list xs as x>${x}<#sep>, ");
+        assert!(msg.contains("Unclosed"), "{msg}");
+    }
+
+    #[test]
+    fn legacy_interpolation_format_spec() {
+        // `#{ expr ; mNMN }`（Java NumericalOutput，FTL.jj 2627-2703；arithmetic 用例）
+        let t = parse_ok("#{ x + y ; m2M3}");
+        let ElementKind::Interpolation {
+            legacy_min_frac,
+            legacy_max_frac,
+            ..
+        } = &t.root[0].kind
+        else {
+            panic!("expected Interpolation");
+        };
+        assert_eq!(*legacy_min_frac, Some(2));
+        assert_eq!(*legacy_max_frac, Some(3));
+        // 无格式串 → (0, 50)（Java NumericalOutput(exp, autoEscOF) 默认）
+        let t = parse_ok("#{y/x}");
+        let ElementKind::Interpolation {
+            legacy_min_frac,
+            legacy_max_frac,
+            ..
+        } = &t.root[0].kind
+        else {
+            panic!("expected Interpolation");
+        };
+        assert_eq!(*legacy_min_frac, Some(0));
+        assert_eq!(*legacy_max_frac, Some(50));
+        // `${...}` 不是旧式插值（legacy_min_frac = None）
+        let t = parse_ok("${x}");
+        let ElementKind::Interpolation {
+            legacy_min_frac, ..
+        } = &t.root[0].kind
+        else {
+            panic!("expected Interpolation");
+        };
+        assert_eq!(*legacy_min_frac, None);
+        // `m3` → min=max=3；`M4` → min=0、max=4（Java :2687-2698 缺省规则）
+        for (src, min, max) in [("#{y ; m3}", 3u32, 3u32), ("#{y ; M4}", 0, 4)] {
+            let t = parse_ok(src);
+            let ElementKind::Interpolation {
+                legacy_min_frac,
+                legacy_max_frac,
+                ..
+            } = &t.root[0].kind
+            else {
+                panic!("expected Interpolation for {src}");
+            };
+            assert_eq!(*legacy_min_frac, Some(min), "min for {src}");
+            assert_eq!(*legacy_max_frac, Some(max), "max for {src}");
+        }
+        // 格式串错误（Java 消息逐字，ProbeP2 jar 实测）
+        let msg = parse_err("#{y ; xyz}");
+        assert!(msg.contains("Invalid format specifier xyz"), "{msg}");
+        let msg = parse_err("#{y ; m9M3}");
+        assert!(
+            msg.contains("Invalid format specification, min cannot be greater than max!"),
+            "{msg}"
+        );
+        let msg = parse_err("#{y ; m60}");
+        assert!(
+            msg.contains("Cannot specify more than 50 fraction digits"),
+            "{msg}"
+        );
+        let msg = parse_err("#{y ; 12}");
+        assert!(
+            msg.contains("Encountered \"12\", but was expecting pattern: <ID>"),
+            "{msg}"
+        );
+        // 数字解析失败 → "Invalid number in the format specifier"（Java :2645-2687：
+        // StringTokenizer 按 m/M 切分，"m2x" → ["m", "2x"] → parseInt("2x") 失败）
+        let msg = parse_err("#{y ; m2x}");
+        assert!(
+            msg.contains("Invalid number in the format specifier m2x"),
+            "{msg}"
+        );
+        let msg = parse_err("#{y ; m99999999999999}");
+        assert!(
+            msg.contains("Invalid number in the format specifier m99999999999999"),
+            "{msg}"
+        );
+        // 尾随 m/M（无数字）：Java StringTokenizer 语义下忽略（m2m → min=max=2、
+        // m2M → min=max=2，jar 实测输出 "2.00"）
+        for src in ["#{y ; m2m}", "#{y ; m2M}"] {
+            let t = parse_ok(src);
+            let ElementKind::Interpolation {
+                legacy_min_frac,
+                legacy_max_frac,
+                ..
+            } = &t.root[0].kind
+            else {
+                panic!("expected Interpolation");
+            };
+            assert_eq!(*legacy_min_frac, Some(2), "min for {src}");
+            assert_eq!(*legacy_max_frac, Some(2), "max for {src}");
+        }
+        // 字面量校验（numberLiteralOnly，消息逐字）
+        let msg = parse_err("#{ \"a\" }");
+        assert!(
+            msg.contains("Found string literal: \"a\". Expecting: number"),
+            "{msg}"
+        );
+        let msg = parse_err("#{ [1, 2] }");
+        assert!(
+            msg.contains("Found list literal: [1, 2]. Expecting number"),
+            "{msg}"
+        );
+        let msg = parse_err("#{ {\"a\": 1} }");
+        assert!(
+            msg.contains("Found hash literal: {\"a\": 1}. Expecting number"),
+            "{msg}"
+        );
+        let msg = parse_err("#{ true }");
+        assert!(
+            msg.contains("Found: true literal. Expecting number"),
+            "{msg}"
+        );
+        // `${...}` 不受影响
+        assert!(parse_ok("${ \"a\" }").root.len() == 1);
     }
 
     #[test]
@@ -5151,7 +5591,7 @@ mod tests {
         // `$${` → 文本 $ + 插值
         let t = parse_ok("$${x}");
         assert!(matches!(t.root[0].kind, ElementKind::Text { ref text, .. } if text == "$"));
-        assert!(matches!(t.root[1].kind, ElementKind::Interpolation(_)));
+        assert!(matches!(t.root[1].kind, ElementKind::Interpolation { .. }));
         // `$` 后非 `{` 为文本
         let t = parse_ok("$x");
         assert!(matches!(t.root[0].kind, ElementKind::Text { ref text, .. } if text == "$x"));
@@ -5159,9 +5599,9 @@ mod tests {
         let t = parse_ok("a${x}b#{y}c");
         assert_eq!(t.root.len(), 5);
         assert!(matches!(t.root[0].kind, ElementKind::Text { ref text, .. } if text == "a"));
-        assert!(matches!(t.root[1].kind, ElementKind::Interpolation(_)));
+        assert!(matches!(t.root[1].kind, ElementKind::Interpolation { .. }));
         assert!(matches!(t.root[2].kind, ElementKind::Text { ref text, .. } if text == "b"));
-        assert!(matches!(t.root[3].kind, ElementKind::Interpolation(_)));
+        assert!(matches!(t.root[3].kind, ElementKind::Interpolation { .. }));
         assert!(matches!(t.root[4].kind, ElementKind::Text { ref text, .. } if text == "c"));
     }
 
@@ -5184,11 +5624,11 @@ mod tests {
     #[test]
     fn expression_comments() {
         let t = parse_ok("${1 + [#-- c --] 2}");
-        let ElementKind::Interpolation(e) = &t.root[0].kind else {
+        let ElementKind::Interpolation { expr, .. } = &t.root[0].kind else {
             panic!("expected Interpolation");
         };
         assert_eq!(
-            e.kind,
+            expr.kind,
             ExprKind::Add(
                 Box::new(Expr::new(num(TNumber::Int(1)), Span::new(1, 3))),
                 Box::new(Expr::new(num(TNumber::Int(2)), Span::new(1, 18))),

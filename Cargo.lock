@@ -162,7 +162,9 @@ dependencies = [
 name = "freemarker-test"
 version = "0.1.0"
 dependencies = [
+ "bigdecimal",
  "chrono",
+ "fancy-regex",
  "freemarker",
  "indexmap",
  "regex",

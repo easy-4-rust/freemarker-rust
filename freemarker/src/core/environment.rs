@@ -530,7 +530,13 @@ impl<'a> Environment<'a> {
         if let Some(m) = self.template.configuration.shared_vars.get(name) {
             return Ok(m.clone());
         }
-        // ⑦ 未找到
+        // ⑦ 未找到 —— Java Environment.getVariable（:2460-2472）返回 null 不抛错，
+        // 错误在使用点抛出（EvalUtil.coerceModelToTextualCommon / modelToBoolean 等）。
+        // 本引擎 strict 模式在此抛 InvalidReference（等效）；classic 兼容模式按 Java
+        // 语义返回 nothing，由使用点回退（插值 → ""、布尔 → false 等）。
+        if self.settings.classic_compatible {
+            return Ok(TModel::nothing());
+        }
         Err(TemplateError::invalid_reference(name))
     }
 
@@ -1018,6 +1024,17 @@ fn bind_macro_args(
 
     for (arg_name, arg_expr) in args {
         let value = eval::eval(env, arg_expr)?;
+        // Java Macro.Context.checkParamsSetAndApplyDefaults（Macro.java:273-322）：
+        // 参数值为 null 时——有默认值 → 求默认值；无默认值且 classic 兼容 → 参数
+        // 保持未设置（变量查找回退外层作用域）；strict → "required parameter ...
+        // was specified, but had null/missing value."。本引擎 classic 模式跳过绑定
+        // （回退外层），strict 保持绑定 nothing（既有偏差，见 docs）
+        if value.is_nothing() && env.settings.classic_compatible {
+            if arg_name.is_empty() {
+                next_pos += 1; // 位置槽仍被消耗（Java localVars 含 null 条目，get 回 null）
+            }
+            continue;
+        }
         if arg_name.is_empty() {
             // 位置参数（Java :1041-1080）
             if next_pos < normal_params.len() {
@@ -1120,6 +1137,11 @@ fn apply_macro_defaults(
         let cur = frame.locals.borrow().get(&param.name).cloned();
         let set = matches!(&cur, Some(m) if !m.is_nothing());
         if !set {
+            if env.settings.classic_compatible {
+                // Java Macro.java :301-322/:328-333：classic 兼容模式参数保持未设置
+                // （变量查找回退外层作用域），不报错
+                continue;
+            }
             if param.default.is_some() {
                 return Err(TemplateError::invalid_reference(format!(
                     "Default value of parameter \"{}\" (parameter #{}) of {} {} could not be resolved",
@@ -1306,6 +1328,14 @@ pub(crate) fn boolean_format(env: &Environment, b: bool, fallback: bool) -> Resu
 ///   true → "true"、false → ""；双角色标量模型优先返回字符串），否则 boolean_format；
 /// - 日期按 date_format/time_format/date_time_format 设置（Java formatDateToPlainText）。
 pub(crate) fn model_to_string(env: &mut Environment, m: &TModel) -> Result<String> {
+    if m.is_nothing() {
+        // Java EvalUtil.coerceModelToTextualCommon :482-494：tm == null → classic 兼容
+        // 模式回退空串；strict 模式为 InvalidReferenceException（本引擎 strict 的
+        // 缺失变量在解析层已抛 Err，此处仅显式 null 值会到达）
+        if env.settings.classic_compatible {
+            return Ok(String::new());
+        }
+    }
     if let Some(s) = &m.scalar {
         return s.as_string();
     }

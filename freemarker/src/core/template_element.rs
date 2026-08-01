@@ -41,8 +41,15 @@ pub enum ElementKind {
         /// 而内容裁剪会改变换行数 —— prev/next 链的行号判定须用原始值）
         orig_end_line: u32,
     },
-    /// ${expr} 插值
-    Interpolation(Expr),
+    /// ${expr} 插值 / #{expr[ ; mNMN]} 旧式数值插值（Java DollarVariable /
+    /// NumericalOutput 坍缩；旧式插值携带小数位格式）
+    Interpolation {
+        expr: Expr,
+        /// 旧式 `#{...}` 插值（Java NumericalOutput）：Some((min, max)) = 小数位
+        /// （无格式串 → (0, 50)）；None = `${...}`（DollarVariable，走 number_format）
+        legacy_min_frac: Option<u32>,
+        legacy_max_frac: Option<u32>,
+    },
     /// <#if>（elseif 已扁平化为嵌套 If 的 else 分支）
     If {
         cond: Expr,

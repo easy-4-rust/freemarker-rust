@@ -22,6 +22,7 @@ use crate::core::{ArithmeticEngine, AssignOp, CallTarget, Element, ElementKind, 
 use crate::error::{FlowKind, Result, TemplateError};
 use crate::template::{TModel, TemplateDirectiveBody};
 use crate::utility::java_trim;
+use crate::value::TNumber;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -72,22 +73,44 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             env.emit(t)?;
             Ok(ExecOutcome::Done)
         }
-        ElementKind::Interpolation(e) => {
+        ElementKind::Interpolation {
+            expr,
+            legacy_min_frac,
+            legacy_max_frac,
+        } => match (legacy_min_frac, legacy_max_frac) {
+            // 旧式 `#{expr[ ; mNMN]}`（Java NumericalOutput.accept：
+            // evalToNumber → NumberFormat(min, max, grouping=false) 输出；
+            // 不经过 <#escape> 栈，仅 autoesc/outputFormat 转义）
+            (Some(min), Some(max)) => {
+                let n = eval::eval(env, expr)?.get_number()?;
+                let s = legacy_number_format(&n, *min, *max);
+                env.emit(&legacy_auto_escaped(env, &s))?;
+                Ok(ExecOutcome::Done)
+            }
             // Java DollarVariable：求值 → 转义 → 输出字符串 → 写出
             // （P4：转义表达式接收插值模型而非字符串——嵌套 escape 组合与
             // `<#escape x as h[x]>` 数字索引需要原值，见 environment.rs apply_escape）
-            let m = eval::eval(env, e)?;
-            if m.is_nothing() {
-                // Java：插值缺失 → InvalidReferenceException（?default/?if_exists 可抑制）
-                return Err(TemplateError::invalid_reference(expr_desc(e)));
+            _ => {
+                let m = eval::eval(env, expr)?;
+                if m.is_nothing() {
+                    // Java DollarVariable.accept → EvalUtil.coerceModelToStringOrMarkup →
+                    // coerceModelToTextualCommon：tm == null 时 classic 兼容模式回退空串
+                    // （EvalUtil.java:486-489），否则 InvalidReferenceException
+                    if env.settings.classic_compatible {
+                        return Ok(ExecOutcome::Done);
+                    }
+                    return Err(TemplateError::invalid_reference(expr_desc(expr)));
+                }
+                let s = env.apply_escape(&m)?;
+                env.emit(&s)?;
+                Ok(ExecOutcome::Done)
             }
-            let s = env.apply_escape(&m)?;
-            env.emit(&s)?;
-            Ok(ExecOutcome::Done)
-        }
+        },
         ElementKind::If { cond, then, else_ } => {
-            // Java IfBlock.accept :43-61：条件求布尔；then/else 子块
-            let b = eval::eval(env, cond)?.eval_boolean()?;
+            // Java IfBlock.accept :43-61：条件求布尔（modelToBoolean——classic 兼容
+            // 模式下缺失/空值 → false）；then/else 子块
+            let cm = eval::eval(env, cond)?;
+            let b = eval::model_to_boolean(env, &cm)?;
             if b {
                 Ok(ExecOutcome::Next(then.clone()))
             } else if let Some(e) = else_ {
@@ -403,6 +426,64 @@ enum AssignScope {
     Local,
 }
 
+/// 旧式 `#{...}` 数值插值格式化 —— 对应 Java `NumericalOutput.calculateInterpolatedStringOrMarkup`
+/// （NumericalOutput.java:84-112）：`NumberFormat.getNumberInstance(locale)` +
+/// setMinimum/MaximumFractionDigits + setGroupingUsed(false)；NumberFormat 默认舍入为
+/// HALF_EVEN；超出 max 的位舍入、不足 min 的位补零、超出 min 的尾零剥除。
+fn legacy_number_format(n: &TNumber, min_frac: u32, max_frac: u32) -> String {
+    use bigdecimal::RoundingMode;
+    match n {
+        TNumber::Float(f) if f.is_nan() || f.is_infinite() => {
+            // Java NumberFormat.format：NaN → "NaN"，±∞ → "∞"
+            return if f.is_nan() {
+                "NaN".to_string()
+            } else {
+                "\u{221E}".to_string()
+            };
+        }
+        TNumber::Double(d) if d.is_nan() || d.is_infinite() => {
+            return if d.is_nan() {
+                "NaN".to_string()
+            } else {
+                "\u{221E}".to_string()
+            };
+        }
+        _ => {}
+    }
+    let rounded = n
+        .as_big_decimal()
+        .with_scale_round(max_frac as i64, RoundingMode::HalfEven);
+    let mut s = rounded.to_plain_string();
+    // 剥除超出 min_frac 的尾部零（Java NumberFormat 不输出多余尾零；
+    // with_scale_round 已保证小数位 = max_frac ≥ min_frac，只需剥零）
+    if let Some(dot) = s.find('.') {
+        let mut frac_end = s.len();
+        while frac_end - dot - 1 > min_frac as usize && s.as_bytes()[frac_end - 1] == b'0' {
+            frac_end -= 1;
+        }
+        if frac_end - dot - 1 == 0 {
+            s.truncate(dot); // 小数全零 → 去掉小数点（"2.00" → "2"）
+        } else {
+            s.truncate(frac_end);
+        }
+    }
+    s
+}
+
+/// 旧式 `#{...}` 的自动转义 —— 对应 Java NumericalOutput 的 autoEscOF
+/// （NumericalOutput.java:41-43：autoEscaping && outputFormat 为 MarkupOutputFormat；
+/// 不经过 `<#escape>` 栈 —— StringOutput 的 escapedExpression 仅用于 `${...}`）
+fn legacy_auto_escaped(env: &crate::core::Environment, s: &str) -> String {
+    if !env.is_auto_escape() {
+        return s.to_string();
+    }
+    match env.settings.output_format {
+        OutputFormatKind::Html | OutputFormatKind::XHtml => crate::utility::html_escape(s),
+        OutputFormatKind::Xml => crate::utility::xml_escape(s),
+        _ => s.to_string(),
+    }
+}
+
 /// 赋值 —— 对应 Java `Assignment.accept`（Assignment.java:80-168）：
 /// `=` 直接赋值（缺失 → InvalidReference）；`+=` 先取旧值再字符串拼接/数值相加
 /// （AddConcatExpression._eval）；`-=`/`*=`/`/=`/`%=` 数值运算（ArithmeticExpression._eval）；
@@ -427,35 +508,54 @@ fn exec_assign(
         }
     };
     let value = if *op == AssignOp::Equals {
-        // Java :99-110
+        // Java :99-110（Assignment.java:136-142）：= 右侧为 null → classic 兼容模式
+        // 赋空串（TemplateScalarModel.EMPTY_STRING）；strict → InvalidReference
         let v = eval::eval(env, expr)?;
         if v.is_nothing() {
-            return Err(TemplateError::invalid_reference(expr_desc(expr)));
+            if env.settings.classic_compatible {
+                TModel::from_scalar(String::new())
+            } else {
+                return Err(TemplateError::invalid_reference(expr_desc(expr)));
+            }
+        } else {
+            v
         }
-        v
     } else {
         // Java :112-157：先取旧值（缺失 → Assignment.java:156-162 的
-        // "The target variable of the assignment, ... was null or missing ..."）
-        let old = get_old_value(env, target, &target_ns, &scope)?;
-        let old = old.ok_or_else(|| {
-            // Java Assignment.java:156-162 + InvalidReferenceException 的 Tip 段
-            // （目标名以 $ 开头时追加 "must not start with \"$\"" 提示）
-            let mut msg = format!(
-                "The target variable of the assignment, \"{target}\", was null or missing in the template namespace, and the \"{}\" operator must get its value from there before assigning to it.",
-                assign_op_str(op)
-            );
-            if target.starts_with('$') {
-                msg.push_str("\n\n----\nTip: Variable references must not start with \"$\", unless the \"$\" is really part of the variable name.\n----");
+        // "The target variable of the assignment, ... was null or missing ..."；
+        // += 在 classic 兼容模式下缺失目标视为空串，Assignment.java:140-144）
+        let old = match get_old_value(env, target, &target_ns, &scope)? {
+            Some(old) => old,
+            None if *op == AssignOp::PlusEq && env.settings.classic_compatible => {
+                TModel::from_scalar(String::new())
             }
-            TemplateError::misc(msg)
-        })?;
+            None => {
+                // Java Assignment.java:156-162 + InvalidReferenceException 的 Tip 段
+                // （目标名以 $ 开头时追加 "must not start with \"$\"" 提示）
+                let mut msg = format!(
+                    "The target variable of the assignment, \"{target}\", was null or missing in the template namespace, and the \"{}\" operator must get its value from there before assigning to it.",
+                    assign_op_str(op)
+                );
+                if target.starts_with('$') {
+                    msg.push_str("\n\n----\nTip: Variable references must not start with \"$\", unless the \"$\" is really part of the variable name.\n----");
+                }
+                return Err(TemplateError::misc(msg));
+            }
+        };
         match op {
             AssignOp::PlusEq => {
-                // Java :132-147：AddConcat 语义（字符串拼接或数值相加）
+                // Java :132-147：AddConcat 语义（字符串拼接或数值相加）；
+                // 右侧为 null → classic 兼容模式视为空串（Assignment.java:147-151）
                 let new = eval::eval(env, expr)?;
-                if new.is_nothing() {
-                    return Err(TemplateError::invalid_reference(expr_desc(expr)));
-                }
+                let new = if new.is_nothing() {
+                    if env.settings.classic_compatible {
+                        TModel::from_scalar(String::new())
+                    } else {
+                        return Err(TemplateError::invalid_reference(expr_desc(expr)));
+                    }
+                } else {
+                    new
+                };
                 eval_add_concat(env, &old, &new)?
             }
             AssignOp::PlusPlus => {
@@ -484,7 +584,13 @@ fn exec_assign(
                 let l = old
                     .get_number()
                     .map_err(|_| assign_non_number_err(target, &old))?;
-                let r = eval::eval(env, expr)?.get_number().map_err(|_| {
+                // Java :155-157：右值 null → evalToNumber → NonNumericalException
+                // （消息同 "null or missing"）
+                let rm = eval::eval(env, expr)?;
+                if rm.is_nothing() {
+                    return Err(TemplateError::invalid_reference(expr_desc(expr)));
+                }
+                let r = rm.get_number().map_err(|_| {
                     TemplateError::misc(format!(
                         "For \"#assign\" assignment source: Expected a number, but this has evaluated to a string: ==> {}",
                         assign_source_desc(expr)
@@ -749,8 +855,14 @@ fn exec_list(
     body: &[Element],
     else_: &Option<Vec<Element>>,
 ) -> Result<ExecOutcome> {
-    // Java acceptWithResult :98-111：求值列表源（缺失 → InvalidReference）
+    // Java acceptWithResult :97-102：列表源 null → classic 兼容模式视为空序列
+    // （Constants.EMPTY_SEQUENCE）；strict → assertNonNull（本引擎解析层已抛）
     let listed = eval::eval(env, seq_expr)?;
+    let listed = if listed.is_nothing() && env.settings.classic_compatible {
+        TModel::from_sequence(Vec::new())
+    } else {
+        listed
+    };
     // 列出模式（Java FTL.jj List :2808-2812 与 Items :2943-2953：iterCtx.hashListing
     // 由 `<#list ... as k, v>` 或嵌套 `<#items as k, v>` 置位——`<#list hash>`
     // 无循环变量 + `<#items as k, v>` 同样按键/值对列出，listhash 用例第 40-44 行）
@@ -847,6 +959,16 @@ fn materialize_list_items(
             });
         }
         return Ok(crate::core::environment::PendingItems::eager(out));
+    }
+    // Java IteratorBlock.java:335-352：classic 兼容模式下非序列/集合值 → 单次迭代，
+    // 循环变量绑定该值本身（2.1 经典语义，`<#list 'a' as x>` → x = "a" 执行一次）
+    if env.settings.classic_compatible {
+        return Ok(crate::core::environment::PendingItems::eager(
+            std::collections::VecDeque::from([crate::core::environment::LoopItem {
+                key: None,
+                value: Some(listed.clone()),
+            }]),
+        ));
     }
     // Java NonSequenceOrCollectionException（v1 消息简化）
     let _ = env;
@@ -1260,7 +1382,9 @@ fn exec_setting(
         "sql_date_and_time_time_zone" => {
             // Java PropertySetting 支持（影响 SQL 日期格式化，v1 忽略 —— 文档化偏差）
         }
-        "classic_compatible" => env.settings.classic_compatible = parse_bool_setting(&v)?,
+        "classic_compatible" => {
+            env.settings.classic_compatible = parse_bool_setting(&v)?;
+        }
         "whitespace_stripping" => env.settings.whitespace_stripping = parse_bool_setting(&v)?,
         "strict_syntax" => env.settings.strict_syntax = parse_bool_setting(&v)?,
         "output_format" => {

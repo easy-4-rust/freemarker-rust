@@ -34,12 +34,38 @@ impl Clone for Configuration {
 
 impl Default for Configuration {
     fn default() -> Self {
+        // Java Configuration.loadBuiltInSharedVariables（Configuration.java:1192-1197）：
+        // 预置共享变量（capture_output/compress/html_escape/normalize_newlines/xml_escape）。
+        // v1 均为空变换（自身无输出、body 透传）——type-builtins 等用例仅需角色判定
+        // （is_transform/is_directive）；`<@html_escape>` 等真实转义行为为文档化偏差。
+        let mut shared_vars: HashMap<String, TModel> = HashMap::new();
+        for name in [
+            "capture_output",
+            "compress",
+            "html_escape",
+            "normalize_newlines",
+            "xml_escape",
+        ] {
+            shared_vars.insert(
+                name.to_string(),
+                TModel::from_transform(PredefinedTransform),
+            );
+        }
         Configuration {
             settings: Settings::default(),
             template_loader: Arc::new(StringLoader::default()),
             cache: Mutex::new(TemplateCache::default()),
-            shared_vars: HashMap::new(),
+            shared_vars,
         }
+    }
+}
+
+/// 预置共享变量变换 —— 对应 Java `freemarker.template.utility` 的 HtmlEscape 等
+/// （v1：自身无输出，body 透传；真实行为实现为文档化偏差）
+struct PredefinedTransform;
+impl crate::template::TemplateTransformModel for PredefinedTransform {
+    fn transform(&self, _env: &mut crate::core::Environment) -> Result<()> {
+        Ok(())
     }
 }
 

@@ -54,6 +54,14 @@ pub struct TModel {
     pub hash: Option<Rc<dyn TemplateHashModel>>,
     pub hash_ex: Option<Rc<dyn TemplateHashModelEx>>,
     pub method: Option<Rc<dyn TemplateMethodModelEx>>,
+    /// 方法模型的可索引性 —— 对应 Java BeansWrapper 的 `GenericMethodModel`
+    /// 实现 `TemplateSequenceModel`（`?is_indexable` → true；`?is_sequence` 在
+    /// ICI ≥ 2.3.24 仍排除——不可 #list）。自定义方法模型（TemplateMethodModelEx
+    /// 匿名类）不实现 TemplateSequenceModel → false。
+    pub method_indexable: bool,
+    /// 集合的 Ex 角色 —— 对应 Java `TemplateCollectionModelEx`（?is_collection_ex）。
+    /// SimpleSequence 实现 Ex；SimpleCollection 不实现（SimpleCollection.java:41-42）。
+    pub collection_ex: bool,
     pub directive: Option<Rc<dyn TemplateDirectiveModel>>,
     /// 变换模型角色（对应 Java TemplateTransformModel；`<#transform>` 目标）
     pub transform: Option<Rc<dyn TemplateTransformModel>>,
@@ -88,6 +96,8 @@ impl TModel {
             hash: None,
             hash_ex: None,
             method: None,
+            method_indexable: false,
+            collection_ex: false,
             directive: None,
             transform: None,
             range: None,
@@ -95,6 +105,28 @@ impl TModel {
             internal: None,
             type_name: "nothing",
             kind: ModelKind::Nothing,
+        }
+    }
+
+    /// `?if_exists` 的缺失结果 —— 对应 Java `TemplateModel.NOTHING`
+    /// （GeneralPurposeNothing.java：全能空角色模型——scalar ""、boolean false、
+    /// 空序列、空哈希、方法返回 null）。与真缺失（Java null → TModel::nothing()）
+    /// 不同：任何使用点按"最合理方式"解释（插值 → ""、布尔 → false、
+    /// 序列/哈希 → 空），不触发 InvalidReference。
+    pub fn gpn() -> TModel {
+        let empty_seq = Rc::new(SimpleSequence(Vec::new()));
+        let empty_hash = Rc::new(SimpleHash(IndexMap::new()));
+        TModel {
+            scalar: Some(Rc::new(SimpleScalar(String::new()))),
+            boolean: Some(Rc::new(SimpleBoolean(false))),
+            // Java GeneralPurposeNothing 有 TemplateSequenceModel（size 0）但无
+            // TemplateCollectionModel 角色（?is_collection → false）
+            sequence: Some(empty_seq),
+            hash: Some(empty_hash.clone()),
+            hash_ex: Some(empty_hash),
+            type_name: "nothing",
+            kind: ModelKind::Scalar,
+            ..Self::nothing()
         }
     }
 
@@ -135,17 +167,19 @@ impl TModel {
     }
 
     pub fn from_sequence(v: Vec<TModel>) -> TModel {
+        // Java SimpleSequence（SimpleSequence.java:67）只实现 TemplateSequenceModel
+        // ——无 TemplateCollectionModel 角色（?is_collection/?is_collection_ex → false）
         let s = Rc::new(SimpleSequence(v));
         TModel {
-            sequence: Some(s.clone()),
-            collection: Some(s),
+            sequence: Some(s),
             type_name: "sequence",
             kind: ModelKind::Sequence,
             ..Self::nothing()
         }
     }
 
-    /// 一次性集合（仅 Collection 角色，无 Sequence 角色）—— 对应 Java `SimpleCollection`。
+    /// 一次性集合（仅 Collection 角色，无 Sequence 角色）—— 对应 Java `SimpleCollection`
+    /// （只实现 TemplateCollectionModel，无 Ex：?is_collection_ex → false）。
     /// 注意与 from_sequence 的区别：只能枚举一次（iterator 消费语义，docs/06 §2）。
     pub fn from_collection(v: Vec<TModel>) -> TModel {
         TModel {
@@ -171,6 +205,7 @@ impl TModel {
     pub fn from_method(m: impl TemplateMethodModelEx + 'static) -> TModel {
         TModel {
             method: Some(Rc::new(m)),
+            method_indexable: false,
             type_name: "method",
             kind: ModelKind::Method,
             ..Self::nothing()
@@ -224,7 +259,9 @@ impl TModel {
         self.method.is_some()
     }
     pub fn is_directive(&self) -> bool {
-        self.directive.is_some()
+        // Java is_directiveBI（BuiltInsForMultipleTypes.java:308-314）：
+        // TemplateTransformModel || Macro || TemplateDirectiveModel
+        self.directive.is_some() || self.transform.is_some() || self.is_macro()
     }
     pub fn is_node(&self) -> bool {
         self.node.is_some()
@@ -238,9 +275,10 @@ impl TModel {
         self.sequence.is_some() || self.collection.is_some()
     }
 
-    /// 对应 Java `instanceof TemplateCollectionModelEx`（?is_collection_ex）
+    /// 对应 Java `instanceof TemplateCollectionModelEx`（?is_collection_ex）——
+    /// 由 collection_ex 标记承载（SimpleSequence 是 Ex，SimpleCollection 不是）
     pub fn is_collection_ex(&self) -> bool {
-        self.collection.is_some()
+        self.collection_ex
     }
 
     /// 对应 Java `instanceof TemplateModelWithAPISupport`（?has_api；Rust 版不支持 → false）
