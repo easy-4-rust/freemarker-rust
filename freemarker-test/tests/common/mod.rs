@@ -600,9 +600,41 @@ fn listables_model() -> TModel {
     h.insert("emptyList".to_string(), TModel::from_sequence(vec![]));
     h.insert("emptyLinkedList".to_string(), TModel::from_sequence(vec![]));
     h.insert("emptySet".to_string(), TModel::from_sequence(vec![]));
-    h.insert("hashEx2s".to_string(), TModel::from_sequence(vec![]));
-    h.insert("emptyHashes".to_string(), TModel::from_sequence(vec![]));
-    h.insert("hashNonEx2".to_string(), TModel::from_hash(IndexMap::new()));
+    // Java BeansWrapper 的 getter 暴露：getEmptyIterator() → 属性名 emptyIterator
+    h.insert("emptyIterator".to_string(), TModel::from_collection(vec![]));
+    // Java Listables.getHashEx2s：LinkedHashMap{ "k1":"v1", 2:"v2", "k3":"v3",
+    // null:"v4", true:"v5", false:null } 的 3 种包装——v1 哈希键为 String，
+    // 按输出等价预格式化（2→"2"、null→"null"、true→"Y"/false→"N" 按 booleanFormat='Y,N'）
+    let mut h2 = IndexMap::new();
+    h2.insert("k1".to_string(), TModel::from_scalar("v1".to_string()));
+    h2.insert("2".to_string(), TModel::from_scalar("v2".to_string()));
+    h2.insert("k3".to_string(), TModel::from_scalar("v3".to_string()));
+    h2.insert("null".to_string(), TModel::from_scalar("v4".to_string()));
+    h2.insert("Y".to_string(), TModel::from_scalar("v5".to_string()));
+    h2.insert("N".to_string(), TModel::nothing());
+    h.insert(
+        "hashEx2s".to_string(),
+        TModel::from_sequence(vec![
+            TModel::from_hash(h2.clone()),
+            TModel::from_hash(h2.clone()),
+            TModel::from_hash(h2.clone()),
+        ]),
+    );
+    // Java Listables.getEmptyHashes：4 个空哈希
+    h.insert(
+        "emptyHashes".to_string(),
+        TModel::from_sequence(vec![
+            TModel::from_hash(IndexMap::new()),
+            TModel::from_hash(IndexMap::new()),
+            TModel::from_hash(IndexMap::new()),
+            TModel::from_hash(IndexMap::new()),
+        ]),
+    );
+    // Java Listables.getHashNonEx2：ImmutableMap{ k1:11, k2:22 }
+    let mut h3 = IndexMap::new();
+    h3.insert("k1".to_string(), num(11));
+    h3.insert("k2".to_string(), num(22));
+    h.insert("hashNonEx2".to_string(), TModel::from_hash(h3));
     TModel::from_hash(h)
 }
 
@@ -778,7 +810,9 @@ impl TemplateDirectiveModel for AssertFailsDirective {
         let exception = params.get("exception").and_then(|m| m.get_scalar().ok());
         let body =
             body.ok_or_else(|| TemplateError::misc("assertFails requires nested content"))?;
-        let err = match body.render(env) {
+        // Java AssertFailsDirective：body 渲染进 NullWriter.INSTANCE（输出丢弃）——
+        // 否则失败体的输出会泄露进活输出（sequence-builtins 等用例的 "  " 前缀差异）
+        let err = match env.capture(|env| body.render(env)).map(|(r, _)| r) {
             Ok(()) => Err(TemplateError::misc(
                 "Assertion failed: the nested content was expected to fail, but it didn't",
             )),

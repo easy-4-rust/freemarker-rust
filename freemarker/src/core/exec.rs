@@ -218,7 +218,10 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
         }
         ElementKind::Continue => Ok(ExecOutcome::Flow(FlowKind::Continue)),
         ElementKind::Return { expr } => {
-            // Java ReturnInstruction.java:35-51：设置返回值后抛 Return.INSTANCE
+            // Java ReturnInstruction.java:35-51：设置返回值后抛 Return.INSTANCE；
+            // 记录发起时的宏帧深度（nested body 执行时 exec_nested 已弹出被调宏帧，
+            // 栈顶即 return 的归属宏——Java Return 异常携带发起 Macro.Context）
+            env.return_depth = Some(env.macro_frames.len());
             let v = match expr {
                 Some(e) => {
                     let m = eval::eval(env, e)?;
@@ -748,7 +751,14 @@ fn exec_list(
 ) -> Result<ExecOutcome> {
     // Java acceptWithResult :98-111：求值列表源（缺失 → InvalidReference）
     let listed = eval::eval(env, seq_expr)?;
-    let hash_listing = var2.is_some();
+    // 列出模式（Java FTL.jj List :2808-2812 与 Items :2943-2953：iterCtx.hashListing
+    // 由 `<#list ... as k, v>` 或嵌套 `<#items as k, v>` 置位——`<#list hash>`
+    // 无循环变量 + `<#items as k, v>` 同样按键/值对列出，listhash 用例第 40-44 行）
+    let hash_listing = var2.is_some()
+        || (var.is_empty()
+            && body
+                .iter()
+                .any(|el| matches!(&el.kind, ElementKind::Items { var2: Some(_), .. })));
     let mut items: crate::core::environment::PendingItems =
         materialize_list_items(env, &listed, hash_listing)?;
     if !items.has_next()? {
@@ -1500,6 +1510,59 @@ mod tests {
             )
             .unwrap(),
             "NONE"
+        );
+    }
+
+    #[test]
+    fn list_without_var_items_kv_on_hash() {
+        let (c, l) = cfg();
+        // Java FTL.jj Items :2943-2953：`<#list hash>`（无 as）+ `<#items as k, v>`
+        // 的 iterCtx.hashListing 由 #items 置位 → 按键/值对列出（listhash 用例模式）
+        let src = r#"<#setting boolean_format="Y,N"><#list m><#items as k, v>${k}=${v};</#items></#list>"#;
+        assert_eq!(
+            render(
+                &c,
+                &l,
+                src,
+                DynValue::Map(vec![(
+                    "m".into(),
+                    DynValue::Map(vec![
+                        ("a".into(), DynValue::Int(1)),
+                        ("b".into(), DynValue::Int(2)),
+                    ])
+                )])
+            )
+            .unwrap(),
+            "a=1;b=2;"
+        );
+        // 空哈希 → 列表体不执行，<#else> 生效
+        let src = "<#list m><#items as k, v>${k}=${v};</#items><#else>Empty</#list>";
+        assert_eq!(
+            render(
+                &c,
+                &l,
+                src,
+                DynValue::Map(vec![("m".into(), DynValue::Map(vec![]))])
+            )
+            .unwrap(),
+            "Empty"
+        );
+        // 无 <#items as k, v>（单变量 items / 无 items）→ 哈希不可列出（Java
+        // CollOrSeqListing 的 TemplateHashModelEx 分支同样报错；v1 消息简化）
+        let src = "<#list m><#items as k>${k}</#items></#list>";
+        let err = render(
+            &c,
+            &l,
+            src,
+            DynValue::Map(vec![(
+                "m".into(),
+                DynValue::Map(vec![("a".into(), DynValue::Int(1))]),
+            )]),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("must be a sequence or collection"),
+            "hash with 1-var #items rejected: {err}"
         );
     }
 

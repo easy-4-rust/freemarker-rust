@@ -44,7 +44,9 @@ def main():
         no_output = (case.get("noOutput") or "false").lower() == "true"
 
         template_name = template_attr if template_attr else base + ".ftl"
-        expected_name = expected_attr if expected_attr else base + ".txt"
+        # Java TemplateTestSuite:210：expected = ATTR_EXPECTED 优先，否则
+        # beforeEndTN + afterEndTN + ".txt"（[#endTN] 标记后片段要保留）
+        expected_name = expected_attr if expected_attr else name.replace(END_TN, "") + ".txt"
 
         settings = {}
         for s in case.findall("setting"):

@@ -54,6 +54,10 @@ pub struct Environment<'a> {
     loaded_libs: HashMap<String, Rc<Namespace>>,
     /// 宏调用帧栈（栈顶 = Java `currentMacroContext` :174；`<#local>`/`<#nested>`/`<#return>` 依赖）
     pub(crate) macro_frames: Vec<Rc<MacroFrame>>,
+    /// `<#return>` 发起时的宏帧深度（Java `Return.INSTANCE` 携带发起 Macro.Context 的
+    /// 等价物——Macro.invoke 的 catch(Return) 按 macroCtx 归属判定捕获；穿透的
+    /// return（如 `<@b><#return></@>` 中 return 归调用者宏 m 而非被调宏 b）继续上传）
+    pub(crate) return_depth: Option<usize>,
     /// 运行时设置快照（Java Configurable 继承链；v1 单层，`<#setting>` 修改此副本）
     pub(crate) settings: Settings,
     /// 配置级时区（`<#setting time_zone="default">` 恢复目标；Java PropertySetting 的 null）
@@ -404,6 +408,7 @@ impl<'a> Environment<'a> {
             global_ns,
             loaded_libs: HashMap::new(),
             macro_frames: Vec::new(),
+            return_depth: None,
             settings,
             base_time_zone,
             base_time_zone_id,
@@ -816,16 +821,52 @@ impl<'a> Environment<'a> {
         // Java :893 checkParamsSetAndApplyDefaults（宏上下文内求值默认参数）
         apply_macro_defaults(self, &frame, &mv.def)?;
         let r = if is_function {
-            self.capture(|env| env.run(&mv.def.body))
-                .map(|(sig, _)| sig)
+            let sig = self
+                .capture(|env| env.run(&mv.def.body))
+                .map(|(sig, _)| sig)?;
+            // Java Macro.invoke 的 catch(Return) 归属判定：return 由本函数帧发起
+            // （深度匹配）才作为返回值捕获；穿透的 return（更外层宏）继续上传
+            if let RunSignal::Returned(_) = &sig {
+                if self.return_depth == Some(self.macro_frames.len()) {
+                    self.return_depth = None;
+                } else {
+                    return self.restore_after_macro(prev_ns, prev_local, sig);
+                }
+            }
+            sig
         } else {
-            self.run(&mv.def.body)
+            let sig = self.run(&mv.def.body)?;
+            // Java Macro.invoke：宏边界捕获归属本帧的 return（宏不能 return 值 →
+            // 值恒 None，捕获即宏正常完成）；穿透的 return 继续上传
+            if let RunSignal::Returned(_) = &sig {
+                if self.return_depth == Some(self.macro_frames.len()) {
+                    self.return_depth = None;
+                    RunSignal::Completed
+                } else {
+                    return self.restore_after_macro(prev_ns, prev_local, sig);
+                }
+            } else {
+                sig
+            }
         };
         // Java finally :895-901：恢复
         self.current_ns = prev_ns;
         self.local_stack = prev_local;
         self.macro_frames.pop();
-        r
+        Ok(r)
+    }
+
+    /// 宏调用结束恢复（Java finally :895-901；穿透的 return 上传前同样恢复现场）
+    fn restore_after_macro(
+        &mut self,
+        prev_ns: Rc<Namespace>,
+        prev_local: Vec<LocalEntry>,
+        r: RunSignal,
+    ) -> Result<RunSignal> {
+        self.current_ns = prev_ns;
+        self.local_stack = prev_local;
+        self.macro_frames.pop();
+        Ok(r)
     }
 
     pub(crate) fn get_current_macro_frame(&self) -> Option<Rc<MacroFrame>> {
@@ -1016,6 +1057,21 @@ fn bind_macro_args(
                 quote_name(&def.name),
                 quote_name(arg_name),
             )));
+        }
+    }
+    // Java Environment.java:1007-1013：catch-all 未收到任何额外参数时也必须绑定
+    // ——by-position 调用（存在位置参数）→ 空序列；by-name 调用 → 空哈希
+    // （如 `<@m foo=1/>` 后 `bar` 为 size 0 的哈希，宏体内可直接 ?keys）
+    if let Some(cn) = &catch_all_name {
+        let bound = frame.locals.borrow().contains_key(cn);
+        if !bound {
+            let by_position = args.iter().any(|(n, _)| n.is_empty());
+            let value = if by_position {
+                TModel::from_sequence(Vec::new())
+            } else {
+                TModel::from_hash(indexmap::IndexMap::new())
+            };
+            frame.locals.borrow_mut().insert(cn.clone(), value);
         }
     }
     Ok(())

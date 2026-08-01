@@ -718,9 +718,17 @@ impl<'a> Parser<'a> {
                 // 不在模板级 SETTING_NAMES 白名单 → 解析期报错
                 // （"The setting name is recognized, but changing this setting from
                 //  inside a template isn't supported."）
+                // 配置级名两种命名约定同样拒绝（Configuration 的
+                // SETTING_NAMES_SNAKE_CASE/CAMEL_CASE 双写收录，jar 实测）
                 if matches!(
                     key.as_str(),
-                    "whitespace_stripping" | "strict_syntax" | "output_format" | "auto_escaping"
+                    "whitespace_stripping"
+                        | "whitespaceStripping"
+                        | "strict_syntax"
+                        | "strictSyntax"
+                        | "output_format"
+                        | "outputFormat"
+                        | "auto_escaping"
                 ) {
                     return Err(self.err(
                         kl,
@@ -731,6 +739,11 @@ impl<'a> Parser<'a> {
                 self.expect_tok(Tok::Eq, "\"=\"")?;
                 let value = self.expression()?;
                 self.loose_end()?;
+                // 设置名规范化：Java PropertySetting.SETTING_NAMES（:43-68）
+                // 两种命名约定并存（booleanFormat/boolean_format 等 12 项），
+                // 渲染期 exec_setting 按 snake_case 规范键匹配
+                // （configurable.rs canonical_setting_key）
+                let key = crate::core::canonical_setting_key(&key).to_string();
                 Element::new(ElementKind::Setting { key, value }, span)
             }
             "comment" => {

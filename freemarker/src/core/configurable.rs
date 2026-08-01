@@ -144,6 +144,34 @@ pub fn java_time_zone_id(s: &str) -> String {
     t.to_string()
 }
 
+/// `<#setting>` 指令的设置名 → 规范键（snake_case）—— 对应 Java
+/// `PropertySetting.SETTING_NAMES`（PropertySetting.java:43-68）：
+/// 模板内可设置的 12 项设置均接受 camelCase 与 snake_case 两种写法
+/// （`Configurable.setSetting` 同样双写匹配，Configurable.java:2671 起，
+/// 如 `BOOLEAN_FORMAT_KEY_SNAKE_CASE`/`BOOLEAN_FORMAT_KEY_CAMEL_CASE`）。
+/// 未知键原样返回（v1 在执行期报 "Unsupported setting"，Java 在解析期报
+/// "Unknown setting name"——既有偏差，见 exec.rs exec_setting）。
+/// 注：Java 另有命名约定一致性检查（同模板混用两写法 → "Naming convention
+/// mismatch"，PropertySetting 实测），v1 无命名约定概念（文档化偏差，更宽松）。
+pub fn canonical_setting_key(name: &str) -> &str {
+    match name {
+        "booleanFormat" | "boolean_format" => "boolean_format",
+        "cFormat" | "c_format" => "c_format",
+        "classicCompatible" | "classic_compatible" => "classic_compatible",
+        "dateFormat" | "date_format" => "date_format",
+        "datetimeFormat" | "datetime_format" => "datetime_format",
+        // Java LOCALE_KEY 两种约定同名（Configurable.java:95-97）
+        "locale" => "locale",
+        "numberFormat" | "number_format" => "number_format",
+        "outputEncoding" | "output_encoding" => "output_encoding",
+        "sqlDateAndTimeTimeZone" | "sql_date_and_time_time_zone" => "sql_date_and_time_time_zone",
+        "timeFormat" | "time_format" => "time_format",
+        "timeZone" | "time_zone" => "time_zone",
+        "urlEscapingCharset" | "url_escaping_charset" => "url_escaping_charset",
+        other => other,
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -194,5 +222,51 @@ mod tests {
         );
         assert!(OutputFormatKind::Html.is_markup());
         assert!(!OutputFormatKind::PlainText.is_markup());
+    }
+
+    #[test]
+    fn canonical_setting_key_both_conventions() {
+        // Java PropertySetting.SETTING_NAMES（PropertySetting.java:43-68）：
+        // 12 项模板级设置均支持 camelCase 与 snake_case 两种写法 → snake_case 规范键
+        for (snake, camel) in [
+            ("boolean_format", "booleanFormat"),
+            ("c_format", "cFormat"),
+            ("classic_compatible", "classicCompatible"),
+            ("date_format", "dateFormat"),
+            ("datetime_format", "datetimeFormat"),
+            ("number_format", "numberFormat"),
+            ("output_encoding", "outputEncoding"),
+            ("sql_date_and_time_time_zone", "sqlDateAndTimeTimeZone"),
+            ("time_format", "timeFormat"),
+            ("time_zone", "timeZone"),
+            ("url_escaping_charset", "urlEscapingCharset"),
+        ] {
+            assert_eq!(canonical_setting_key(snake), snake);
+            assert_eq!(canonical_setting_key(camel), snake);
+        }
+        // locale 两种约定同名（Configurable.LOCALE_KEY，Configurable.java:95-97）
+        assert_eq!(canonical_setting_key("locale"), "locale");
+    }
+
+    #[test]
+    fn canonical_setting_key_unknown_and_config_level_passthrough() {
+        // 未知键原样返回（v1 执行期报 "Unsupported setting"；Java 解析期
+        // "Unknown setting name: ..." 报错——既有偏差，exec.rs exec_setting）
+        assert_eq!(canonical_setting_key("foo"), "foo");
+        assert_eq!(canonical_setting_key("booolean_format"), "booolean_format");
+        assert_eq!(canonical_setting_key("booleanFormatX"), "booleanFormatX");
+        // 配置级设置名不在模板白名单 → 不规范化（grammar.rs 解析期另行拒绝）
+        assert_eq!(
+            canonical_setting_key("whitespace_stripping"),
+            "whitespace_stripping"
+        );
+        assert_eq!(
+            canonical_setting_key("template_exception_handler"),
+            "template_exception_handler"
+        );
+        assert_eq!(
+            canonical_setting_key("templateExceptionHandler"),
+            "templateExceptionHandler"
+        );
     }
 }

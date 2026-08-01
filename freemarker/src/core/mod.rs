@@ -11,7 +11,7 @@ mod output_format;
 mod template_element;
 
 pub use arithmetic_engine::{ArithmeticEngine, BigDecimalEngine};
-pub use configurable::{java_time_zone_id, Settings, TzSetting};
+pub use configurable::{canonical_setting_key, java_time_zone_id, Settings, TzSetting};
 pub use environment::{render, Environment, MacroValue, Namespace};
 pub use eval::{compare_models, eval, CmpOp};
 pub use exec::{exec, ExecOutcome};

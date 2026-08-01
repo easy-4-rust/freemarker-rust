@@ -1471,12 +1471,21 @@ fn builtin_impl(
             )))
         }
         "first" => {
+            // Java firstBI（BuiltInsForSequences.java:149-189）：序列优先（2.3.x BC），
+            // 否则集合迭代；空 → null（下游 InvalidReferenceException）
             let m = eval(env, target)?;
             if let Some(seq) = &m.sequence {
                 if seq.size()? == 0 {
-                    return Err(TemplateError::misc("The sequence is empty, ?first failed"));
+                    return Ok(Some(TModel::nothing()));
                 }
                 return Ok(Some(seq.get(0)?));
+            }
+            if let Some(c) = &m.collection {
+                let mut it = c.iterator()?;
+                return match it.next() {
+                    Some(v) => Ok(Some(v?)),
+                    None => Ok(Some(TModel::nothing())),
+                };
             }
             if let Some(sc) = &m.scalar {
                 let s = sc.as_string()?;
@@ -1491,11 +1500,12 @@ fn builtin_impl(
             )))
         }
         "last" => {
+            // Java lastBI（BuiltInsForSequences.java:267-277）：空 → null
             let m = eval(env, target)?;
             if let Some(seq) = &m.sequence {
                 let size = seq.size()?;
                 if size == 0 {
-                    return Err(TemplateError::misc("The sequence is empty, ?last failed"));
+                    return Ok(Some(TModel::nothing()));
                 }
                 return Ok(Some(seq.get(size - 1)?));
             }
@@ -1605,19 +1615,14 @@ fn builtin_impl(
             )))
         }
         "seq_contains" => {
-            // Java SequenceBuiltins.seq_containsBI：modelsEqual 宽松相等（文档同 ComparisonExpression）
-            let arg = arg_expr(args, 0, "?seq_contains requires one argument")?;
+            // Java seq_containsBI（BuiltInsForSequences.java:308-380）：checkMethodArgCount(1)；
+            // 序列优先（2.3.x BC），否则集合迭代；参数缺失变量 → null → modelsEqual false
+            crate::builtins::eval_util::check_arg_count("seq_contains", args.exprs, 1, 1)?;
             let m = eval(env, target)?;
-            let needle = eval(env, arg)?;
-            let seq = m.get_sequence().map_err(|_| {
-                TemplateError::misc(format!(
-                    "?seq_contains is not applicable to a {} value",
-                    m.type_name
-                ))
-            })?;
-            let n = seq.size()?;
-            for i in 0..n {
-                if models_equal(&seq.get(i)?, &needle)? {
+            let needle = crate::builtins::sequences::eval_arg_lenient(env, args.exprs, 0)?;
+            let items = crate::builtins::sequences::seq_or_collection_items(&m, "seq_contains")?;
+            for (i, item) in items.iter().enumerate() {
+                if crate::builtins::sequences::models_equal(i, item, &needle)? {
                     return Ok(Some(TModel::from_boolean(true)));
                 }
             }
@@ -1886,25 +1891,6 @@ fn parse_number(s: &str) -> Result<TNumber> {
         return Ok(TNumber::Decimal(d));
     }
     Err(TemplateError::misc(format!("{s} is not a number")))
-}
-
-/// 宽松模型相等（Java SequenceBuiltins.modelsEqual：数字按值、字符串按内容、布尔相同，
-/// 其余类型不等——不报错）
-fn models_equal(a: &TModel, b: &TModel) -> Result<bool> {
-    if a.is_number() && b.is_number() {
-        return Ok(a
-            .get_number()?
-            .as_big_decimal()
-            .cmp(&b.get_number()?.as_big_decimal())
-            == Ordering::Equal);
-    }
-    if a.is_scalar() && b.is_scalar() {
-        return Ok(a.get_scalar()? == b.get_scalar()?);
-    }
-    if a.is_boolean() && b.is_boolean() {
-        return Ok(a.get_boolean()? == b.get_boolean()?);
-    }
-    Ok(false)
 }
 
 /// 取第 n 个参数表达式（惰性内建不预求值）

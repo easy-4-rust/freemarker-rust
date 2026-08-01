@@ -97,6 +97,9 @@ fn run_case(case: &Case) -> Outcome {
         };
     }
     if case.base == "encoding-builtins" && !case.name.contains("[#endTN]") {
+        // [#endTN] 变体（ici-2.3.20）的 expected 是 encoding-builtins-ici-2.3.20.txt
+        // （新版 ?html，' 转义）→ 正常渲染对比；本变体（ICI min/2.3.19）的
+        // expected 由旧版 ?html 生成（不转义 '）
         return Outcome::Skipped {
             reason:
                 "expected 由 ICI <2.3.20 的旧版 ?html 行为生成（不转义 '），本引擎固定 ICI 2.3.34"
@@ -173,19 +176,19 @@ fn template_name_of(case: &Case) -> String {
     }
 }
 
-/// Java TemplateTestSuite：expected = beforeEndTN + afterEndTN + ".txt"
+/// Java TemplateTestSuite：expected 优先取 manifest 的 expected_file（= base + ".txt"，
+/// scripts/extract_suite.py 的 Java 语义）；无则按 beforeEndTN + afterEndTN + ".txt" 拼
 fn expected_name_of(case: &Case) -> String {
+    if let Some(p) = &case.expected_file {
+        return p.rsplit('/').next().unwrap_or(p).to_string();
+    }
     match case.name.find("[#endTN]") {
         Some(i) => format!(
             "{}{}.txt",
             &case.name[..i],
             &case.name[i + "[#endTN]".len()..]
         ),
-        None => case
-            .expected_file
-            .clone()
-            .map(|p| p.rsplit('/').next().unwrap_or(&p).to_string())
-            .unwrap_or_else(|| format!("{}.txt", case.base)),
+        None => format!("{}.txt", case.base),
     }
 }
 
