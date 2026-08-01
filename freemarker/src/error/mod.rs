@@ -1,0 +1,9 @@
+//! 错误体系（对应 Java `freemarker.template.TemplateException` 层级）
+
+mod error_ctx;
+mod flow_kind;
+mod template_error;
+
+pub use error_ctx::ErrorCtx;
+pub use flow_kind::FlowKind;
+pub use template_error::{Result, TemplateError};

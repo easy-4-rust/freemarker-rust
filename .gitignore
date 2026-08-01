@@ -1,0 +1,93 @@
+### gradle ###
+.gradle
+/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+### STS ###
+.settings/
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+bin/
+codes/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+*.gz
+rebel.xml
+
+### NetBeans ###
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+log.*/
+
+### maven ###
+target/
+*.war
+*.ear
+*.tar
+#*.zip
+*.tar.gz
+
+### logs ####
+/logs/
+*.log
+
+### temp ignore ###
+*.cache
+*.diff
+*.patch
+*.tmp
+*.java~
+*.properties~
+*.xml~
+
+### system ignore ###
+.DS_Store
+Thumbs.db
+Servers
+.metadata
+upload
+gen_code
+
+### node ###
+node_modules
+pom.xml.versionsBackup
+/server/nacos-server/data
+/server/nacos-server/logs
+!/libs/*.jar
+
+### Python ###
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+*.egg-info/
+
+### Rust（构建产物；Cargo.lock 提交以保证可复现构建）###
+/target
+**/target
+*.profraw
+*.profdata
+
+.fastRequest
+*.http
+*.json
+.flattened-pom.xml
+/agentdb.rvf
+/agentdb.rvf.lock
+/ruvector.db
+
+### tools ###
+.mimocode/
+.codegraph/

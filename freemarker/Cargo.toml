@@ -1,0 +1,28 @@
+[package]
+name = "freemarker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Apache FreeMarker 语义兼容的 Rust 模板引擎（freemarker-core 迁移）"
+
+[dependencies]
+thiserror.workspace = true
+regex.workspace = true
+fancy-regex.workspace = true
+bigdecimal.workspace = true
+num-bigint.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+indexmap.workspace = true
+once_cell.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+chrono-tz.workspace = true
+regex.workspace = true
+
+[features]
+default = []

@@ -1,0 +1,35 @@
+[package]
+name = "freemarker-pyo3"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "freemarker 的 Python 绑定（pyo3）—— freemarker-jython25 迁移（docs/10）"
+
+[lib]
+name = "freemarker_pyo3"
+# cdylib：maturin 打包 Python 扩展模块；rlib：cargo test / 依赖方引用
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+freemarker = { path = "../freemarker" }
+# chrono / num-bigint：pyo3 的 chrono、num-bigint 特性提供转换，本 crate 直接使用
+chrono.workspace = true
+num-bigint.workspace = true
+# chrono：Python datetime ↔ chrono 转换（docs/10 §2 日期矩阵）
+# num-bigint：Python 大整数 ↔ BigInt 转换（docs/10 §2 溢出分支）
+# py-clone：Py<T>: Clone（模型结构 derive Clone 需要）
+# auto-initialize：cargo test（rlib 嵌入模式）自动初始化解释器；cdylib 扩展模块不受影响
+pyo3 = { version = "0.29", features = ["chrono", "num-bigint", "py-clone", "auto-initialize"] }
+
+[features]
+# 默认不启用 extension-module：cargo check/test 以 rlib 编译并链接 libpython；
+# maturin 构建 cdylib 时（--features extension-module 或 pyproject [tool.maturin].features）
+# 启用 pyo3/extension-module，不链接 libpython（docs/10 §7 打包约定）
+default = []
+extension-module = ["pyo3/extension-module"]
+
+[dev-dependencies]
+# 单测（unwrap Decimal → int 分支 / IndexMap 构造）需要直接引用
+bigdecimal.workspace = true
+indexmap.workspace = true
