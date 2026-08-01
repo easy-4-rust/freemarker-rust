@@ -67,8 +67,21 @@ impl TemplateLoader for FileLoader {
 
     /// 对应 `getReader`（Java:200-216）：v1 按 UTF-8 读取整个文件
     fn read(&self, src: &dyn TemplateSource) -> Result<String> {
+        self.read_encoded(src, "UTF-8")
+    }
+
+    /// 对应 `getReader(source, encoding)`（Java:200-216）：按指定字符集解码。
+    /// Java 用 InputStreamReader(source, encoding)，非法字节替换为 U+FFFD。
+    fn read_encoded(&self, src: &dyn TemplateSource, encoding: &str) -> Result<String> {
         let file = downcast_file_src(src)?;
-        std::fs::read_to_string(&file.path).map_err(Into::into)
+        let bytes = std::fs::read(&file.path)?;
+        let enc = encoding_rs::Encoding::for_label(encoding.as_bytes()).ok_or_else(|| {
+            TemplateError::misc(format!(
+                "Unknown encoding: \"{encoding}\". Did you mean to use an IANA character set name?"
+            ))
+        })?;
+        let (text, _, _) = enc.decode(&bytes);
+        Ok(text.into_owned())
     }
 
     /// 对应 `getLastModified`（Java:190-197）：文件修改时间，Unix 毫秒

@@ -351,25 +351,31 @@ pub fn format_decimal(fmt: &DecimalFmt, n: &TNumber) -> String {
     if int_s.is_empty() {
         int_s.push('0');
     }
-    // 分组（每 3 位一组，从右往左）
+    // 分组（每 3 位一组，从右往左；负号不参与分组——Java DecimalFormat 只对数字位）
     if fmt.grouping && int_s.len() > 3 {
-        let chars: Vec<char> = int_s.chars().collect();
-        let n = chars.len();
-        let first = n % 3;
-        let mut out = String::new();
-        let mut idx = 0;
-        if first > 0 {
-            out.extend(&chars[..first]);
-            idx = first;
-        }
-        while idx < n {
-            if !out.is_empty() {
-                out.push(fmt.group_sep);
+        let (sign, digits) = match int_s.strip_prefix('-') {
+            Some(d) => ("-", d),
+            None => ("", int_s.as_str()),
+        };
+        if digits.len() > 3 {
+            let chars: Vec<char> = digits.chars().collect();
+            let n = chars.len();
+            let first = n % 3;
+            let mut out = String::new();
+            let mut idx = 0;
+            if first > 0 {
+                out.extend(&chars[..first]);
+                idx = first;
             }
-            out.extend(&chars[idx..idx + 3]);
-            idx += 3;
+            while idx < n {
+                if !out.is_empty() {
+                    out.push(fmt.group_sep);
+                }
+                out.extend(&chars[idx..idx + 3]);
+                idx += 3;
+            }
+            int_s = format!("{sign}{out}");
         }
-        int_s = out;
     }
     // 小数部分：舍入后补齐 min_frac，并剥除超出 min_frac 的尾零
     // （Java DecimalFormat：'#' 是可选位 —— 2.500 → "2.5"；'0' 是强制位）

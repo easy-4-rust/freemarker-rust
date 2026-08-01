@@ -15,6 +15,7 @@
 //! `RunSignal::Returned` 返回（Java `ReturnInstruction.Return`）；`<#stop>` 以 `Err(Stop)` 上传
 //! （Java `StopException`，attempt 可捕获）。
 
+use crate::cache::{NameFormatDefault020400, TemplateNameFormat};
 use crate::core::eval;
 use crate::core::{Element, Expr, MacroDef, MacroParam, Settings, TzSetting};
 use crate::error::{Result, TemplateError};
@@ -29,6 +30,12 @@ use std::rc::Rc;
 /// 渲染入口（对应 `Template.process(rootMap, out)` → `Environment.process()`）
 pub fn render(template: &Template, root: TModel, out: &mut dyn Write) -> Result<()> {
     let mut env = Environment::new(template, root, out);
+    // Java Environment.process :322 doAutoImportsAndIncludes → Configuration
+    // doAutoImports（Configuration.java:3680-3685）：autoImports（ns → 模板路径）
+    // 在每次渲染前 importLib
+    for (ns, path) in &template.configuration.auto_imports {
+        env.import_lib(path, ns)?;
+    }
     env.process()
 }
 
@@ -74,15 +81,18 @@ pub struct Environment<'a> {
     auto_escape: bool,
     /// 当前模板名（include/import 执行时切换；Java getCurrentTemplate :257-267；错误定位用）
     pub(crate) current_template_name: String,
-    /// 最近一次 attempt/recover 捕获的错误消息（Java `getCurrentRecoveredErrorMessage`；
-    /// 由 `<#recover>` 设置且不被清除 —— BuiltinVariable.java:283-285 `.error` 读数）
-    pub(crate) current_error: Option<String>,
+    /// attempt/recover 错误栈（Java `recoveredErrorStack`，Environment.java:575-578：
+    /// recover 期间压栈、结束弹出——嵌套 attempt 的内层 recover 结束后 `.error`
+    /// 恢复为外层错误；BuiltinVariable.java:283-285 `.error` 读栈顶）
+    pub(crate) recovered_errors: Vec<String>,
 }
 
-/// run 循环结束信号（`<#return>` 专用；Java ReturnInstruction.Return）
+/// run 循环结束信号（`<#return>` 专用；Java ReturnInstruction.Return）。
+/// pub：`TemplateTransformModel::transform_with_body` 的返回类型（内部信号，
+/// 语义等同 Java 异常穿透；API 稳定性不承诺）
 /// 豁免 large_enum_variant：信号枚举单次渲染至多出现一次，非热点分配
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum RunSignal {
+pub enum RunSignal {
     Completed,
     Returned(Option<TModel>),
 }
@@ -417,7 +427,7 @@ impl<'a> Environment<'a> {
             escapes: Vec::new(),
             auto_escape,
             current_template_name: template.name.clone(),
-            current_error: None,
+            recovered_errors: Vec::new(),
         }
     }
 
@@ -884,13 +894,14 @@ impl<'a> Environment<'a> {
     // ---------------------------------------------------------------------
 
     /// 模板名相对路径解析 —— 对应 Java `toFullTemplateName`（:3314-3349）：
-    /// 绝对路径（`/` 开头或含 `://`）原样返回；相对路径基于当前模板所在目录。
+    /// 绝对路径（`/` 开头或含 `://`）原样返回；相对路径基于当前模板所在目录，
+    /// 并规范化 `../`/`./` 段。
     pub fn resolve_template_name(&self, target: &str) -> String {
         if target.starts_with('/') || target.contains("://") {
             return target.to_string();
         }
         let base = &self.current_template_name;
-        match base.rfind('/') {
+        let joined = match base.rfind('/') {
             Some(i) => {
                 let dir = &base[..i];
                 if dir.is_empty() {
@@ -900,18 +911,69 @@ impl<'a> Environment<'a> {
                 }
             }
             None => target.to_string(),
-        }
+        };
+        normalize_template_path(&joined)
     }
 
-    /// `<#include>`（Java Include.accept → getTemplateForInclusion :3095-3110 → include :3126-3145）
-    pub fn include_named(&mut self, name: &str) -> Result<()> {
+    /// `<#include>`（Java Include.accept → getTemplateForInclusion :3095-3110 → include :3126-3145；
+    /// 路径含 `*` → acquisition：localized 外层 + acquisition 内层，TemplateCache.java:914-948；
+    /// parse=false → 源文本原样输出（getPlainTextTemplate，单 TextBlock）；
+    /// ignore_missing=true → 模板缺失时静默跳过（Configuration.getTemplate 的 ignoreMissing）；
+    /// encoding=None → 继承当前模板的 `<#ftl encoding>` 声明，否则默认 UTF-8
+    /// （Java Environment.getIncludedTemplateEncoding :3099-3105））
+    pub fn include_named(
+        &mut self,
+        name: &str,
+        parse: bool,
+        ignore_missing: bool,
+        encoding: Option<String>,
+    ) -> Result<()> {
         let full = self.resolve_template_name(name);
-        // Java Environment.getTemplate：按当前 locale 局部化回退
+        let encoding = encoding.or_else(|| self.template.encoding.clone());
+        let mut found: Option<(String, Rc<crate::template::Template>)> = None;
+        let mut last_err: Option<TemplateError> = None;
+        // Java lookupWithLocalizedThenAcquisitionStrategy（TemplateCache.java:914-948）：
+        // 每个 locale 变体（en_US → en → 无后缀）内部做完整 acquisition
         let locale = self.settings.locale.clone();
-        let t = self
-            .template
-            .configuration
-            .get_template_localized(&full, Some(&locale))?;
+        let locale_cands: Vec<String> = if locale.is_empty() {
+            vec![full.clone()]
+        } else {
+            crate::template::configuration::localized_candidates(&full, &locale)
+        };
+        'outer: for lc in &locale_cands {
+            for acq in acquisition_candidates(lc) {
+                if !parse {
+                    // Java parseAsFTL=false：直接读源文本（TemplateCache.loadTemplate
+                    // :564-580 的 StringWriter 分支；不解析、不触发 ftl 头编码重读）
+                    let Some(src) = self.template.configuration.template_loader.find(&acq)? else {
+                        continue;
+                    };
+                    let text = self
+                        .template
+                        .configuration
+                        .template_loader
+                        .read_encoded(&*src, encoding.as_deref().unwrap_or("UTF-8"))?;
+                    return self.emit(&text);
+                }
+                match self
+                    .template
+                    .configuration
+                    .get_template_encoded(&acq, encoding.as_deref())
+                {
+                    Ok(t) => {
+                        found = Some((acq, t));
+                        break 'outer;
+                    }
+                    Err(e) => last_err = Some(e),
+                }
+            }
+        }
+        let Some((_, t)) = found else {
+            if ignore_missing {
+                return Ok(());
+            }
+            return Err(last_err.unwrap_or(TemplateError::NotFound { name: full }));
+        };
         self.include_template(&t)
     }
 
@@ -939,7 +1001,12 @@ impl<'a> Environment<'a> {
     /// v1 立即初始化命名空间（懒初始化 LazilyInitializedNamespace :3524-3593 语义：
     /// 首次访问才 get_template 并注册宏——P4 优化项，v1 直接执行等价结果）。
     pub fn import_lib(&mut self, path: &str, ns_var: &str) -> Result<()> {
-        let full = self.resolve_template_name(path);
+        // Java importLib（:3232-3290）：toFullTemplateName 后按模板名格式规范化
+        // （"/import_lib.ftl" 与 "import_lib.ftl" 是同一模板——loadedLibs 缓存键一致）
+        let resolved = self.resolve_template_name(path);
+        let full = NameFormatDefault020400
+            .normalize_root_based_name(&resolved)
+            .unwrap_or(resolved);
         let ns = if let Some(existing) = self.loaded_libs.get(&full) {
             existing.clone()
         } else {
@@ -1276,6 +1343,8 @@ pub fn lambda_model(params: Vec<String>, body: Rc<Expr>) -> TModel {
 pub(crate) fn boolean_format_strings(env: &Environment) -> Option<(String, String)> {
     let format = env.settings.boolean_format.as_str();
     if format == "true,false" {
+        // Java parseBooleanFormat（Configurable.java:1087-1090）：BOOLEAN_FORMAT_LEGACY_DEFAULT
+        // → null（视为未设置，即使显式设置）→ getTrueStringValue null → 报错
         None
     } else if format == "c" {
         Some(("true".to_string(), "false".to_string()))
@@ -1287,8 +1356,10 @@ pub(crate) fn boolean_format_strings(env: &Environment) -> Option<(String, Strin
 }
 
 /// 布尔格式化 —— 对应 Java `Environment.formatBoolean`（Environment.java:1795）：
-/// - "true,false"（遗留默认 BOOLEAN_FORMAT_LEGACY_DEFAULT）→ 视为"未设置"：
-///   fallback=false（插值/字符串拼接路径）报错；fallback=true（?string 路径）返回 true/false；
+/// - "true,false"（BOOLEAN_FORMAT_LEGACY_DEFAULT）→ parseBooleanFormat 返回 null
+///   （Configurable.java:1087-1090，显式设置亦然）→ 视为未设置：
+///   fallback=false（插值/字符串拼接路径）报 legacy 错误（jar 实测 `${false}` 默认配置报错）；
+///   fallback=true（?string 路径）返回 true/false；
 /// - "c" → C 格式 true/false（Java parseBooleanFormat 空数组 → CFormat.getTrue/FalseString）；
 /// - 其余 → 按首个逗号切分（Java indexOf(',')；不做 trim）。
 pub(crate) fn boolean_format(env: &Environment, b: bool, fallback: bool) -> Result<String> {
@@ -1363,10 +1434,11 @@ pub(crate) fn model_to_string(env: &mut Environment, m: &TModel) -> Result<Strin
             crate::value::DateType::Date => env.settings.date_format.clone(),
             crate::value::DateType::Time => env.settings.time_format.clone(),
             crate::value::DateType::DateTime => env.settings.date_time_format.clone(),
-            // Java newCantFormatUnknownTypeDateException：未知类型须先 ?date/?time/?datetime
+            // Java newCantFormatUnknownTypeDateException（_MessageUtil.java:38-45）：
+            // 未知类型须先 ?date/?time/?datetime；消息含 UNKNOWN_DATE_TO_STRING_TIPS
             crate::value::DateType::Unknown => {
                 return Err(TemplateError::misc(
-                    "The value of the following has unknown date type, but it can't be formatted without knowing if it's a date (no time part), time, or date-time value. Use ?date, ?time, or ?datetime built-ins to specify the date type explicitly.",
+                    "Can't convert the date-like value to string because it isn't known if it's a date (no time part), time or date-time value.\n\n----\nTip: Use ?date, ?time, or ?datetime to tell FreeMarker the exact type.\n----\nTip: If you need a particular format only once, use ?string(pattern), like ?string('dd.MM.yyyy HH:mm:ss'), to specify which fields to display. \n----",
                 ))
             }
         };
@@ -1633,6 +1705,65 @@ fn attach_location(err: TemplateError, template_name: &str, span: Span) -> Templ
 // ---------------------------------------------------------------------------
 // 测试辅助（端到端渲染）
 // ---------------------------------------------------------------------------
+
+/// 模板路径规范化（`./`/`../` 段折叠；Java toFullTemplateName 的语义）
+fn normalize_template_path(p: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for seg in p.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                if out.last().map(|s| *s != "..").unwrap_or(false) {
+                    out.pop();
+                } else {
+                    out.push("..");
+                }
+            }
+            s => out.push(s),
+        }
+    }
+    if out.is_empty() {
+        return String::new();
+    }
+    out.join("/")
+}
+
+/// Java TemplateCache.lookupTemplateWithAcquisitionStrategy 的 acquisition 语义
+/// （TemplateCache.java:742-788）：输入为 toFullTemplateName 后的完整路径；
+/// 分词后取最后一个 `*`（重复 `*` 段先删除），`*` 之前的段为 basePath、之后为
+/// resourcePath；候选 = basePath(完整→逐级去尾段→空) + resourcePath，首个找到即返回。
+/// 不含 `*` 原样返回。
+fn acquisition_candidates(full: &str) -> Vec<String> {
+    let mut cleaned: Vec<&str> = Vec::new();
+    let mut last_asterisk: Option<usize> = None;
+    for t in full.split('/') {
+        if t == "*" {
+            if let Some(idx) = last_asterisk {
+                cleaned.remove(idx);
+            }
+            last_asterisk = Some(cleaned.len());
+        }
+        cleaned.push(t);
+    }
+    let Some(ai) = last_asterisk else {
+        return vec![full.to_string()];
+    };
+    let resource = cleaned[ai + 1..].join("/");
+    let mut out = Vec::new();
+    let mut l = ai;
+    loop {
+        let mut p = cleaned[..l].join("/");
+        if !p.is_empty() {
+            p.push('/');
+        }
+        out.push(format!("{p}{resource}"));
+        if l == 0 {
+            break;
+        }
+        l -= 1; // Java：basePath.lastIndexOf(SLASH, l-2)+1 → 段级等价于去尾段
+    }
+    out
+}
 
 #[cfg(test)]
 mod tests {

@@ -235,7 +235,8 @@ pub fn format_iso_like_with_tz(
         date_part,
         time_part,
         // ISO：timePart && offsetPart（ISO 8601:2004 不允许 date-only 带偏移）；
-        // XS：offsetPart 原样（DateUtil.dateToString :270-274）
+        // XS：offsetPart 原样（DateUtil.dateToString :270-274——jar 实测
+        // ?string.xs 对 date-only 输出带 Z，如 "2003-04-05Z"）
         offset_part && (xs_mode || time_part),
         spec.accuracy,
         xs_mode,

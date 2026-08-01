@@ -1,6 +1,6 @@
 //! 对应 Java `freemarker.template` 包：数据模型、配置、模板
 
-mod configuration;
+pub(crate) mod configuration;
 mod dyn_value;
 mod object_wrapper;
 mod simple_boolean;
@@ -15,6 +15,7 @@ mod t_model;
 #[allow(clippy::module_inception)] // Template.java → template/template.rs（一文件一对象约定）
 mod template;
 mod template_model;
+pub(crate) mod utility_transforms;
 mod version;
 
 pub use configuration::Configuration;

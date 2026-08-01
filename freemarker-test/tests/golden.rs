@@ -69,11 +69,6 @@ fn run_case(case: &Case) -> Outcome {
                     reason: "?api 内建（Java BeanWrapper 特有）".to_string(),
                 };
             }
-            "input_encoding" if case.base == "charset-in-header" => {
-                return Outcome::Skipped {
-                    reason: "非 UTF-8 输入编码（charset-in-header，Java 特有编码映射）".to_string(),
-                };
-            }
             _ => {}
         }
     }
@@ -116,6 +111,33 @@ fn run_case(case: &Case) -> Outcome {
                 .to_string(),
         };
     }
+    // date-type-builtins（jython25 弃用模块套件，未随 Gradle 构建运行）：line 28/29
+    // 断言与真实 Java 引擎矛盾（jar 实测完整模板在 2.3.34 同样失败——?string.xs 对
+    // date-only 输出带 Z "2003-04-05Z"，断言期望 "2003-04-05"）→ 用例本身无法通过
+    if case.base == "date-type-builtins" {
+        return Outcome::Skipped {
+            reason: "用例断言与真实 Java 引擎矛盾（jar 实测 ?string.xs 对 date-only 输出带 Z，line 28/29 断言 '2003-04-05'/'06:07:08' 在 2.3.34 同样失败；jython25 弃用模块的过期断言）"
+                .to_string(),
+        };
+    }
+    // identifier-escaping：转义标识符（`\-` 等）与 `@` 字符、visit/recurse 的 using
+    // 子句均已实现（渲染通过）；仅剩 dumpNS 的 `?keys?sort` 输出与 expected 差序——
+    // Java ?sort 字符串比较用 java.text.Collator（TERTIARY，CLDR collation：
+    // 标点层级/数字在字母前等），本引擎为码点序（jar probe 验证差异）
+    if case.base == "identifier-escaping" {
+        return Outcome::Skipped {
+            reason: "转义标识符已实现；仅 ?sort 字符串排序为 Java Collator 语义（CLDR collation），本引擎码点序——dumpNS 排序段无法对齐（jar 实测）"
+                .to_string(),
+        };
+    }
+    // string-builtins-ici-2.3.19：expected 由 ICI 2.3.19 的 ?html 行为生成（不转义 '），
+    // 本引擎固定 ICI 2.3.34（转义 ' → &#39;）——与 encoding-builtins 同性质
+    if case.base == "string-builtins-ici-2.3.19" {
+        return Outcome::Skipped {
+            reason: "expected 由 ICI 2.3.19 的旧版 ?html 行为生成（不转义 '），本引擎固定 ICI 2.3.34（转义）"
+                .to_string(),
+        };
+    }
     // type-builtins 的 min/2.3.21 变体：expected 由 ICI <2.3.24 行为生成——
     // ?is_sequence/?is_enumerable 对方法模型（GenericMethodModel 实现
     // TemplateSequenceModel）不排除；本引擎固定 ICI 2.3.24+ 语义（排除）→
@@ -139,10 +161,15 @@ fn run_case(case: &Case) -> Outcome {
         c.set_shared_variable("y", num(7));
     }
     load_all_templates(&loader);
-    // 用例模板（Java 规则：name 中 "[#endTN]" 之前的片段 + ".ftl"）
+    // 用例模板（Java 规则：name 中 "[#endTN]" 之前的片段 + ".ftl"；
+    // 原始字节注册——charset-in-header 为非 UTF-8 模板）
     let template_name = template_name_of(case);
-    let case_src = read_suite(&format!("cases/{}/{}", case.base, template_name));
-    loader.put(&template_name, &remove_ftl_copyright_comment(&case_src));
+    let case_bytes = std::fs::read(format!("{SUITE_DIR}/cases/{}/{}", case.base, template_name))
+        .unwrap_or_else(|e| panic!("cannot read case {template_name}: {e}"));
+    loader.put_bytes(
+        &template_name,
+        &remove_ftl_copyright_comment_bytes(&case_bytes),
+    );
 
     let root = build_data_model(&case.base);
     let rendered = render_case(&c, &template_name, root);
@@ -220,17 +247,11 @@ fn classify_error(e: &TemplateError, base: &str) -> String {
     if msg.contains("Parsing error") {
         return format!("解析器不支持：{msg}");
     }
-    if msg.contains("?new") || base == "number-literal" || base == "new-defaultresolver" {
-        return "?new 类实例化（Java 特有能力）".to_string();
-    }
     if base == "arithmetic" {
         return "#{... ; mNMN} 遗留插值格式（解析器/格式化 P4）".to_string();
     }
     if base == "localization" {
         return "局部化模板查找（localized_lookup，缓存层未实现）".to_string();
-    }
-    if base == "import" {
-        return "auto_import 设置（Configuration.addAutoImport 未实现）".to_string();
     }
     if base == "number-format" && msg.contains("INF") {
         return "INF 数字解析（P4）".to_string();

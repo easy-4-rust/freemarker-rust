@@ -286,12 +286,35 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
         }
         ElementKind::Comment { text: _ } => Ok(ExecOutcome::Done),
         ElementKind::Include { path, attrs } => {
-            // Java Include.accept :25-100（v1：parse/encoding/ignore_missing 等属性不支持）
-            if !attrs.is_empty() {
-                // v1 文档化限制
-            }
+            // Java Include.accept :25-100 + :138-153（parse/encoding/ignore_missing 属性）
             let name = eval_to_string(env, path)?;
-            env.include_named(&name)?;
+            let mut parse = true;
+            let mut ignore_missing = false;
+            let mut encoding: Option<String> = None;
+            for (an, av) in attrs {
+                match an.to_ascii_lowercase().as_str() {
+                    "parse" => {
+                        // Java Include.accept :142-151：scalar → getYesNo（legacy 字符串），
+                        // 否则 modelToBoolean
+                        let m = eval::eval(env, av)?;
+                        if m.scalar.is_some() {
+                            parse = get_yes_no(av, &model_to_string(env, &m)?)?;
+                        } else {
+                            parse = eval::model_to_boolean(env, &m)?;
+                        }
+                    }
+                    "encoding" => {
+                        // Java Include.accept :131-135：运行时求值（求值错误照常传播）
+                        encoding = Some(eval_to_string(env, av)?);
+                    }
+                    "ignore_missing" => {
+                        let m = eval::eval(env, av)?;
+                        ignore_missing = eval::model_to_boolean(env, &m)?;
+                    }
+                    _ => unreachable!("解析器已校验 include 参数名"),
+                }
+            }
+            env.include_named(&name, parse, ignore_missing, encoding)?;
             Ok(ExecOutcome::Done)
         }
         ElementKind::Import { path, ns } => {
@@ -373,9 +396,9 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
         }
         ElementKind::Transform { expr, body } => {
             // Java TransformBlock.accept（TransformBlock.java:64-85）→
-            // env.visitAndTransform（Environment.java:495-543）：getWriter 先产出变换
-            // 自身输出（?interpret 即 include 解释模板），随后 body 直通写入返回的
-            // 透传 writer（interpret.ftl："abc" + body "def" = "abcdef"）
+            // env.visitAndTransform（Environment.java:495-543）：getWriter 先产出
+            // 变换自身输出（?interpret 即 include 解释模板），body 写入变换 writer
+            // （StandardCompress 等压缩/转义 body），close 时变换输出
             let m = eval::eval(env, expr)?;
             if m.is_nothing() {
                 return Err(TemplateError::invalid_reference(expr_desc(expr)));
@@ -383,13 +406,13 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             let Some(ttm) = env.as_transform(&m) else {
                 return Err(TemplateError::type_mismatch("transform", m.type_name));
             };
-            ttm.transform(env)?;
-            if let RunSignal::Returned(v) = env.run(body)? {
-                return Ok(ExecOutcome::ReturnValue(v));
+            let signal = ttm.transform_with_body(env, &HashMap::new(), body)?;
+            match signal {
+                RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
+                _ => Ok(ExecOutcome::Done),
             }
-            Ok(ExecOutcome::Done)
         }
-        ElementKind::Visit { expr } => {
+        ElementKind::Visit { expr, .. } => {
             // Java VisitNode.accept：XML 节点访问（v1 无 node 模型 → 明确报错）
             let m = eval::eval(env, expr)?;
             Err(TemplateError::misc(format!(
@@ -397,7 +420,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
                 m.type_name
             )))
         }
-        ElementKind::Recurse { expr } => {
+        ElementKind::Recurse { expr, .. } => {
             // Java RecurseNode.accept：递归访问子节点（v1 无 node 模型）
             let m = eval::eval(env, expr)?;
             Err(TemplateError::misc(format!(
@@ -1077,11 +1100,29 @@ fn exec_call(
         CallTarget::Name(name) => env.get_variable(name)?,
         CallTarget::Namespaced { ns, name } => {
             let nsm = env.get_variable(ns)?;
-            let nsr = env
-                .as_namespace(&nsm)
-                .ok_or_else(|| TemplateError::type_mismatch("namespace", nsm.type_name))?;
-            nsr.get_member(name)
-                .ok_or_else(|| TemplateError::invalid_reference(format!("{ns}.{name}")))?
+            match env.as_namespace(&nsm) {
+                Some(nsr) => nsr
+                    .get_member(name)
+                    .ok_or_else(|| TemplateError::invalid_reference(format!("{ns}.{name}")))?,
+                // Java：UnifiedCall 的 callee 是普通表达式（UnifiedCall.accept :66-67
+                // nameExp.eval(env)），无 namespace 强制——ns 非 namespace 时按 Dot
+                // 求值（hash 成员可为 directive/transform：compress.ftl
+                // `<@utility.standardCompress>`）；`<#import>` 产生的 namespace 走
+                // 上分支
+                None => eval::eval(
+                    env,
+                    &crate::core::Expr::new(
+                        crate::core::ExprKind::Dot {
+                            target: Box::new(crate::core::Expr::new(
+                                crate::core::ExprKind::Ident(ns.clone()),
+                                crate::span::Span::new(0, 0),
+                            )),
+                            name: name.clone(),
+                        },
+                        crate::span::Span::new(0, 0),
+                    ),
+                )?,
+            }
         }
         CallTarget::Expr(e) => eval::eval(env, e)?,
     };
@@ -1122,16 +1163,21 @@ fn exec_call(
         return Ok(ExecOutcome::Done);
     }
     if let Some(ttm) = env.as_transform(&tm) {
-        // Java UnifiedCall.java:86-103：TemplateTransformModel callee →
-        // env.visitAndTransform（getWriter 先产出变换输出，body 直通；
-        // `<@t /><@m/>` —— ?interpret 产物调用后解释模板的宏可见）
-        ttm.transform(env)?;
-        if let Some(b) = body {
-            if let RunSignal::Returned(v) = env.run(b)? {
-                return Ok(ExecOutcome::ReturnValue(v));
+        // Java UnifiedCall.java:86-103：TemplateTransformModel callee 同样求值
+        // 命名参数 → env.visitAndTransform（getWriter 先产出变换输出，body 写入
+        // 变换 writer；`<@t /><@m/>` —— ?interpret 产物调用后解释模板的宏可见）
+        let mut params = HashMap::new();
+        for (k, e) in args {
+            if !k.is_empty() {
+                params.insert(k.clone(), eval::eval(env, e)?);
             }
         }
-        return Ok(ExecOutcome::Done);
+        let body_elems: &[crate::core::Element] = body.unwrap_or(&[]);
+        let signal = ttm.transform_with_body(env, &params, body_elems)?;
+        return match signal {
+            RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
+            _ => Ok(ExecOutcome::Done),
+        };
     }
     Err(TemplateError::misc(format!(
         "The value of {call_name} is not a macro or user-defined directive (it's a {})",
@@ -1306,14 +1352,17 @@ fn exec_attempt(
         Ok((RunSignal::Returned(v), _)) => Ok(ExecOutcome::ReturnValue(v)),
         Err(TemplateError::Flow(k)) => Err(TemplateError::Flow(k)),
         Err(e) => {
-            // 错误 → recover（Java :3557-3567）；错误消息存入 current_error 供 `.error` 读取
-            // （Java Environment.getCurrentRecoveredErrorMessage；recover 后不被清除）
-            env.current_error = Some(e.to_string());
-            match env.run(recover) {
+            // 错误 → recover（Java :3557-3567）；错误消息压入 recoveredErrorStack 供
+            // `.error` 读取，recover 渲染结束弹出（Environment.java:575-578 的 finally
+            // ——嵌套 attempt 的内层 recover 结束后 `.error` 恢复为外层错误）
+            env.recovered_errors.push(e.to_string());
+            let r = match env.run(recover) {
                 Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
                 Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
                 Err(e2) => Err(e2),
-            }
+            };
+            env.recovered_errors.pop();
+            r
         }
     }
 }
@@ -1477,22 +1526,29 @@ fn strip_text<'a>(
     &text[begin.min(end)..end]
 }
 
-/// 空白压缩（Java StandardCompress 的 v1 基础版：每行 java_trim + 空行合并 + \n 连接）
+/// 空白压缩 —— 对应 Java `<#compress>`（CompressedBlock.accept :40-44 →
+/// StandardCompress.INSTANCE 变换）：Java 逐字符状态机（utility_transforms.rs）
 fn compress_text(s: &str) -> String {
-    let mut out = String::new();
-    let mut pending = false;
-    for line in s.split('\n') {
-        let t = java_trim(line);
-        if t.is_empty() {
-            continue;
-        }
-        if pending {
-            out.push('\n');
-        }
-        out.push_str(t);
-        pending = true;
+    crate::template::utility_transforms::standard_compress_text(s, false)
+}
+
+/// Java Include.getYesNo :233-242 + StringUtil.getYesNo :695-709
+/// （parse="y"/"n"/"t"/"f"/"yes"/"no"/"true"/"false"，忽略大小写；前导 `"` 剥除——
+/// 历史遗留；非法值 → _MiscTemplateException 消息，_DelayedJQuote 原样引用）
+fn get_yes_no(_exp: &crate::core::Expr, s: &str) -> Result<bool> {
+    let s2 = if s.starts_with('"') && s.len() >= 2 {
+        &s[1..s.len() - 1]
+    } else {
+        s
+    };
+    let lower = s2.to_ascii_lowercase();
+    match lower.as_str() {
+        "n" | "no" | "f" | "false" => Ok(false),
+        "y" | "yes" | "t" | "true" => Ok(true),
+        _ => Err(TemplateError::misc(format!(
+            "Value must be boolean (or one of these strings: \"n\", \"no\", \"f\", \"false\", \"y\", \"yes\", \"t\", \"true\"), but it was \"{s}\"."
+        ))),
     }
-    out
 }
 
 /// 表达式求值 → 字符串（`<#include>`/`<#import>`/`<#stop msg>`/`<#setting>` 值）

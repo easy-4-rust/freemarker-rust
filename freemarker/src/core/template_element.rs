@@ -206,10 +206,15 @@ pub enum ElementKind {
     /// <#visit expr>（对应 Java `VisitNode.java`：XML 节点访问）
     Visit {
         expr: Expr,
+        /// `<#visit node using target>` 的 using 目标（Java VisitNode 的
+        /// recurseTarget 参数；XML 场景才有意义，v1 仅解析保留）
+        using: Option<Expr>,
     },
     /// <#recurse expr>（对应 Java `RecurseNode.java`：递归访问子节点）
     Recurse {
         expr: Expr,
+        /// `<#recurse node using target>`（Java RecurseNode 的 recurseTarget）
+        using: Option<Expr>,
     },
     /// <#on name>body</#on>（对应 Java `On.java`：节点名分派）
     On {

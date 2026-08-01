@@ -74,7 +74,11 @@ impl TemplateError {
     pub fn to_user_message(&self) -> String {
         match self {
             TemplateError::InvalidReference { name } => {
-                format!("The following has evaluated to null or missing: ==> {name}")
+                // Java InvalidReferenceException：消息含 Tip 段（描述构建器，
+                // jar 实测；existence-operators 的 isNonFastIRE 断言 "Tip:" 字样）
+                format!(
+                    "The following has evaluated to null or missing: ==> {name}\n\n----\nTip: If the failing expression is known to legally refer to something that's sometimes null or missing, either specify a default value like myOptionalVar!myDefault, or use <#if myOptionalVar??>when-present<#else>when-missing</#if>. (These only cover the last step of the expression; to cover the whole expression, use parenthesis: (myOptionalVar.foo)!myDefault, (myOptionalVar.foo)??\n----"
+                )
             }
             TemplateError::TypeMismatch { expected, actual } => format!(
                 "For \"...\" something that is a {expected} is required, but this has evaluated to a {actual}."
@@ -120,11 +124,20 @@ mod tests {
 
     #[test]
     fn invalid_reference_message_matches_java() {
-        // 对照 Java InvalidReferenceException 消息格式
+        // 对照 Java InvalidReferenceException 消息格式（描述 + Tip 段，jar 实测）
         let e = TemplateError::invalid_reference("user.name");
-        assert_eq!(
-            e.to_user_message(),
-            "The following has evaluated to null or missing: ==> user.name"
+        let msg = e.to_user_message();
+        assert!(
+            msg.starts_with("The following has evaluated to null or missing: ==> user.name"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("\n\n----\nTip: If the failing expression is known to legally refer"),
+            "{msg}"
+        );
+        assert!(
+            msg.ends_with("(myOptionalVar.foo)!myDefault, (myOptionalVar.foo)??\n----"),
+            "{msg}"
         );
     }
 

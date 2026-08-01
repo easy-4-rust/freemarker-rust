@@ -25,6 +25,7 @@ use bigdecimal::ToPrimitive;
 use indexmap::IndexMap;
 use std::cmp::Ordering;
 use std::rc::Rc;
+use unicode_normalization::UnicodeNormalization;
 
 /// 表达式求值 —— 对应 Java `Expression.eval(Environment)`（docs/04 §5）。
 /// 求值失败一律 Err（Java 抛 TemplateException 族）；缺失变量为
@@ -222,9 +223,9 @@ fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result
         BuiltinVar::Lang => Ok(TModel::from_scalar(
             env.settings.locale.split(['_', '-']).next().unwrap_or("").to_string(),
         )),
-        // Java :209-211：CURRENT_NODE/NODE → 当前访问节点（v1 无 node 模型 → 缺失，
-        // 可由 `!`/`??` 抑制 —— specialvars 用例 `.node!`）
-        BuiltinVar::Node => Err(TemplateError::invalid_reference(".node")),
+        // Java :209-211：CURRENT_NODE/NODE → env.getCurrentVisitorNode()（Environment.java:2931-2933；
+        // 非节点上下文返回 null —— nothing 而非抛错，`!`/`??` 继续抑制）
+        BuiltinVar::Node => Ok(TModel::nothing()),
         // Java :212-217：TEMPLATE_NAME → 主模板名（getTemplate230().getName()）
         BuiltinVar::TemplateName | BuiltinVar::MainTemplateName => Ok(TModel::from_scalar(
             env.template.name.clone(),
@@ -251,9 +252,9 @@ fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result
                 Ok(TModel::from_scalar(enc.to_string()))
             }
         }
-        // Java :232-234：ERROR → getCurrentRecoveredErrorMessage()
+        // Java :232-234：ERROR → getCurrentRecoveredErrorMessage()（recoveredErrorStack 栈顶）
         BuiltinVar::Error => Ok(TModel::from_scalar(
-            env.current_error.clone().unwrap_or_default(),
+            env.recovered_errors.last().cloned().unwrap_or_default(),
         )),
         // Java :238-239：VERSION → Configuration.getVersionNumber()
         BuiltinVar::Version => Ok(TModel::from_scalar("2.3.34".to_string())),
@@ -405,25 +406,15 @@ fn eval_dot(env: &mut crate::core::Environment, target: &Expr, name: &str) -> Re
             crate::core::environment::expr_desc(target),
         ));
     }
-    // 命名空间成员（Java Namespace extends SimpleHash，含宏；`<@ns.macro>`/`ns.var`）
+    // 命名空间成员（Java Namespace extends SimpleHash，含宏；`<@ns.macro>`/`ns.var`）；
+    // 成员缺失 → Java 返回 null（SimpleHash.get 无键 → null），由使用点抛错
     if let Some(ns) = env.as_namespace(&t) {
-        return ns.get_member(name).ok_or_else(|| {
-            TemplateError::invalid_reference(format!(
-                "{}.{}",
-                crate::core::environment::expr_desc(target),
-                name
-            ))
-        });
+        return Ok(ns.get_member(name).unwrap_or_else(TModel::nothing));
     }
     if t.is_hash() {
         let h = t.get_hash()?;
-        return h.get(name)?.ok_or_else(|| {
-            TemplateError::invalid_reference(format!(
-                "{}.{}",
-                crate::core::environment::expr_desc(target),
-                name
-            ))
-        });
+        // 键缺失 → Java SimpleHash.get 返回 null 不抛（Dot._eval 仅 target null 时抛）
+        return Ok(h.get(name)?.unwrap_or_else(TModel::nothing));
     }
     Err(TemplateError::type_mismatch("hash", t.type_name))
 }
@@ -514,11 +505,10 @@ fn eval_dyn_key(env: &mut crate::core::Environment, target: &Expr, key: &Expr) -
             if i < size {
                 return seq.get(i);
             }
-            return Err(TemplateError::invalid_reference(format!(
-                "{}[{}]",
-                crate::core::environment::expr_desc(target),
-                crate::core::environment::expr_desc(key)
-            )));
+            // Java dealWithNumericalKey（DynamicKeyName.java:112-117）：越界返回 null
+            // （含 RangeModel——BoundedRangeModel/NonListable 均实现 TemplateSequenceModel；
+            // "Range item index ... is out of bounds." 仅负下标路径，见上）
+            return Ok(TModel::nothing());
         }
         if let Some(s) = &t.scalar {
             // 字符串数字索引 → 单字符（Java :137-160 fallback）
@@ -545,15 +535,10 @@ fn eval_dyn_key(env: &mut crate::core::Environment, target: &Expr, key: &Expr) -
         );
     }
     if let Ok(s) = k.get_scalar() {
-        // 字符串键（Java dealWithStringKey :162-167）
+        // 字符串键（Java dealWithStringKey :162-167）；键缺失 → Java
+        // SimpleHash.get 返回 null 不抛 → Ok(nothing)
         if let Some(h) = &t.hash {
-            return h.get(&s)?.ok_or_else(|| {
-                TemplateError::invalid_reference(format!(
-                    "{}[{}]",
-                    crate::core::environment::expr_desc(target),
-                    crate::core::environment::expr_desc(key)
-                ))
-            });
+            return Ok(h.get(&s)?.unwrap_or_else(TModel::nothing));
         }
         return Err(TemplateError::type_mismatch("hash", t.type_name));
     }
@@ -917,7 +902,11 @@ pub fn compare_models(
         // v1 近似：UTF-16 码元字典序（encode_utf16 逐码元比较；NFKC 归一化属 P4）。
         let ls = l.get_scalar()?;
         let rs = r.get_scalar()?;
-        utf16_cmp(&ls, &rs)
+        // Java 2.3.34（IcI >= 2.3.33）：Normalizer.normalize(NFKC) 后 compareTo
+        // （EvalUtil.java:282-286）——`'á' == 'a\u0301'` 规范化后相等
+        let ln: String = ls.chars().nfkc().collect();
+        let rn: String = rs.chars().nfkc().collect();
+        utf16_cmp(&ln, &rn)
     } else if l.is_boolean() && r.is_boolean() {
         if !matches!(op, CmpOp::Eq | CmpOp::NotEq) {
             return Err(TemplateError::misc(format!(
@@ -1255,28 +1244,41 @@ impl TemplateCollectionModel for NonListableRightUnboundedRange {
 
 /// 默认值（Java DefaultToExpression.java:84-105：目标缺失 → 求默认值（惰性）；
 /// 无默认值 → 空字符串模型 EMPTY_STRING_AND_SEQUENCE_AND_HASH（v1 简化为空字符串））
+/// 存在性运算符的目标求值 —— Java 语义（ExistsExpression.java:42-50 /
+/// DefaultToExpression.java:84-90 / BuiltInsForExistenceHandling.evalMaybeNonexistentTarget）：
+/// **仅括号目标**（ParentheticalExpression）捕获 InvalidReferenceException；非括号目标
+/// （Dot/DynKey 等在 target null 时抛 IRE）错误直接上传；标识符等"eval 返回 null 不抛"
+/// 的表达式在本引擎解析层抛 Err（get_variable）→ 此处等价捕获（Java：v!'-' → null →
+/// 默认值/存在性判定）。
+fn eval_lenient(env: &mut crate::core::Environment, target: &Expr) -> Result<TModel> {
+    let catches = matches!(&target.kind, ExprKind::Paren(_) | ExprKind::Ident(_));
+    match eval(env, target) {
+        Ok(m) => Ok(m),
+        Err(TemplateError::InvalidReference { .. }) if catches => Ok(TModel::nothing()),
+        Err(e) => Err(e),
+    }
+}
+
 fn eval_default_to(
     env: &mut crate::core::Environment,
     target: &Expr,
     default: &Option<Box<Expr>>,
 ) -> Result<TModel> {
-    match eval(env, target) {
-        Ok(m) if !m.is_nothing() => Ok(m),
-        Ok(_) | Err(TemplateError::InvalidReference { .. }) => match default {
-            Some(d) => eval(env, d),
-            None => Ok(TModel::from_scalar(String::new())),
-        },
-        Err(e) => Err(e), // 仅缺失被抑制；类型错误等照常上传（Java 只捕获 InvalidReferenceException）
+    // Java DefaultToExpression._eval：目标 null/缺失 → 默认值；无默认值 → 空串模型
+    let m = eval_lenient(env, target)?;
+    if !m.is_nothing() {
+        return Ok(m);
+    }
+    match default {
+        Some(d) => eval(env, d),
+        None => Ok(TModel::from_scalar(String::new())),
     }
 }
 
-/// 存在性（Java ExistsExpression.java:37-47：求值成功且非 null → TRUE）
+/// 存在性（Java ExistsExpression：求值成功且非 null → TRUE）
 fn eval_exists(env: &mut crate::core::Environment, t: &Expr) -> Result<TModel> {
-    Ok(TModel::from_boolean(match eval(env, t) {
-        Ok(m) => !m.is_nothing(),
-        Err(TemplateError::InvalidReference { .. }) => false,
-        Err(e) => return Err(e),
-    }))
+    let m = eval_lenient(env, t)?;
+    Ok(TModel::from_boolean(!m.is_nothing()))
 }
 
 /// 哈希字面量（Java HashLiteral：键求值为标量）
@@ -1363,6 +1365,22 @@ fn eval_builtin(
     if name == "item_cycle" && args.is_some() {
         return eval_item_cycle_direct(env, target, args.as_deref().unwrap_or(&[]));
     }
+    // ①b `"类名"?new(...)` 带参调用：Java FTL.jj 对 NewBI 同样提前 return，
+    // 括号成为 MethodArgs（NewBI 是 BuiltIn 但 `?new(args)` 即构造调用，
+    // NewBI.java:24-27 → ConstructorFunction.exec）——直接执行构造
+    if name == "new" && args.is_some() {
+        let m = eval(env, target)?;
+        let class_name = crate::core::environment::model_to_string(env, &m)?;
+        let mut vals: Vec<TModel> = Vec::new();
+        for a in args.as_deref().unwrap_or(&[]) {
+            match eval(env, a) {
+                Ok(v) => vals.push(v),
+                Err(TemplateError::InvalidReference { .. }) => vals.push(TModel::nothing()),
+                Err(e) => return Err(e),
+            }
+        }
+        return crate::template::utility_transforms::new_utility_class(&class_name, &vals);
+    }
     // ② 注册表（契约：先 lookup；参数以表达式原样传入——惰性内建 ?then/?switch 需要）
     if let Some(f) = crate::builtins::lookup(name) {
         let r = f(env, target, args.as_deref())?;
@@ -1414,6 +1432,20 @@ fn eval_item_cycle_direct(
     Ok(m)
 }
 
+/// `?new` 的构造器方法模型 —— 对应 Java `NewBI.ConstructorFunction`
+/// （NewBI.java:32-77）：调用时经类解析实例化。v1 仅支持三个 utility 变换类
+/// （utility_transforms::new_utility_class），其余类名按 Java ClassNotFoundException
+/// 语义报错。
+struct NewConstructorFunction {
+    class_name: String,
+}
+
+impl crate::template::TemplateMethodModelEx for NewConstructorFunction {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        crate::template::utility_transforms::new_utility_class(&self.class_name, &args)
+    }
+}
+
 /// 内建实现：返回 None 表示未知内建（由调用方报 "Unknown built-in: ?xxx"）
 fn builtin_impl(
     env: &mut crate::core::Environment,
@@ -1428,38 +1460,79 @@ fn builtin_impl(
     match name {
         // ---- 存在性（Java BuiltInsForExistenceHandling.java）----
         "default" => {
-            let arg = arg_expr(args, 0, "?default requires one argument")?;
-            // 惰性：仅目标缺失/为 null 时求默认值（Java DefaultToExpression 语义）
-            Ok(Some(match eval(env, target) {
-                Ok(m) if !m.is_nothing() => m,
-                Ok(_) => eval(env, arg)?,
-                Err(TemplateError::InvalidReference { .. }) => eval(env, arg)?,
-                Err(e) => return Err(e),
-            }))
+            // Java defaultBI（BuiltInsForExistenceHandling.java:78-91）：目标非 null →
+            // ConstantMethod（惰性，参数不求值）；null → FIRST_NON_NULL_METHOD.exec(args)
+            // —— 遍历参数返回**首个非 null**（参数求值容忍缺失 → null，
+            // Environment.getVariable 不抛错；`v?default(w, '-')` 中 w 缺失 → '-'）
+            // Java defaultBI：evalMaybeNonexistentTarget（仅括号目标抑制错误）
+            let m = eval_lenient(env, target)?;
+            if !m.is_nothing() {
+                return Ok(Some(m));
+            }
+            // FIRST_NON_NULL_METHOD.exec(args)：遍历参数返回首个非 null
+            // （参数求值容忍缺失 → null，Environment.getVariable 不抛错；
+            // `v?default(w, '-')` 中 w 缺失 → '-'）
+            let mut result = TModel::nothing();
+            for a in args.exprs.unwrap_or(&[]) {
+                match eval(env, a) {
+                    Ok(v) if !v.is_nothing() => {
+                        result = v;
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(TemplateError::InvalidReference { .. }) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(Some(result))
         }
         "exists" => {
-            // Java existsBI：target.eval() != null
-            Ok(Some(TModel::from_boolean(match eval(env, target) {
-                Ok(m) => !m.is_nothing(),
-                Err(TemplateError::InvalidReference { .. }) => false,
-                Err(e) => return Err(e),
-            })))
+            // Java existsBI：evalMaybeNonexistentTarget != null（仅括号目标抑制错误）
+            let m = eval_lenient(env, target)?;
+            Ok(Some(TModel::from_boolean(!m.is_nothing())))
         }
         "if_exists" => {
-            // Java ifExistsBI：缺失 → TemplateModel.NOTHING（GeneralPurposeNothing：
+            // Java ifExistsBI：缺失/为 null → TemplateModel.NOTHING（GeneralPurposeNothing：
             // 全能空角色模型——插值输出 ""、布尔 false、序列/哈希为空；
-            // 与真缺失不同，不触发 InvalidReference）
-            Ok(Some(match eval(env, target) {
-                Ok(m) => m,
-                Err(TemplateError::InvalidReference { .. }) => TModel::gpn(),
-                Err(e) => return Err(e),
-            }))
+            // 与真缺失不同，不触发 InvalidReference；Ok(nothing) 即 Java 的 null）
+            let m = eval_lenient(env, target)?;
+            if m.is_nothing() {
+                return Ok(Some(TModel::gpn()));
+            }
+            Ok(Some(m))
         }
         // ---- 类型测试（Java BuiltInsForMultipleTypes.is_*BI；缺失 → false，其他错误上传）----
         "is_string" => is_type_test(env, target, |m| m.is_scalar()),
         "is_number" => is_type_test(env, target, |m| m.is_number()),
         "is_boolean" => is_type_test(env, target, |m| m.is_boolean()),
         "is_date" => is_type_test(env, target, |m| m.is_date()),
+        // Java is_dateOfTypeBI（BuiltInsForMultipleTypes.java:291-305）：
+        // is_unknown_date_like/is_date_only/is_time/is_datetime
+        "is_unknown_date_like" => is_type_test(
+            env,
+            target,
+            |m| matches!(&m.date, Some(d) if d.as_date().map(|dv| dv.kind == DateType::Unknown).unwrap_or(false)),
+        ),
+        "is_date_only" => is_type_test(
+            env,
+            target,
+            |m| matches!(&m.date, Some(d) if d.as_date().map(|dv| dv.kind == DateType::Date).unwrap_or(false)),
+        ),
+        "is_time" => is_type_test(
+            env,
+            target,
+            |m| matches!(&m.date, Some(d) if d.as_date().map(|dv| dv.kind == DateType::Time).unwrap_or(false)),
+        ),
+        "is_datetime" => is_type_test(
+            env,
+            target,
+            |m| matches!(&m.date, Some(d) if d.as_date().map(|dv| dv.kind == DateType::DateTime).unwrap_or(false)),
+        ),
+        // Java dateType_if_unknownBI（BuiltInsForDates.java:45-67）：未知日期类型 →
+        // 转为指定类型；已知类型 → 原样返回；非日期 → NonDateException
+        "datetime_if_unknown" => date_type_if_unknown(env, target, DateType::DateTime),
+        "date_if_unknown" => date_type_if_unknown(env, target, DateType::Date),
+        "time_if_unknown" => date_type_if_unknown(env, target, DateType::Time),
         // Java is_sequenceBI（BuiltInsForMultipleTypes.java:410-418）：ICI ≥ 2.3.24
         // 时排除方法模型（SimpleMethodModel/OverloadedMethodsModel 实现
         // TemplateSequenceModel 但不可 #list）
@@ -1490,13 +1563,36 @@ fn builtin_impl(
         // v1 扩展：lambda 槽位测试（Java 侧为 ?is_callable 家族，P4 对齐）
         "is_lambda" => is_type_test(env, target, |m| m.is_lambda()),
         // ---- 字符串（Java BuiltInsForStringsBasic / Misc / Encoding / Regexp）----
-        "upper_case" => str_builtin(env, target, |s| s.to_uppercase()),
-        "lower_case" => str_builtin(env, target, |s| s.to_lowercase()),
+        // Java upperCaseBI/lowerCaseBI：str.toUpperCase(locale)/toLowerCase(locale)
+        // （locale 感知；tr/az 的 i→İ、I→ı 特殊规则）
+        "upper_case" => {
+            let locale = env.settings.locale.clone();
+            str_builtin(env, target, |s| locale_case(s, &locale, true))
+        }
+        "lower_case" => {
+            let locale = env.settings.locale.clone();
+            str_builtin(env, target, |s| locale_case(s, &locale, false))
+        }
         "cap_first" => str_builtin(env, target, |s| {
+            // Java capFirstBI（BuiltInsForStringsBasic.java:44-58）：跳过前导空白，
+            // 首个非空白字符大写（Character.toUpperCase——无 locale 规则）
             let mut chars = s.chars();
-            match chars.next() {
-                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
+            let mut skipped = String::new();
+            let first = loop {
+                match chars.next() {
+                    Some(c) if c.is_whitespace() => skipped.push(c),
+                    Some(c) => break Some(c),
+                    None => break None,
+                }
+            };
+            match first {
+                Some(c) => {
+                    let mut out = skipped;
+                    out.extend(c.to_uppercase());
+                    out.push_str(chars.as_str());
+                    out
+                }
+                None => s.to_string(),
             }
         }),
         "trim" => str_builtin(env, target, |s| java_trim(s).to_string()),
@@ -1893,12 +1989,9 @@ fn builtin_impl(
         }
         // ---- 输出/格式化（Java BuiltInsForMultipleTypes.java）----
         "has_content" => {
-            // Java hasContentBI：缺失/为 null → false
-            Ok(Some(TModel::from_boolean(match eval(env, target) {
-                Ok(m) => m.has_content()?,
-                Err(TemplateError::InvalidReference { .. }) => false,
-                Err(e) => return Err(e),
-            })))
+            // Java hasContentBI：evalMaybeNonexistentTarget（仅括号目标抑制）→ isEmpty
+            let m = eval_lenient(env, target)?;
+            Ok(Some(TModel::from_boolean(m.has_content()?)))
         }
         // ---- 动态解释（Java Interpret.java；BuiltIn.java:144）----
         "interpret" => {
@@ -1906,10 +1999,24 @@ fn builtin_impl(
             let r = builtin_interpret(env, target)?;
             Ok(Some(r))
         }
+        // ---- 类实例化（Java NewBI.java：?new 返回 ConstructorFunction 方法模型，
+        // 调用 `"类名"?new(args)` 时经 BeansWrapper.newInstance 实例化）----
+        "new" => {
+            // Java NewBI._eval（NewBI.java:24-27）：target 求值为类名字符串
+            let m = eval(env, target)?;
+            let class_name = crate::core::environment::model_to_string(env, &m)?;
+            // Java：resolve 在构造器创建时执行（模板解析期 classname 已知时）——
+            // v1 延迟到方法调用时（等价；类名解析错误消息对齐 Java）
+            Ok(Some(TModel::from_method(NewConstructorFunction {
+                class_name,
+            })))
+        }
         // ---- 表达式动态求值（Java BuiltInsForStringsMisc.evalBI）----
         "eval" => {
             // Java：源码包为 `(...)` 按表达式解析 → 求值；解析/求值失败均包进
-            // "Failed to \"?eval\" string with this error: ..." 消息（:87-118）
+            // "Failed to \"?eval\" string with this error: ..." 消息（:87-118）；
+            // 但求值为 null（缺失变量）**不包装**——原样返回 null（Java exp.eval
+            // 返回 null，`'fails'?eval!'-'` → evalBI null → 默认值 '-' 生效）
             let m = eval(env, target)?;
             let s = crate::core::environment::model_to_string(env, &m)?;
             let cfg = env.template.configuration.clone();
@@ -1918,12 +2025,13 @@ fn builtin_impl(
                     "Failed to \"?eval\" string with this error:\n\n{e}\n\nThe failing expression:"
                 ))
             })?;
-            let v = eval(env, &expr).map_err(|e| {
-                TemplateError::misc(format!(
+            match eval(env, &expr) {
+                Ok(v) => Ok(Some(v)),
+                Err(TemplateError::InvalidReference { .. }) => Ok(Some(TModel::nothing())),
+                Err(e) => Err(TemplateError::misc(format!(
                     "Failed to \"?eval\" string with this error:\n\n{e}\n\nThe failing expression:"
-                ))
-            })?;
-            Ok(Some(v))
+                ))),
+            }
         }
         // ---- 其余未知内建：由调用方报 Unknown built-in ----
         _ => Ok(None),
@@ -2076,6 +2184,25 @@ impl crate::template::TemplateTransformModel for InterpretedTemplate {
 }
 
 /// 类型测试内建：目标缺失 → false；其他求值错误上传（Java is_*BI 语义）
+/// 日期类型转换（Java dateType_if_unknownBI：未知 → 指定类型；已知 → 原样）
+fn date_type_if_unknown(
+    env: &mut crate::core::Environment,
+    target: &Expr,
+    kind: DateType,
+) -> Result<Option<TModel>> {
+    let m = eval(env, target)?;
+    if let Some(d) = &m.date {
+        let dv = d.as_date()?;
+        if dv.kind != DateType::Unknown {
+            return Ok(Some(m));
+        }
+        let mut nv = dv.clone();
+        nv.kind = kind;
+        return Ok(Some(TModel::from_date(nv)));
+    }
+    Err(TemplateError::type_mismatch("date", m.type_name))
+}
+
 fn is_type_test(
     env: &mut crate::core::Environment,
     target: &Expr,
@@ -2086,6 +2213,53 @@ fn is_type_test(
         Err(TemplateError::InvalidReference { .. }) => Ok(Some(TModel::from_boolean(false))),
         Err(e) => Err(e),
     }
+}
+
+/// locale 感知的大小写转换 —— 对应 Java `String.toUpperCase(Locale)` /
+/// `toLowerCase(Locale)` 的 ConditionalSpecialCasing 特殊规则：tr/az locale 下
+/// `i` → `İ`（U+0130）、`I` → `ı`（U+0131）；`i`/`I` 后跟组合点（U+0307）时
+/// 大写去点（i 保持）、小写保点。其余 locale 按 Unicode 默认规则。
+fn locale_case(s: &str, locale: &str, upper: bool) -> String {
+    let lang = locale.split(['_', '-']).next().unwrap_or("");
+    let tr = lang == "tr" || lang == "az";
+    if !tr {
+        return if upper {
+            s.to_uppercase()
+        } else {
+            s.to_lowercase()
+        };
+    }
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        if upper {
+            match c {
+                'i' if next == Some('\u{0307}') => {
+                    // i + combining dot → 小写 i 保持、dot 移除
+                    out.push('i');
+                    i += 1;
+                }
+                'i' => out.push('\u{0130}'),
+                _ => out.extend(c.to_uppercase()),
+            }
+        } else {
+            match c {
+                'I' if next == Some('\u{0307}') => {
+                    // I + combining dot → i + dot（不重复点）
+                    out.push('i');
+                    i += 1;
+                    out.push('\u{0307}');
+                }
+                'I' => out.push('\u{0131}'),
+                _ => out.extend(c.to_lowercase()),
+            }
+        }
+        i += 1;
+    }
+    out
 }
 
 /// 字符串内建（目标按 Java EvalUtil.coerceModelToStringOrMarkup 强制转字符串：
@@ -2208,7 +2382,7 @@ mod tests {
         let root = DynValue::Map(vec![("x".into(), DynValue::Int(3))]);
         assert_eq!(eval_out(root.clone(), "\"a\" + x + \"b\"").unwrap(), "a3b");
         // 布尔拼接（Java：默认 boolean_format "true,false" 是遗留默认 → 报错；
-        // 用 ?c 显式指定输出）
+        // 用 ?c 显式指定输出；jar 实测 ${"v=" + true} 默认配置报 legacy 错误）
         assert_eq!(eval_out(root.clone(), "\"v=\" + true?c").unwrap(), "v=true");
         let err = eval_out(root.clone(), "\"v=\" + true").unwrap_err();
         assert!(err.to_string().contains("Can't convert boolean"), "{err}");

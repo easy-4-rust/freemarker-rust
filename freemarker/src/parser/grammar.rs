@@ -880,14 +880,29 @@ impl<'a> Parser<'a> {
                 Element::new(ElementKind::Transform { expr, body }, span)
             }
             "visit" => {
+                // Java VisitNode（FTL.jj）：`<#visit node [using target]>`（visit 的
+                // recurseTarget；XML 命名空间场景，v1 仅解析保留）
                 let expr = self.expression()?;
+                let using = if self.peek_tok()?.0 == Tok::Using {
+                    self.next_tok()?;
+                    Some(self.expression()?)
+                } else {
+                    None
+                };
                 self.loose_end()?;
-                Element::new(ElementKind::Visit { expr }, span)
+                Element::new(ElementKind::Visit { expr, using }, span)
             }
             "recurse" => {
+                // Java RecurseNode（FTL.jj）：`<#recurse node [using target]>`
                 let expr = self.expression()?;
+                let using = if self.peek_tok()?.0 == Tok::Using {
+                    self.next_tok()?;
+                    Some(self.expression()?)
+                } else {
+                    None
+                };
                 self.loose_end()?;
-                Element::new(ElementKind::Recurse { expr }, span)
+                Element::new(ElementKind::Recurse { expr, using }, span)
             }
             "on" => {
                 // `<#on name>body</#on>`（Java On()：exps = PositionalArgs，取首参）
@@ -5662,9 +5677,10 @@ mod tests {
         let msg = parse_err("<#-- unclosed");
         assert!(msg.contains("Unclosed comment"), "{msg}");
 
-        // 非法字符
+        // 非法字符（`@` 是合法标识符起始——Java isLegacyFTLIdStartChar 的 `@`..`Z`
+        // 区间；`${a @}` 为相邻标识符 → 插值未闭合错误）
         let msg = parse_err("${a @}");
-        assert!(msg.contains("Unexpected character"), "{msg}");
+        assert!(msg.contains("to close the interpolation"), "{msg}");
 
         // 不匹配的结束标签
         let msg = parse_err("<#if x></#list>");

@@ -128,10 +128,12 @@ pub fn string(
     )))
 }
 
-/// Java _MessageUtil.newCantFormatUnknownTypeDateException（dateformat-iso-like 用例）
+/// Java _MessageUtil.newCantFormatUnknownTypeDateException（_MessageUtil.java:38-45/
+/// 309-315：UNKNOWN_DATE_TO_STRING_ERROR_MESSAGE + UNKNOWN_DATE_TO_STRING_TIPS；
+/// dateformat-iso-like 的 "Use ?date..." 与 date-type-builtins 的 "isn't known if" 断言）
 fn unknown_date_type_error() -> TemplateError {
     TemplateError::misc(
-        "The value of the following has unknown date type, but ?string.xs needs a value where it's known if it's a date (no time part), time, or date-time value. Use ?date, ?time, or ?datetime built-ins to specify the date type explicitly.",
+        "Can't convert the date-like value to string because it isn't known if it's a date (no time part), time or date-time value.\n\n----\nTip: Use ?date, ?time, or ?datetime to tell FreeMarker the exact type.\n----\nTip: If you need a particular format only once, use ?string(pattern), like ?string('dd.MM.yyyy HH:mm:ss'), to specify which fields to display. \n----",
     )
 }
 
@@ -227,7 +229,7 @@ pub fn is_datetime(
     )?)))
 }
 
-/// ?is_unknown_date_like —— Java is_dateOfTypeBI(UNKNOWN)；v1 DateValue.kind 恒已知 → false
+/// ?is_unknown_date_like —— Java is_dateOfTypeBI(UNKNOWN)（BuiltInsForMultipleTypes.java:291-305）
 pub fn is_unknown_date_like(
     env: &mut Environment,
     target: &Expr,
@@ -236,7 +238,7 @@ pub fn is_unknown_date_like(
     Ok(Some(TModel::from_boolean(is_type_test(
         env,
         target,
-        |_| false,
+        |m| m.is_date() && m.get_date().is_ok_and(|d| d.kind == DateType::Unknown),
     )?)))
 }
 

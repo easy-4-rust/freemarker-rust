@@ -58,6 +58,8 @@ pub fn base_config() -> (Configuration, Arc<StringLoader>) {
 /// 注册用例模板与依赖模板（Java FileTemplateLoader(templates 目录) 的等价物：
 /// 预注册全部依赖模板，避免 include/import 相对路径解析失败；
 /// 模板经 removeFTLCopyrightComment 处理（Java CopyrightCommentRemoverTemplateLoader）
+/// 按原始字节注册（charset-in-header 等非 UTF-8 模板：read_to_string 会失败/损坏，
+/// 原始字节保留使 read_encoded 能按声明编码解码）
 pub fn load_all_templates(loader: &Arc<StringLoader>) {
     let dir = format!("{SUITE_DIR}/templates");
     let mut files: Vec<std::path::PathBuf> = Vec::new();
@@ -68,55 +70,58 @@ pub fn load_all_templates(loader: &Arc<StringLoader>) {
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
-        let text = std::fs::read_to_string(&f).unwrap_or_default();
-        loader.put(&rel, &remove_ftl_copyright_comment(&text));
+        let bytes = std::fs::read(&f).unwrap_or_default();
+        loader.put_bytes(&rel, &remove_ftl_copyright_comment_bytes(&bytes));
     }
 }
 
-/// 移除模板开头的版权注释（Java TestUtil.removeFTLCopyrightComment：找到包含
-/// "copyright" 的 `<#-- ... -->`/`[#-- ... --]` 注释，连注释后的换行与下一字符一并移除）
-pub fn remove_ftl_copyright_comment(ftl: &str) -> String {
-    let lower = ftl.to_ascii_lowercase();
-    let copyright_idx = match lower.find("copyright") {
-        Some(i) => i,
-        None => return ftl.to_string(),
+/// 字节版版权注释移除：ASCII 查找（"copyright" / `<#--` / `-->`）对任意编码安全
+/// （注释标记与版权词均为 ASCII；ISO-8859-x 等单字节内容不经解码直接搬运）
+pub fn remove_ftl_copyright_comment_bytes(ftl: &[u8]) -> Vec<u8> {
+    let lower: Vec<u8> = ftl.iter().map(|b| b.to_ascii_lowercase()).collect();
+    let copyright_idx = find_bytes(&lower, b"copyright");
+    let Some(copyright_idx) = copyright_idx else {
+        return ftl.to_vec();
     };
     let before = &ftl[..copyright_idx];
-    let ab_start = before.rfind("<#--");
-    let sb_start = before.rfind("[#--");
+    let ab_start = rfind_bytes(before, b"<#--");
+    let sb_start = rfind_bytes(before, b"[#--");
     let (comment_first_idx, end_marker) = match (ab_start, sb_start) {
-        (Some(a), Some(b)) if b > a => (b, "--]"),
-        (Some(a), _) => (a, "-->"),
-        (None, Some(b)) => (b, "--]"),
-        _ => return ftl.to_string(),
+        (Some(a), Some(b)) if b > a => (b, b"--]".as_slice()),
+        (Some(a), _) => (a, b"-->".as_slice()),
+        (None, Some(b)) => (b, b"--]".as_slice()),
+        _ => return ftl.to_vec(),
     };
     let after = &ftl[comment_first_idx..];
-    let end_pos = match after.find(end_marker) {
-        Some(i) => i,
-        None => return ftl.to_string(),
+    let Some(end_pos) = find_bytes(after, end_marker) else {
+        return ftl.to_vec();
     };
     let comment_last_idx = comment_first_idx + end_pos + 2;
     let mut after_comment = comment_last_idx + 1;
     if after_comment < ftl.len() {
-        let c = ftl.as_bytes()[after_comment] as char;
-        if c == '\n' || c == '\r' {
-            if c == '\r'
-                && after_comment + 1 < ftl.len()
-                && ftl.as_bytes()[after_comment + 1] == b'\n'
-            {
+        let c = ftl[after_comment];
+        if c == b'\n' || c == b'\r' {
+            if c == b'\r' && after_comment + 1 < ftl.len() && ftl[after_comment + 1] == b'\n' {
                 after_comment += 2;
             } else {
                 after_comment += 1;
             }
         }
     }
-    // Java：commentLastIdx 为 '>' 的含位下标，+1 即越过 '>'，再越过换行后即为剩余内容
-    let mut out = String::with_capacity(ftl.len());
-    out.push_str(&ftl[..comment_first_idx]);
+    let mut out = Vec::with_capacity(ftl.len());
+    out.extend_from_slice(&ftl[..comment_first_idx]);
     if after_comment <= ftl.len() {
-        out.push_str(&ftl[after_comment..]);
+        out.extend_from_slice(&ftl[after_comment..]);
     }
     out
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+fn rfind_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).rposition(|w| w == needle)
 }
 
 fn collect_ftl(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
@@ -167,9 +172,23 @@ pub fn apply_settings(
                 }
             }
             "auto_import" => {
-                skipped.push("auto_import 设置（Configuration.addAutoImport）未实现".to_string())
+                // Java SettingStringParser.parseAsImportList："path as ns" 列表
+                // （逗号分隔）；Configuration.addAutoImport(ns, path) 语义
+                for item in v.split(',') {
+                    let item = item.trim();
+                    if item.is_empty() {
+                        continue;
+                    }
+                    match item.split_once(" as ") {
+                        Some((path, ns)) => {
+                            c.auto_imports
+                                .push((ns.trim().to_string(), path.trim().to_string()));
+                        }
+                        None => skipped.push(format!("auto_import 格式未识别: {item:?}")),
+                    }
+                }
             }
-            "input_encoding" => {} // v1 字符串加载器无编码概念（P4）
+            "input_encoding" => c.settings.input_encoding = Some(v.clone()),
             "clear_encoding_map" => {}
             "object_wrapper" => {
                 // SimpleObjectWrapper 与我们的数据模型等价；其余 Java wrapper 跳过
@@ -187,7 +206,13 @@ pub fn apply_settings(
 
 /// 渲染用例，返回输出（Java runTest：process(dataModel, out)）
 pub fn render_case(c: &Configuration, name: &str, root: TModel) -> Result<String> {
-    let t = c.get_template_localized(name, Some(&c.settings.locale))?;
+    // Java Configuration.getTemplate(name, locale, ..., encoding=cfg default)：
+    // input_encoding 设置时按该编码解码（charset-in-header），`<#ftl encoding>`
+    // 头触发 WrongEncodingException 重读；否则走本地化回退的常规路径
+    let t = match c.settings.input_encoding.as_deref() {
+        Some(enc) => c.get_template_encoded(name, Some(enc))?,
+        None => c.get_template_localized(name, Some(&c.settings.locale))?,
+    };
     let mut out = Vec::new();
     t.process(root, &mut out)?;
     Ok(String::from_utf8_lossy(&out).into_owned())
@@ -417,10 +442,11 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             );
         }
         "date-type-builtins" => {
-            // TemplateTestCase.java:336-344：2003-04-05 06:07:08 UTC
+            // TemplateTestCase.java:336-344：2003-04-05 06:07:08 UTC；
+            // unknown = SimpleDate(d, TemplateDateModel.UNKNOWN)（未知类型）
             m.insert(
                 "unknown".to_string(),
-                date_model(2003, 4, 5, 6, 7, 8, 0, DateType::DateTime),
+                date_model(2003, 4, 5, 6, 7, 8, 0, DateType::Unknown),
             );
             m.insert(
                 "timeOnly".to_string(),
@@ -1177,9 +1203,11 @@ impl TemplateDirectiveModel for AssertEqualsDirective {
     ) -> Result<()> {
         let actual = params
             .get("actual")
+            .filter(|m| !m.is_nothing())
             .ok_or_else(|| TemplateError::misc("Missing required parameter \"actual\""))?;
         let expected = params
             .get("expected")
+            .filter(|m| !m.is_nothing())
             .ok_or_else(|| TemplateError::misc("Missing required parameter \"expected\""))?;
         let eq = compare_models(env, actual, expected, CmpOp::Eq)?;
         if !eq {
@@ -1258,12 +1286,15 @@ impl TemplateDirectiveModel for AssertFailsDirective {
                     }
                 }
                 if let Some(exp) = exception {
-                    // Rust 无 Java 异常类层级：UnexpectedTypeException 等以错误消息特征匹配
-                    // （Java 检查 e.getClass().getName()；本引擎 TypeMismatch 消息含 "is required"）
-                    let matched = if exp == "UnexpectedTypeException" {
-                        msg.contains("is required") || msg.contains("is not applicable")
-                    } else {
-                        msg.contains(&exp)
+                    // Rust 无 Java 异常类层级：以错误消息特征匹配
+                    // （Java 检查 e.getClass().getName().indexOf(exception)；
+                    // InvalidReferenceException → 消息含 "null or missing" 与 Tip 段）
+                    let matched = match exp.as_str() {
+                        "UnexpectedTypeException" => {
+                            msg.contains("is required") || msg.contains("is not applicable")
+                        }
+                        "InvalidReferenceException" => msg.contains("null or missing"),
+                        _ => msg.contains(&exp),
                     };
                     if !matched {
                         return Err(TemplateError::misc(format!(

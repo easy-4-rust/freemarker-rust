@@ -51,6 +51,12 @@ impl TemplateLoader for MultiLoader {
         multi.loader.read(&*multi.inner)
     }
 
+    /// 对应 `getReader(source, encoding)`：委托给来源 loader
+    fn read_encoded(&self, src: &dyn TemplateSource, encoding: &str) -> Result<String> {
+        let multi = downcast_multi_src(src)?;
+        multi.loader.read_encoded(&*multi.inner, encoding)
+    }
+
     /// 对应 `getLastModified`（Java:98-100）：委托给来源 loader
     fn last_modified(&self, src: &dyn TemplateSource) -> Result<i64> {
         let multi = downcast_multi_src(src)?;

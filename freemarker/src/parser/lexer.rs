@@ -1167,10 +1167,11 @@ impl Lexer {
     }
 }
 
-/// 标识符起始字符（ID_START_CHAR 近似：字母（含非 ASCII）、`$`、`_`；
-/// `\` 转义字符在 scan_ident 内处理）
+/// 标识符起始字符（ID_START_CHAR 近似：字母（含非 ASCII）、`$`、`_`、`@`；
+/// Java isLegacyFTLIdStartChar 的 `@`..`Z` 区间 = `@` + A-Z，identifierChars
+/// 生成器见 FTL.jj:1427；`\` 转义字符在 scan_ident 内处理）
 fn is_ident_start(c: char) -> bool {
-    c.is_alphabetic() || c == '$' || c == '_'
+    c.is_alphabetic() || c == '$' || c == '_' || c == '@'
 }
 
 /// 标识符续字符（ID_START_CHAR 或 ASCII 数字）

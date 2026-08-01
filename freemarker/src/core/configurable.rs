@@ -102,6 +102,10 @@ pub struct Settings {
     /// 模板查找策略 —— 对应 Configuration.setTemplateLookupStrategy（docs/07 §2 :63）；
     /// 默认 Default020300（本地化回退 + acquisition，见 cache/template_lookup_strategy.rs）
     pub lookup_strategy: LookupStrategyKind,
+    /// 输入编码 —— 对应 Configuration.setDefaultEncoding（input_encoding 设置；
+    /// None = Java 默认 "UTF-8"（Configuration.DEFAULT_TEMPLATE_ENCODING）；
+    /// 模板 `<#ftl encoding=...>` 头按 WrongEncodingException 重读，get_template_encoded）
+    pub input_encoding: Option<String>,
 }
 
 /// Java `TimeZone.getTimeZone(id).getID()` 的 v1 复刻（以 Java 实测为准）：
@@ -198,6 +202,7 @@ impl Default for Settings {
             delay: 1,
             localized_lookup: true,
             lookup_strategy: LookupStrategyKind::Default020300,
+            input_encoding: None,
         }
     }
 }
