@@ -1,6 +1,6 @@
 # freemarker-rust 迁移计划文档
 
-> 目标：基于 [Apache FreeMarker](https://github.com/apache/freemarker)（2.3-gae 分支，commit `7926e97`，incompatibleImprovements 2.3.34 开发线）实现**语义功能一致**的 freemarker-rust。
+> 目标：基于 [Apache FreeMarker](https://github.com/apache/freemarker)（**v2.3.34** 标签，commit `7926e97`，2.3 分支线，incompatibleImprovements 2.3.34）实现**语义功能一致**的 freemarker-rust。
 > 核心迁移：`freemarker-core` → `freemarker-rust`（Rust 引擎）；`freemarker-jython25` → `freemarker-pyo3`（PyO3 0.29 Python 桥接）。
 > 分析基线：codegraph 知识图谱（926 文件 / 11,798 节点 / 72,272 边 / 1,211 执行流），总览见工作区根 `freemarker-rust-迁移分析报告.md`。
 
