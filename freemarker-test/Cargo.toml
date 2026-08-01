@@ -1,0 +1,19 @@
+[package]
+name = "freemarker-test"
+description = "freemarker-rust 整体功能测试模块——Java templatesuite 黄金套件（128 用例逐字节对照）+ 端到端断言指令（对应 Java freemarker-test-utils/templatesuite 的角色）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+freemarker = { path = "../freemarker" }
+indexmap.workspace = true
+regex.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+chrono.workspace = true
+
+[lib]
+path = "src/lib.rs"

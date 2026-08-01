@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["freemarker", "freemarker-pyo3"]
+members = ["freemarker", "freemarker-test", "freemarker-pyo3"]
 default-members = ["freemarker"]
 
 [workspace.package]
