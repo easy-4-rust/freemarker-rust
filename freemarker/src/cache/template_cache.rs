@@ -5,7 +5,7 @@
 //!   v1 仅保留名称维度）；缓存条目记录源名（规范化绝对路径）与 last_modified 用于过期验证。
 //! v1 加载失败直接传播错误、不缓存（Java 把异常也存入负查找条目并重抛，:448-457）
 
-use crate::cache::{NameFormatDefault020400, TemplateNameFormat};
+use crate::cache::{NameFormatDefault020300, TemplateNameFormat};
 use crate::cache::{TemplateLoader, TemplateSource};
 use crate::error::Result;
 use crate::template::Template;
@@ -61,7 +61,7 @@ impl TemplateCache {
         loader: &dyn TemplateLoader,
         load: impl FnOnce(&str, String) -> Result<Rc<Template>>,
     ) -> Result<Option<Rc<Template>>> {
-        let normalized = NameFormatDefault020400.normalize_root_based_name(name)?;
+        let normalized = NameFormatDefault020300.normalize_root_based_name(name)?;
         let now = Instant::now();
         if let Some(entry) = self.entries.get(&normalized).cloned() {
             if now.duration_since(entry.last_checked) < self.delay {
@@ -191,7 +191,7 @@ impl TemplateCache {
     /// 对应 `removeTemplate`（TemplateCache.java:663-686）：先规范化名称再移除键。
     /// 返回是否实际存在该条目
     pub fn remove(&mut self, name: &str) -> Result<bool> {
-        let normalized = NameFormatDefault020400.normalize_root_based_name(name)?;
+        let normalized = NameFormatDefault020300.normalize_root_based_name(name)?;
         Ok(self.entries.remove(&normalized).is_some())
     }
 
@@ -455,17 +455,24 @@ mod tests {
         let loader = StringLoader::default();
         loader.put("a/b.ftl", "x");
 
-        // "a//b.ftl" 与 "a/./b.ftl" 规范化后共享同一缓存条目（Java 入口 normalizeRootBasedName）
+        // "a/./b.ftl" 与 "a/b.ftl" 规范化后共享同一缓存条目（Java 默认
+        // TemplateNameFormat.DEFAULT_2_3_0 的 normalizeRootBasedName 处理 /./，
+        // 不去冗余斜杠——"a//b.ftl" 保持原样，Java Configuration.java:1113 默认）
         let first = cache
-            .get_or_load("a//b.ftl", &loader, load_closure)
+            .get_or_load("a/./b.ftl", &loader, load_closure)
             .unwrap()
             .unwrap();
         let second = cache
-            .get_or_load("a/./b.ftl", &loader, |_, _| panic!("规范化键应命中"))
+            .get_or_load("a/b.ftl", &loader, |_, _| panic!("规范化键应命中"))
             .unwrap()
             .unwrap();
         assert!(Rc::ptr_eq(&first, &second));
         assert_eq!(cache.len(), 1);
+        // 冗余斜杠不去除（Default020300 语义）：独立缓存键
+        let third = cache
+            .get_or_load("a//b.ftl", &loader, load_closure)
+            .unwrap();
+        assert!(third.is_none(), "a//b.ftl 在 loader 中不存在（未归一化）");
     }
 
     #[test]

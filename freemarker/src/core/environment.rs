@@ -15,7 +15,7 @@
 //! `RunSignal::Returned` 返回（Java `ReturnInstruction.Return`）；`<#stop>` 以 `Err(Stop)` 上传
 //! （Java `StopException`，attempt 可捕获）。
 
-use crate::cache::{NameFormatDefault020400, TemplateNameFormat};
+use crate::cache::{NameFormatDefault020300, TemplateNameFormat};
 use crate::core::eval;
 use crate::core::{Element, Expr, MacroDef, MacroParam, Settings, TzSetting};
 use crate::error::{Result, TemplateError};
@@ -1004,7 +1004,7 @@ impl<'a> Environment<'a> {
         // Java importLib（:3232-3290）：toFullTemplateName 后按模板名格式规范化
         // （"/import_lib.ftl" 与 "import_lib.ftl" 是同一模板——loadedLibs 缓存键一致）
         let resolved = self.resolve_template_name(path);
-        let full = NameFormatDefault020400
+        let full = NameFormatDefault020300
             .normalize_root_based_name(&resolved)
             .unwrap_or(resolved);
         let ns = if let Some(existing) = self.loaded_libs.get(&full) {

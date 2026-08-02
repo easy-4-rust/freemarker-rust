@@ -148,7 +148,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             target,
             expr,
             op,
-            namespace.as_deref(),
+            namespace.as_ref(),
             AssignScope::Namespace,
         ),
         ElementKind::BlockAssign {
@@ -169,7 +169,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
                         target,
                         &placeholder,
                         op,
-                        namespace.as_deref(),
+                        namespace.as_ref(),
                         AssignScope::Namespace,
                     )
                 }
@@ -516,18 +516,29 @@ fn exec_assign(
     target: &str,
     expr: &crate::core::Expr,
     op: &AssignOp,
-    namespace: Option<&str>,
+    namespace: Option<&crate::core::Expr>,
     scope: AssignScope,
 ) -> Result<ExecOutcome> {
-    // Java :82-96：目标命名空间（`in ns` 子句）
+    // Java Assignment.accept :102-122：`in nsExp` 子句——nsExp 为任意表达式，
+    // eval 后检查类型（NonNamespaceException）/ null（InvalidReference）
     let target_ns: Option<Rc<crate::core::environment::Namespace>> = match namespace {
         None => None,
-        Some(ns_name) => {
-            let m = env.get_variable(ns_name)?;
-            Some(
-                env.as_namespace(&m)
-                    .ok_or_else(|| TemplateError::type_mismatch("namespace", m.type_name))?,
-            )
+        Some(ns_exp) => {
+            let m = eval::eval(env, ns_exp)?;
+            if m.is_nothing() {
+                return Err(TemplateError::invalid_reference(
+                    crate::core::environment::expr_desc(ns_exp),
+                ));
+            }
+            Some(env.as_namespace(&m).ok_or_else(|| {
+                // Java NonNamespaceException（Assignment.java:115-118）：
+                // "For \"#assign\" namespace: Expected a namespace, but this has evaluated to a ..."
+                TemplateError::misc(format!(
+                    "For \"#assign\" namespace: Expected a namespace, but this has evaluated to a {}: ==> {}",
+                    m.type_name,
+                    crate::core::environment::expr_desc(ns_exp)
+                ))
+            })?)
         }
     };
     let value = if *op == AssignOp::Equals {
@@ -554,9 +565,15 @@ fn exec_assign(
             }
             None => {
                 // Java Assignment.java:156-162 + InvalidReferenceException 的 Tip 段
-                // （目标名以 $ 开头时追加 "must not start with \"$\"" 提示）
+                // （目标名以 $ 开头时追加 "must not start with \"$\"" 提示；
+                // 作用域描述按 scope 变化：template namespace / global scope / local scope）
+                let scope_desc = match scope {
+                    AssignScope::Namespace => "template namespace",
+                    AssignScope::Global => "global scope",
+                    AssignScope::Local => "local scope",
+                };
                 let mut msg = format!(
-                    "The target variable of the assignment, \"{target}\", was null or missing in the template namespace, and the \"{}\" operator must get its value from there before assigning to it.",
+                    "The target variable of the assignment, \"{target}\", was null or missing in the {scope_desc}, and the \"{}\" operator must get its value from there before assigning to it.",
                     assign_op_str(op)
                 );
                 if target.starts_with('$') {

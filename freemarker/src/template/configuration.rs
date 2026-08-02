@@ -2,7 +2,7 @@
 //! （加载流见 docs/02 §2.1；缓存键/延迟/局部化回退由 cache 智能体补全）
 
 use crate::cache::TemplateNameFormat;
-use crate::cache::{NameFormatDefault020400, StringLoader, TemplateCache, TemplateLoader};
+use crate::cache::{NameFormatDefault020300, StringLoader, TemplateCache, TemplateLoader};
 use crate::core::Settings;
 use crate::error::{Result, TemplateError};
 use crate::parser;
@@ -119,7 +119,7 @@ impl Configuration {
     pub fn get_template_encoded(&self, name: &str, encoding: Option<&str>) -> Result<Rc<Template>> {
         // Java getTemplateInternal（TemplateCache.java:323-341）：先按模板名格式规范化
         // （"/included.ftl" → "included.ftl"）
-        let normalized = NameFormatDefault020400.normalize_root_based_name(name)?;
+        let normalized = NameFormatDefault020300.normalize_root_based_name(name)?;
         let mut used =
             encoding.unwrap_or(self.settings.input_encoding.as_deref().unwrap_or("UTF-8"));
         let src =

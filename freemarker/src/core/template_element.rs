@@ -83,14 +83,16 @@ pub enum ElementKind {
         target: String,
         expr: Expr,
         op: AssignOp,
-        namespace: Option<String>,
+        /// `<#assign x = 1 in nsExp>` 的 in 目标表达式（Java FTL.jj：`[id = <IN> nsExp = Expression()]`；
+        /// 运行期 eval 后检查类型——Assignment.java:112-122）
+        namespace: Option<Expr>,
     },
     /// <#assign name>body</#assign> 块捕获
     BlockAssign {
         target: String,
         body: Vec<Element>,
         op: AssignOp,
-        namespace: Option<String>,
+        namespace: Option<Expr>,
     },
     /// <#global>
     Global {

@@ -181,7 +181,10 @@ impl ArithmeticEngine for BigDecimalEngine {
         let left = self.to_big_decimal(a)?;
         let right = self.to_big_decimal(b)?;
         if right.is_zero() {
-            return Err(TemplateError::misc("Division by zero"));
+            // Java ArithmeticExpression.java:75-79：_MiscTemplateException(e, "Arithmetic operation failed", ": / by zero")
+            return Err(TemplateError::misc(
+                "Arithmetic operation failed: / by zero",
+            ));
         }
         let (_, s1) = left.as_bigint_and_scale();
         let (_, s2) = right.as_bigint_and_scale();
@@ -213,7 +216,10 @@ impl ArithmeticEngine for BigDecimalEngine {
             ))
         })?;
         if right == 0 {
-            return Err(TemplateError::misc("Division by zero"));
+            // Java ArithmeticExpression.java:75-79：_MiscTemplateException(e, "Arithmetic operation failed", ": / by zero")
+            return Err(TemplateError::misc(
+                "Arithmetic operation failed: / by zero",
+            ));
         }
         Ok(TNumber::Long(left % right))
     }
@@ -331,9 +337,11 @@ mod tests {
     fn assert_div_by_zero(r: Result<TNumber>) {
         match r {
             Err(TemplateError::Misc { message }) => {
-                assert_eq!(message, "Division by zero")
+                assert_eq!(message, "Arithmetic operation failed: / by zero")
             }
-            other => panic!("expected 'Division by zero' error, got {other:?}"),
+            other => {
+                panic!("expected 'Arithmetic operation failed: / by zero' error, got {other:?}")
+            }
         }
     }
 

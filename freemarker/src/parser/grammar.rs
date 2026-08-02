@@ -1416,23 +1416,14 @@ impl<'a> Parser<'a> {
                     cur_l = l2;
                     cur_c = c2;
                 }
-                // `expr in ns`（Java：`[id = <IN> nsExp = Expression()]` 在赋值序列之后）
+                // `expr in ns`（Java：`[id = <IN> nsExp = Expression()]`——nsExp 为任意
+                // 表达式，运行期 eval 后检查类型，Assignment.java:112-122）
                 let namespace = if self.peek_tok()?.0 == Tok::In {
                     self.next_tok()?;
                     if scope != AssignScope::Namespace {
                         return Err(self.err(line, col, "Cannot assign to namespace here."));
                     }
-                    let (t, l2, c2) = self.next_tok()?;
-                    match t {
-                        Tok::Ident(ns) => Some(ns),
-                        other => {
-                            return Err(self.err(
-                                l2,
-                                c2,
-                                format!("The namespace of an assignment must be a simple variable name, but found {}.", tok_desc(&other)),
-                            ))
-                        }
-                    }
+                    Some(self.expression()?)
                 } else {
                     None
                 };
@@ -1456,22 +1447,13 @@ impl<'a> Parser<'a> {
             }
             None => {
                 // 块赋值：`<#assign name [in ns]> body </#assign>`（end tag 必须与 scope 匹配）
-                let mut namespace: Option<String> = None;
+                let mut namespace: Option<Expr> = None;
                 if op_tok == Tok::In {
-                    // `in ns` 在块形式中紧跟名字之后（`<#assign x in ns>`；
-                    // parse_optional_namespace 看不到已消费的 In）
+                    // `in ns` 在块形式中紧跟名字之后（Java：`[id = <IN> nsExp = Expression()]`）
                     if scope != AssignScope::Namespace {
                         return Err(self.err(line, col, "Cannot assign to namespace here."));
                     }
-                    let (t, l2, c2) = self.next_tok()?;
-                    let Tok::Ident(ns) = t else {
-                        return Err(self.err(
-                            l2,
-                            c2,
-                            format!("The namespace of an assignment must be a simple variable name, but found {}.", tok_desc(&t)),
-                        ));
-                    };
-                    namespace = Some(ns);
+                    namespace = Some(self.expression()?);
                     self.expect_tag_end()?;
                 } else if op_tok == Tok::EmptyTagEnd {
                     return Err(self.err(

@@ -522,7 +522,15 @@ fn eval_dyn_key(env: &mut crate::core::Environment, target: &Expr, key: &Expr) -
                 ))),
             };
         }
-        return Err(TemplateError::type_mismatch("sequence", t.type_name));
+        // Java DynamicKeyName（ICI 2.3.0 jar 实测）：数字键 + 非序列/字符串目标 →
+        // "For \"...[...]\" left-hand operand: Expected a sequence or string or something
+        // automatically convertible to string (number, date or boolean), but this has
+        // evaluated to a {type}:" + Tip 段（数值键提示 ?api）
+        return Err(TemplateError::misc(format!(
+            "For \"...[...]\" left-hand operand: Expected a sequence or string or something automatically convertible to string (number, date or boolean), but this has evaluated to a {}: ==> {}\n\n----\nTip: You had a numerical value inside the []. Currently that's only supported for sequences (lists) and strings. To get a Map item with a non-string key, use myMap?api.get(myKey).\n----",
+            t.type_name,
+            crate::core::environment::expr_desc(target)
+        )));
     }
     if let Some(r) = &k.range {
         // 范围键（Java DynamicKeyName 的 RangeModel 分支：SequenceOrStringSlicer，
