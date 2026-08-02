@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 freemarker = { path = "../freemarker" }
 bigdecimal.workspace = true
+num-bigint.workspace = true
 indexmap.workspace = true
 fancy-regex.workspace = true
 regex.workspace = true

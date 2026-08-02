@@ -18,8 +18,11 @@
 | V11 | 空文本 ignorable 回归（switch case 尾随空文本阻断后 case 的 \n 剥离） | parser/grammar.rs | Java `isIgnorable(空)=true` → heeds=false（TextBlock.java:349-352）；heeds_opening("") 空循环落真值错误阻断链 | whitespace-trim 专项修复后由 golden switch/loopvariable 守护 |
 | V12 | 块的末叶行号 threading | parser/grammar.rs | Java 链从块内最后一个叶的 endLine 继续（`<#if y>foo\n  </#if>bar` —— "bar" 在行 2 与 endLine 匹配）；span.line 近似导致 bar 无法匹配 | whitespace_stripping_flags 断言固化 |
 | V13 | 浮点比较 vs 格式化双路径 | value.rs / builtins/format.rs | toBigDecimal 用 toString 最短表示（0.05f == Decimal(0.05)）；DecimalFormat 快路径用加宽 double 最短表示（1.01?float=1.00999999）——混用会同时破坏比较与格式化 | golden numerical-cast/number-math-builtins |
+| V14 | Java 测试逻辑 1:1 移植矩阵 | freemarker-test/tests/java_ported/（105 模块 509 测试） | 6 个后台 agent 并行产出：4 个修复 agent 处理 46 个失败模块、2 个翻译 agent 补齐 16 个缺失类；jar 探针 ProbeMacro2-4 实测 `.args` 惰性语义 | 本轮（v11） |
+| V15 | `.args` 惰性构建回归 | environment.rs build_args_special + exec.rs macro_catch_all_and_positional + with_args_built_in_test | **真实引擎 bug**：v1 急切构建 `.args` 使纯位置 catch-all 宏误报 "must only be called with named arguments"；Java 惰性构造（BuiltinVariable.Args 访问时才构建）→ 修复后 3 个错误断言改为 Java 正确输出（jar 实测 o=[1, null, null, 4] 等） | 本轮（v11） |
+| V16 | format.rs 负数切分 / f32 扩宽 | builtins/format.rs | **两个真实 bug**：java_float_string 负数时把 `-` 当数字位切分（-1.2 → "-.12"）；format_c_float 将 f32 扩为 f64（1.2f → "1.2000000476837158"）→ 重构 java_float_string_impl + 新增 java_float_string_f32 | 翻译 agent T2 对照 CTemplateNumberFormatTest 发现 |
 
 ## 统计
 
-- VALUE_ADD 测试 13 组（含多断言），全部为可观察断言
-- 其中 V1、V3、V5 捕获了真实 bug（运算舍入、死循环、死锁）；trim 专项的 R16-R19 义务由 golden 全量守护
+- VALUE_ADD 测试 16 组（含多断言），全部为可观察断言
+- 其中 V1、V3、V5、V15、V16 捕获了真实 bug（运算舍入、死循环、死锁、.args 急切构建、float 格式化两处）；trim 专项的 R16-R19 义务由 golden 全量守护

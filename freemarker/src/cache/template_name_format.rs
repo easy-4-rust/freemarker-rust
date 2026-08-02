@@ -144,8 +144,13 @@ impl TemplateNameFormat for Default020300 {
             if parent_dir_loc == 0 {
                 return Err(root_leaving_error(name));
             }
-            // Java:192 —— lastIndexOf('/', parentDirPathLoc-1)；字节扫描避免 UTF-8 边界问题
-            let previous_slash_loc = path.as_bytes()[..parent_dir_loc - 1]
+            // Java:192 —— lastIndexOf('/', parentDirPathLoc-1) 含 parentDirPathLoc-1
+            // 位置（Java substring 语义 [0..parentDirPathLoc]）；字节扫描避免
+            // UTF-8 边界问题。注：切片必须到 parent_dir_loc（含），否则
+            // "x://../foo" 之类前一步骤紧贴 "/../" 时丢边界斜杠
+            // （"x://../foo" 应得 "x:/foo"、而非 "foo"；"x://../../../foo"
+            // 应越界报错而非得出 "foo"）
+            let previous_slash_loc = path.as_bytes()[..parent_dir_loc]
                 .iter()
                 .rposition(|&b| b == b'/');
             // Java:193-194 —— substring(0, previousSlashLoc+1) + substring(parentDirPathLoc + 4)

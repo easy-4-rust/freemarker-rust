@@ -93,12 +93,13 @@ fn format_c_float(n: f32) -> String {
         let abs = n.abs();
         if abs < 1e-3 && abs > 1e-7 {
             // Java：new BigDecimal(num.toString()).toString()
-            let s = java_float_string(n as f64);
+            // 注意用 f32 自身最短表示（不能先扩为 f64：1.2f → 1.2000000476837158d）
+            let s = java_float_string_f32(n);
             return BigDecimal::from_str(&s).map(|b| b.to_string()).unwrap_or(s);
         }
         // float 无 absN >= 1E7 分支（Java 注释：那些数字对 float 而言都是整数）
     }
-    remove_redundant_dot0(&java_float_string(n as f64))
+    remove_redundant_dot0(&java_float_string_f32(n))
 }
 
 /// 去掉冗余的 ".0"（Java `CTemplateNumberFormat.removeRedundantDot0`）：
@@ -123,11 +124,29 @@ fn remove_redundant_dot0(s: &str) -> String {
 /// - 其余 → `d.ddddE±xx` 科学计数。
 ///   Rust `{:e}` 也是最短往返表示，只需把指数形态转换为 Java 风格。
 fn java_float_string(n: f64) -> String {
-    let s = format!("{:e}", n);
+    java_float_string_impl(&format!("{:e}", n))
+}
+
+/// f32 版（同 f64 逻辑）：先扩为 f64 再 `{:e}` 会得到 f64 的最短表示而非 f32 的
+/// （`1.2f` → `1.2000000476837158`），故直接对 f32 用 `{:e}`（Rust 对 f32 同样
+/// 输出可往返的最短表示，`1.2f` → `"1.2e0"`）。
+fn java_float_string_f32(n: f32) -> String {
+    java_float_string_impl(&format!("{:e}", n))
+}
+
+/// `{:e}` 输出 → Java 风格十进制/科学计数
+/// （先剥符号再拼位数，避免负数时把 `-` 当数字位切分，如 `-1.2` → `-.12` 的 bug）
+fn java_float_string_impl(s: &str) -> String {
     let (mant, exp) = s.split_once('e').expect("Rust {:e} always has exponent");
     let exp: i32 = exp.parse().expect("exponent parses");
-    let digits: String = mant.chars().filter(|c| *c != '.').collect();
-    let int_digits = mant.split_once('.').map_or(mant.len(), |(i, _)| i.len());
+    let (sign, mantissa) = match mant.strip_prefix('-') {
+        Some(m) => ("-", m),
+        None => ("", mant),
+    };
+    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    let int_digits = mantissa
+        .split_once('.')
+        .map_or(mantissa.len(), |(i, _)| i.len());
     // Java：exponent < -3 或 >= 7 → 科学计数
     if !(-3..7).contains(&exp) {
         // 去掉整数的 ".0"（"1.0E-16" → "1E-16"）：Java Double.toString 对整 mantissa 输出 "1.0"，
@@ -137,17 +156,17 @@ fn java_float_string(n: f64) -> String {
         } else {
             format!("{}.{}", &digits[..int_digits], &digits[int_digits..])
         };
-        format!("{}E{}", m, exp)
+        format!("{sign}{m}E{exp}")
     } else if exp < 0 {
         // 0.00...ddd
         let zeros = "0".repeat((-(exp + 1)) as usize);
-        format!("0.{}{}", zeros, digits)
+        format!("{sign}0.{zeros}{digits}")
     } else {
         let point = (exp + 1) as usize;
         if point >= digits.len() {
-            format!("{}{}.0", digits, "0".repeat(point - digits.len()))
+            format!("{sign}{digits}{}.0", "0".repeat(point - digits.len()))
         } else {
-            format!("{}.{}", &digits[..point], &digits[point..])
+            format!("{sign}{}.{}", &digits[..point], &digits[point..])
         }
     }
 }

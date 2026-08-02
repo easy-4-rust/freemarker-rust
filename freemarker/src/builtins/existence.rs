@@ -11,10 +11,17 @@ use crate::error::Result;
 use crate::template::TModel;
 use crate::utility::java_trim;
 
-/// 目标求值为标量（Java BuiltInForString 语义；数字/布尔强制转换）
-fn target_string(env: &mut Environment, target: &Expr) -> Result<String> {
-    let m = crate::core::eval::eval(env, target)?;
-    crate::builtins::eval_util::coerce_to_string(env, &m)
+/// 目标求值为标量（Java BuiltInForString 语义；数字/布尔强制转换）。
+/// 注意：`*_to_null` 是 Java `BuiltInsForExistenceHandling.ExistenceBuiltIn`
+/// （evalMaybeNonexistentTarget）：目标缺失（仅括号/标识符表达式捕获
+/// InvalidReferenceException）→ 结果为 null/缺失（`v?blank_to_null!'-'` → '-'）
+fn target_string(env: &mut Environment, target: &Expr) -> Result<Option<String>> {
+    let m = crate::core::eval::eval_lenient(env, target)?;
+    if m.is_nothing() {
+        // Java evalMaybeNonexistentTarget → null → *_to_null 返回 null
+        return Ok(None);
+    }
+    crate::builtins::eval_util::coerce_to_string(env, &m).map(Some)
 }
 
 /// ?empty_to_null —— Java empty_to_nullBI
@@ -23,12 +30,14 @@ pub fn empty_to_null(
     target: &Expr,
     _args: Option<&[Expr]>,
 ) -> Result<Option<TModel>> {
-    let s = target_string(env, target)?;
-    Ok(Some(if s.is_empty() {
-        TModel::nothing()
-    } else {
-        TModel::from_scalar(s)
-    }))
+    match target_string(env, target)? {
+        None => Ok(Some(TModel::nothing())),
+        Some(s) => Ok(Some(if s.is_empty() {
+            TModel::nothing()
+        } else {
+            TModel::from_scalar(s)
+        })),
+    }
 }
 
 /// ?blank_to_null —— Java blank_to_nullBI
@@ -37,12 +46,14 @@ pub fn blank_to_null(
     target: &Expr,
     _args: Option<&[Expr]>,
 ) -> Result<Option<TModel>> {
-    let s = target_string(env, target)?;
-    Ok(Some(if java_trim(&s).is_empty() {
-        TModel::nothing()
-    } else {
-        TModel::from_scalar(s)
-    }))
+    match target_string(env, target)? {
+        None => Ok(Some(TModel::nothing())),
+        Some(s) => Ok(Some(if java_trim(&s).is_empty() {
+            TModel::nothing()
+        } else {
+            TModel::from_scalar(s)
+        })),
+    }
 }
 
 /// ?trim_to_null —— Java trim_to_nullBI
@@ -51,11 +62,15 @@ pub fn trim_to_null(
     target: &Expr,
     _args: Option<&[Expr]>,
 ) -> Result<Option<TModel>> {
-    let s = target_string(env, target)?;
-    let t = java_trim(&s).to_string();
-    Ok(Some(if t.is_empty() {
-        TModel::nothing()
-    } else {
-        TModel::from_scalar(t)
-    }))
+    match target_string(env, target)? {
+        None => Ok(Some(TModel::nothing())),
+        Some(s) => {
+            let t = java_trim(&s).to_string();
+            Ok(Some(if t.is_empty() {
+                TModel::nothing()
+            } else {
+                TModel::from_scalar(t)
+            }))
+        }
+    }
 }

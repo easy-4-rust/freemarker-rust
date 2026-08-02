@@ -9,6 +9,106 @@ use freemarker::cache::StringLoader;
 use freemarker::template::Configuration;
 use std::sync::Arc;
 
+/// glob → 正则（对应 Java `StringUtil.globToRegularExpression(glob, caseInsensitive)`，
+/// StringUtil.java:2100+；Java 抛 IllegalArgumentException 处返回 Err）。
+/// 识别 `?`（单个非 `/` 字符）、`*`（零或多个非 `/` 字符）、`**`（零或多个目录
+/// 段，仅允许在开头或 `/` 之后、且后随 `/` 或结尾）、`\`（转义下一个字符）；
+/// `[` 与 `{` 报错（unsupported）。供 TemplateSourceMatcher / StringUtil 的
+/// glob 测试共用。
+pub fn glob_to_regex(glob: &str, case_insensitive: bool) -> Result<regex::Regex, String> {
+    let mut regex = String::new();
+    let mut next_start = 0usize;
+    let mut escaped = false;
+    let chars: Vec<char> = glob.chars().collect();
+    let ln = chars.len();
+    let mut idx = 0usize;
+    while idx < ln {
+        let c = chars[idx];
+        if !escaped {
+            if c == '?' {
+                append_literal_glob_section(&mut regex, glob, next_start, idx);
+                regex.push_str("[^/]");
+                next_start = idx + 1;
+            } else if c == '*' {
+                append_literal_glob_section(&mut regex, glob, next_start, idx);
+                if idx + 1 < ln && chars[idx + 1] == '*' {
+                    if !(idx == 0 || chars[idx - 1] == '/') {
+                        return Err(format!(
+                            "The \"**\" wildcard must be directly after a \"/\" or it must be at the beginning, in this glob: {glob}"
+                        ));
+                    }
+                    if idx + 2 == ln {
+                        // 结尾 "**"
+                        regex.push_str(".*");
+                        idx += 1;
+                    } else {
+                        // "**/"
+                        if !(idx + 2 < ln && chars[idx + 2] == '/') {
+                            return Err(format!(
+                                "The \"**\" wildcard must be followed by \"/\", or must be at tehe end, in this glob: {glob}"
+                            ));
+                        }
+                        regex.push_str("(.*?/)*");
+                        idx += 2; // "*/".len()
+                    }
+                } else {
+                    regex.push_str("[^/]*");
+                }
+                next_start = idx + 1;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '[' || c == '{' {
+                return Err(format!(
+                    "The \"{c}\" glob operator is currently unsupported (precede it with \\ for literal matching), in this glob: {glob}"
+                ));
+            }
+        } else {
+            escaped = false;
+        }
+        idx += 1;
+    }
+    append_literal_glob_section(&mut regex, glob, next_start, glob.chars().count());
+    // Java 用 Pattern.matcher(s).matches()（全串匹配）；regex::is_match 是
+    // 部分匹配——加锚点对齐全串语义
+    let anchored = format!("^(?:{regex})$");
+    let mut builder = regex::RegexBuilder::new(&anchored);
+    if case_insensitive {
+        builder.case_insensitive(true);
+    }
+    builder.build().map_err(|e| e.to_string())
+}
+
+/// 对应 Java `appendLiteralGlobSection`：字面段 Pattern.quote + 去转义
+fn append_literal_glob_section(regex: &mut String, glob: &str, start: usize, end: usize) {
+    if start == end {
+        return;
+    }
+    let part = unescape_literal_glob_section(
+        &glob
+            .chars()
+            .skip(start)
+            .take(end - start)
+            .collect::<String>(),
+    );
+    regex.push_str(&regex::escape(&part));
+}
+
+/// 对应 Java `unescapeLiteralGlobSection`：剥掉字面段中的转义反斜杠
+fn unescape_literal_glob_section(s: &str) -> String {
+    let mut out = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(n) = chars.next() {
+                out.push(n);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// 测试资源镜像根（java-tests/ 下保留的测试所需文件）
 pub const JAVA_TEST_RES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/java-tests");
 
@@ -186,5 +286,52 @@ pub fn render_error(
     ) {
         Ok(_) => panic!("The template had to fail: {ftl}"),
         Err(e) => e,
+    }
+}
+
+/// 带数据模型断言渲染失败，且消息包含全部子串（对应 `TemplateTest.assertErrorContains` +
+/// `setDataModel`；子串以 `\!` 开头 = 断言**不**包含）。返回消息供进一步逐字断言。
+pub fn assert_error_contains_with_dm(
+    c: &Configuration,
+    _loader: &Arc<StringLoader>,
+    ftl: &str,
+    dm: freemarker::template::TModel,
+    substrings: &[&str],
+) -> String {
+    let cfg = std::rc::Rc::new(c.clone());
+    let t = match freemarker::parser::parse(&cfg, "adhoc", ftl) {
+        Ok(t) => t,
+        Err(e) => {
+            // 解析期错误（Java ParseException → getEditorMessage）
+            let msg = e.to_user_message();
+            assert_contains_all(&msg, substrings, ftl);
+            return msg;
+        }
+    };
+    let mut out = Vec::new();
+    match t.process(dm, &mut out) {
+        Ok(_) => panic!("The template had to fail: {ftl}"),
+        Err(e) => {
+            let msg = e.to_user_message();
+            assert_contains_all(&msg, substrings, ftl);
+            msg
+        }
+    }
+}
+
+/// 带数据模型渲染失败并返回消息（不检查子串；供精确断言）
+pub fn render_error_with_dm(
+    c: &Configuration,
+    _loader: &Arc<StringLoader>,
+    ftl: &str,
+    dm: freemarker::template::TModel,
+) -> String {
+    let cfg = std::rc::Rc::new(c.clone());
+    let t = freemarker::parser::parse(&cfg, "adhoc", ftl)
+        .unwrap_or_else(|e| panic!("parse failed: {e}"));
+    let mut out = Vec::new();
+    match t.process(dm, &mut out) {
+        Ok(_) => panic!("The template had to fail: {ftl}"),
+        Err(e) => e.to_user_message(),
     }
 }

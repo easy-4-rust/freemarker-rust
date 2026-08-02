@@ -277,6 +277,18 @@ pub struct MacroFrame {
     /// 调用方局部上下文栈快照（Java `prevLocalContextStack`；`<#nested>` 恢复用；
     /// 调用方宏帧链由 macro_frames 栈顶自然表达，等价 Java `prevMacroContext`）
     pub(crate) caller_local_stack: Vec<LocalEntry>,
+    /// `.args` 特殊变量值（Java Macro.Context.argsSpecialVariableValue——
+    /// checkParamsSetAndApplyDefaults :344-397：macro → 参数哈希、function → 参数序列）
+    ///
+    /// **惰性构建**：Java 只在模板实际访问 `.args` 时构建该值（BuiltinVariable.Args），
+    /// 因此位置 catch-all 非空的"仅 .args 才报错"限制只在访问时触发；不访问 `.args`
+    /// 的宏（如 `<@m 1 2 3/>` 纯位置调用）不受影响。构建依赖宏定义与函数/宏标志，
+    /// 故帧保存快照，首次访问时经 `build_args_special` 填充。
+    pub(crate) args_value: RefCell<Option<TModel>>,
+    /// 宏定义快照（供惰性构建 `.args`）。
+    pub(crate) def: Rc<MacroDef>,
+    /// 是否为函数（供惰性构建 `.args`：函数 → 序列、宏 → 哈希）。
+    pub(crate) is_function: bool,
 }
 
 impl MacroFrame {
@@ -827,6 +839,9 @@ impl<'a> Environment<'a> {
             body_params,
             caller_ns: self.current_ns.clone(),
             caller_local_stack: self.local_stack.clone(),
+            args_value: RefCell::new(None),
+            def: mv.def.clone(),
+            is_function,
         });
         bind_macro_args(self, &frame, &mv.def, args)?;
         // Java :880-894：压帧、切换命名空间、清空局部上下文
@@ -836,6 +851,9 @@ impl<'a> Environment<'a> {
         let prev_local = std::mem::take(&mut self.local_stack);
         // Java :893 checkParamsSetAndApplyDefaults（宏上下文内求值默认参数）
         apply_macro_defaults(self, &frame, &mv.def)?;
+        // Java :344-397：`.args` 特殊变量值**惰性**构建——仅在模板访问 `.args` 时
+        // 由 build_args_special 填充（Java BuiltinVariable.Args 访问时才构造，且
+        // "位置 catch-all 非空 + .args" 限制只在访问时触发）；此处不再急切构建
         let r = if is_function {
             let sig = self
                 .capture(|env| env.run(&mv.def.body))
@@ -1090,7 +1108,14 @@ fn bind_macro_args(
     let mut positional_catch_all: Option<Vec<TModel>> = None;
 
     for (arg_name, arg_expr) in args {
-        let value = eval::eval(env, arg_expr)?;
+        // Java Environment.getVariable 不抛错（缺失变量 → null）：参数求值 lenient
+        // （`f(11, null, 33)` 的 null 即缺失变量，Java checkParamsSetAndApplyDefaults
+        // 对有默认值的参数回退默认值——Macro.java:273-322）
+        let value = match eval::eval(env, arg_expr) {
+            Ok(v) => v,
+            Err(TemplateError::InvalidReference { .. }) => TModel::nothing(),
+            Err(e) => return Err(e),
+        };
         // Java Macro.Context.checkParamsSetAndApplyDefaults（Macro.java:273-322）：
         // 参数值为 null 时——有默认值 → 求默认值；无默认值且 classic 兼容 → 参数
         // 保持未设置（变量查找回退外层作用域）；strict → "required parameter ...
@@ -1229,6 +1254,66 @@ fn apply_macro_defaults(
         }
     }
     Ok(())
+}
+
+/// 构造 `.args` 特殊变量值 —— 对应 Java `Macro.Context.checkParamsSetAndApplyDefaults`
+/// （Macro.java:344-397）：
+/// - macro → SimpleHash（参数名 → 最终值，含默认值解析后；命名 catch-all 哈希展开；
+///   位置 catch-all 序列非空 → "The macro can only by called with named arguments,
+///   because it uses both .args and a non-empty catch-all parameter."）
+/// - function → SimpleSequence（位置参数值 + 位置 catch-all 展开）
+///
+/// 该函数被 `BuiltinVariable.Args` 惰性调用（Java 仅在访问 `.args` 时构造）；
+/// `pub(crate)` 供 eval.rs 的 `.args` 求值路径复用。
+pub(crate) fn build_args_special(
+    frame: &Rc<MacroFrame>,
+    def: &MacroDef,
+    is_function: bool,
+) -> Result<TModel> {
+    let normal: Vec<&MacroParam> = def.params.iter().filter(|p| !p.catch_all).collect();
+    let catch_all_name = def
+        .params
+        .iter()
+        .find(|p| p.catch_all)
+        .map(|p| p.name.clone());
+    let locals = frame.locals.borrow();
+    let get = |name: &str| locals.get(name).cloned().unwrap_or_else(TModel::nothing);
+    if is_function {
+        // Java :346-370：SimpleSequence（参数值 + 位置 catch-all 展开）
+        let mut vals: Vec<TModel> = normal.iter().map(|p| get(&p.name)).collect();
+        if let Some(cn) = &catch_all_name {
+            let catch = get(cn);
+            if let Ok(seq) = catch.get_sequence() {
+                for i in 0..seq.size()? {
+                    vals.push(seq.get(i)?);
+                }
+            }
+        }
+        return Ok(TModel::from_sequence(vals));
+    }
+    // Java :374-396：SimpleHash（参数名 → 值 + 命名 catch-all 展开）
+    let mut map: IndexMap<String, TModel> = IndexMap::new();
+    for p in &normal {
+        map.insert(p.name.clone(), get(&p.name));
+    }
+    if let Some(cn) = &catch_all_name {
+        let catch = get(cn);
+        if catch.is_sequence() {
+            if catch.get_sequence()?.size()? != 0 {
+                return Err(TemplateError::misc(
+                    "The macro can only by called with named arguments, because it uses both .args and a non-empty catch-all parameter.",
+                ));
+            }
+        } else if let Some(h) = &catch.hash_ex {
+            // Java Macro.java:387-394：catchAllHash.keyValuePairIterator（哈希条目展开）
+            for k in h.keys()? {
+                if let Some(v) = h.get(&k)? {
+                    map.insert(k, v);
+                }
+            }
+        }
+    }
+    Ok(TModel::from_hash(map))
 }
 
 /// Java `_CoreStringUtils.jQuote` 的简化形式（错误消息用）

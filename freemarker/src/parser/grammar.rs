@@ -61,6 +61,10 @@ struct Parser<'a> {
     in_function: u32,
     /// breakable/continuable 嵌套计数（#list with as / #items / #switch / #foreach）
     loop_nesting: u32,
+    /// continuable（#continue 合法）嵌套计数 —— Java FTL.jj 的
+    /// `continuableDirectiveNesting`：#switch 只算 breakable、不算 continuable，
+    /// 因此 #continue 在 #switch 内非法（breakableDirectiveNesting 除外）
+    continue_nesting: u32,
     /// 迭代块上下文栈（Java ParserIteratorBlockContext；#items/#sep 的嵌套校验）
     iter_stack: Vec<IterCtx>,
     /// 当前表达式词法上下文（标签参数区 vs 插值内部）
@@ -92,6 +96,7 @@ impl<'a> Parser<'a> {
             in_macro: 0,
             in_function: 0,
             loop_nesting: 0,
+            continue_nesting: 0,
             iter_stack: Vec::new(),
             ctx: ExprCtx::Tag { square: false },
             buf: Vec::new(),
@@ -699,7 +704,7 @@ impl<'a> Parser<'a> {
             }
             "continue" => {
                 self.expect_tag_end_raw()?;
-                if self.loop_nesting == 0 {
+                if self.continue_nesting == 0 {
                     return Err(self.err(
                         line,
                         col,
@@ -1037,10 +1042,12 @@ impl<'a> Parser<'a> {
         });
         if has_var {
             self.loop_nesting += 1;
+            self.continue_nesting += 1;
         }
         let r = self.list_body(line, col, var, var2, seq);
         if has_var {
             self.loop_nesting -= 1;
+            self.continue_nesting -= 1;
         }
         self.iter_stack.pop();
         r
@@ -1062,7 +1069,19 @@ impl<'a> Parser<'a> {
             BlockStop::EndTag(_) => {}
             BlockStop::Dir(n) if n == "else" => {
                 self.expect_tag_end_raw()?;
-                let (els, stop) = self.parse_block(&["list"], &[])?;
+                // Java List()：主块（MixedContentElements）解析后 breakable/
+                // continuable 嵌套已递减，再解析 `#else` 块 —— 故 `#else` 内的
+                // #break/#continue 非法（Java FTL.jj 2813-2831）
+                let saved_loop = self.loop_nesting;
+                let saved_continue = self.continue_nesting;
+                if var.is_some() || var2.is_some() {
+                    self.loop_nesting -= 1;
+                    self.continue_nesting -= 1;
+                }
+                let els_res = self.parse_block(&["list"], &[]);
+                self.loop_nesting = saved_loop;
+                self.continue_nesting = saved_continue;
+                let (els, stop) = els_res?;
                 match stop {
                     BlockStop::EndTag(_) => else_ = Some(els),
                     BlockStop::Eof => {
@@ -1127,6 +1146,7 @@ impl<'a> Parser<'a> {
             items_open: false,
         });
         self.loop_nesting += 1;
+        self.continue_nesting += 1;
         let r = (|| {
             let (body, stop) = self.parse_block(&["foreach"], &[])?;
             match stop {
@@ -1152,6 +1172,7 @@ impl<'a> Parser<'a> {
             }
         })();
         self.loop_nesting -= 1;
+        self.continue_nesting -= 1;
         self.iter_stack.pop();
         r
     }
@@ -1208,6 +1229,7 @@ impl<'a> Parser<'a> {
         ctx.is_items = true;
         ctx.items_open = true;
         self.loop_nesting += 1;
+        self.continue_nesting += 1;
         let r = (|| {
             let (body, stop) = self.parse_block(&["items"], &[])?;
             match stop {
@@ -1227,6 +1249,7 @@ impl<'a> Parser<'a> {
             }
         })();
         self.loop_nesting -= 1;
+        self.continue_nesting -= 1;
         // Java Items()：END_ITEMS 后 iterCtx.loopVarName = null（FTL.jj 2966-2968）——
         // 同一 #list 中顺序多个 #items 合法（list3 用例 switch 的不同分支）；
         // "已进入过" 校验由 is_items（kind）承担，嵌套校验由 items_open 承担
@@ -1580,19 +1603,25 @@ impl<'a> Parser<'a> {
 
         // 宏体内部 breakable/continuable 归零（Java 防 `#list><#macro><#break>` 漏洞）
         let saved_loop = self.loop_nesting;
+        let saved_continue = self.continue_nesting;
         self.loop_nesting = 0;
+        self.continue_nesting = 0;
         if is_function {
             self.in_function += 1;
         } else {
             self.in_macro += 1;
         }
-        let (body, stop) = self.parse_block(&["macro", "function"], &[])?;
+        // 注意：即使 parse_block 报错（如宏体内非法 `<#break>`）也必须恢复
+        // loop_nesting，否则外层 #list 结束处 `loop_nesting -= 1` 会下溢 panic
+        let body_res = self.parse_block(&["macro", "function"], &[]);
         if is_function {
             self.in_function -= 1;
         } else {
             self.in_macro -= 1;
         }
         self.loop_nesting = saved_loop;
+        self.continue_nesting = saved_continue;
+        let (body, stop) = body_res?;
 
         let end_ok = match &stop {
             BlockStop::EndTag(n) if is_function && n == "function" => true,
@@ -5227,7 +5256,12 @@ mod tests {
         let ElementKind::Assign { namespace, .. } = &t.root[0].kind else {
             panic!("expected Assign");
         };
-        assert_eq!(namespace.as_deref(), Some("ns"));
+        // namespace 是 Option<Expr>（运行期求值取名字符串）；`in ns` 解析为 Ident("ns")
+        let ns_name = namespace.as_ref().map(|e| match &e.kind {
+            ExprKind::Ident(n) => n.clone(),
+            _ => String::new(),
+        });
+        assert_eq!(ns_name, Some("ns".to_string()));
 
         // 块赋值
         let t = parse_ok("<#assign x>body</#assign>");

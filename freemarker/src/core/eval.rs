@@ -276,9 +276,29 @@ fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result
         // Java :264-267：TIME_ZONE → getTimeZone().getID()
         BuiltinVar::TimeZone => Ok(TModel::from_scalar(env.settings.time_zone_id.clone())),
         // Java :257-263：ARGS → 宏/函数参数哈希（仅宏内；v1 不支持 → 明确报错）
-        BuiltinVar::Args => Err(TemplateError::misc(
-            "The .args special variable (macro arguments hash) is not supported by this implementation.",
-        )),
+        // Java BuiltinVariable.java:269-276 + getRequiredMacroContext :285-293：
+        // .args → 当前宏帧的参数值（macro → 哈希 / function → 序列）；
+        // 宏外 → "Can't get .args here, as there's no macro or function (that's
+        // implemented in the template) call in context."
+        // Java BuiltinVariable.Args 访问时才构造（惰性）：位置 catch-all 非空 +
+        // 访问 .args → 报错；不访问 .args 的宏不受该限制（jar 实测 2.3.34）
+        BuiltinVar::Args => match env.get_current_macro_frame() {
+            Some(frame) => {
+                if let Some(v) = frame.args_value.borrow().clone() {
+                    return Ok(v);
+                }
+                let v = crate::core::environment::build_args_special(
+                    &frame,
+                    &frame.def,
+                    frame.is_function,
+                )?;
+                *frame.args_value.borrow_mut() = Some(v.clone());
+                Ok(v)
+            }
+            None => Err(TemplateError::misc(
+                "Can't get .args here, as there's no macro or function (that's implemented in the template) call in context.",
+            )),
+        },
     }
 }
 
@@ -1258,7 +1278,7 @@ impl TemplateCollectionModel for NonListableRightUnboundedRange {
 /// （Dot/DynKey 等在 target null 时抛 IRE）错误直接上传；标识符等"eval 返回 null 不抛"
 /// 的表达式在本引擎解析层抛 Err（get_variable）→ 此处等价捕获（Java：v!'-' → null →
 /// 默认值/存在性判定）。
-fn eval_lenient(env: &mut crate::core::Environment, target: &Expr) -> Result<TModel> {
+pub(crate) fn eval_lenient(env: &mut crate::core::Environment, target: &Expr) -> Result<TModel> {
     let catches = matches!(&target.kind, ExprKind::Paren(_) | ExprKind::Ident(_));
     match eval(env, target) {
         Ok(m) => Ok(m),
@@ -1960,7 +1980,7 @@ fn builtin_impl(
             let needle = crate::builtins::sequences::eval_arg_lenient(env, args.exprs, 0)?;
             let items = crate::builtins::sequences::seq_or_collection_items(&m, "seq_contains")?;
             for (i, item) in items.iter().enumerate() {
-                if crate::builtins::sequences::models_equal(i, item, &needle)? {
+                if crate::builtins::sequences::models_equal(i, item, &needle, Some(env))? {
                     return Ok(Some(TModel::from_boolean(true)));
                 }
             }
@@ -2033,6 +2053,16 @@ fn builtin_impl(
                     "Failed to \"?eval\" string with this error:\n\n{e}\n\nThe failing expression:"
                 ))
             })?;
+            // Java：?eval 字符串的源码没有宏上下文——`.args` 在其中静态非法
+            // （FMParser 的 args 特殊变量检查；jar 实测消息逐字）
+            if matches!(
+                expr.kind,
+                crate::core::ExprKind::BuiltinVar(crate::core::BuiltinVar::Args)
+            ) {
+                return Err(TemplateError::misc(format!(
+                    "Failed to \"?eval\" string with this error:\n\n---begin-message---\nSyntax error in ?eval-ed string in line 1, column 3:\nThe \"args\" special variable must be inside a macro or function in the template source code.\n---end-message---\n\nThe failing expression:\n==> '{s}'?eval"
+                )));
+            }
             match eval(env, &expr) {
                 Ok(v) => Ok(Some(v)),
                 Err(TemplateError::InvalidReference { .. }) => Ok(Some(TModel::nothing())),

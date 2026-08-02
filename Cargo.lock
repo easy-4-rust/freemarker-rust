@@ -178,6 +178,7 @@ dependencies = [
  "fancy-regex",
  "freemarker",
  "indexmap",
+ "num-bigint",
  "regex",
  "serde",
  "serde_json",

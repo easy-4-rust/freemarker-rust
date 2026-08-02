@@ -19,7 +19,7 @@
 //!   字符串/布尔上的 > 运算报错（EvalUtil.compare :262-277）。
 
 use crate::builtins::eval_util::{arg_count, check_arg_count};
-use crate::core::environment::{BodyCtx, LambdaValue, LocalEntry};
+use crate::core::environment::{model_to_string, BodyCtx, LambdaValue, LocalEntry};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;
@@ -339,7 +339,7 @@ fn seq_index_of_impl(
         } else {
             let mut f = -1;
             for (i, item) in items.iter().enumerate().skip(start) {
-                if models_equal(i, item, &searched)? {
+                if models_equal(i, item, &searched, Some(env))? {
                     f = i as i64;
                     break;
                 }
@@ -355,7 +355,7 @@ fn seq_index_of_impl(
             let start = from.min(items.len() as i64 - 1).max(0) as usize;
             let mut f = -1;
             for (i, item) in items.iter().enumerate().take(start + 1).rev() {
-                if models_equal(i, item, &searched)? {
+                if models_equal(i, item, &searched, Some(env))? {
                     f = i as i64;
                     break;
                 }
@@ -376,17 +376,28 @@ pub(crate) fn models_equal(
     seq_item_index: usize,
     seq_item: &TModel,
     searched: &TModel,
+    env: Option<&mut Environment>,
 ) -> Result<bool> {
-    models_equal_inner(seq_item, searched).map_err(|e| {
+    models_equal_inner(seq_item, searched, env).map_err(|e| {
         TemplateError::misc(format!(
             "This error has occurred when comparing sequence item at 0-based index {seq_item_index} to the searched item:\n{e}"
         ))
     })
 }
 
-fn models_equal_inner(a: &TModel, b: &TModel) -> Result<bool> {
+fn models_equal_inner(a: &TModel, b: &TModel, mut env: Option<&mut Environment>) -> Result<bool> {
+    // Java EvalUtil.compare：classic-compatible 模式（FREEMARKER-227 seq_contains 宽松比较）
+    let classic = env
+        .as_ref()
+        .map(|e| e.settings.classic_compatible)
+        .unwrap_or(false);
     if a.is_nothing() || b.is_nothing() {
-        // Java :192-223：left/rightNullReturnsFalse → false（不报错）
+        // Java :192-223：left/rightNullReturnsFalse → false（不报错）；
+        // classic 模式 null → EMPTY_STRING（EvalUtil.compare :193-205）再比较
+        if classic {
+            let e = env.as_deref_mut().expect("classic 模式必有 env");
+            return Ok(model_to_string(e, a)? == model_to_string(e, b)?);
+        }
         return Ok(false);
     }
     if a.is_number() && b.is_number() {
@@ -426,6 +437,11 @@ fn models_equal_inner(a: &TModel, b: &TModel) -> Result<bool> {
     }
     if a.is_boolean() && b.is_boolean() {
         return Ok(a.get_boolean()? == b.get_boolean()?);
+    }
+    if classic {
+        // Java :303-308：classic 兼容 → 双方转纯文本比较（coerceModelToPlainText）
+        let e = env.as_mut().expect("classic 模式必有 env");
+        return Ok(model_to_string(e, a)? == model_to_string(e, b)?);
     }
     // Java :303-326：typeMismatchMeansNotEqual → EQUALS → false（不报错）
     Ok(false)
@@ -954,33 +970,43 @@ mod tests {
         // null/缺失 → false（Java left/rightNullReturnsFalse）
         let nothing = TModel::nothing();
         let a = TModel::from_scalar("a".to_string());
-        assert!(!models_equal(0, &nothing, &a).unwrap());
-        assert!(!models_equal(0, &a, &nothing).unwrap());
+        assert!(!models_equal(0, &nothing, &a, None).unwrap());
+        assert!(!models_equal(0, &a, &nothing, None).unwrap());
         // 数字按值、字符串按内容、布尔相同
         assert!(models_equal(
             0,
             &TModel::from_number(TNumber::from_i64(1)),
-            &TModel::from_number(TNumber::Decimal(bigdecimal::BigDecimal::from(1)))
+            &TModel::from_number(TNumber::Decimal(bigdecimal::BigDecimal::from(1))),
+            None
         )
         .unwrap());
         assert!(models_equal(
             0,
             &TModel::from_scalar("x".to_string()),
-            &TModel::from_scalar("x".to_string())
+            &TModel::from_scalar("x".to_string()),
+            None
         )
         .unwrap());
-        assert!(models_equal(0, &TModel::from_boolean(true), &TModel::from_boolean(true)).unwrap());
+        assert!(models_equal(
+            0,
+            &TModel::from_boolean(true),
+            &TModel::from_boolean(true),
+            None
+        )
+        .unwrap());
         // 其余类型组合 → false（typeMismatchMeansNotEqual）
         assert!(!models_equal(
             0,
             &TModel::from_number(TNumber::from_i64(1)),
-            &TModel::from_scalar("1".to_string())
+            &TModel::from_scalar("1".to_string()),
+            None
         )
         .unwrap());
         assert!(!models_equal(
             0,
             &TModel::from_sequence(vec![]),
-            &TModel::from_scalar("a".to_string())
+            &TModel::from_scalar("a".to_string()),
+            None
         )
         .unwrap());
     }
@@ -994,14 +1020,21 @@ mod tests {
             kind: DateType::Date,
             is_sql: false,
         };
-        assert!(models_equal(0, &TModel::from_date(d1.clone()), &TModel::from_date(d2)).unwrap());
+        assert!(models_equal(
+            0,
+            &TModel::from_date(d1.clone()),
+            &TModel::from_date(d2),
+            None
+        )
+        .unwrap());
         // 异型 → "Can't compare dates of different types"（Java EvalUtil.compare :240-250）
         let dtm = DateValue {
             dt: d1.dt,
             kind: DateType::DateTime,
             is_sql: false,
         };
-        let err = models_equal(3, &TModel::from_date(d1), &TModel::from_date(dtm)).unwrap_err();
+        let err =
+            models_equal(3, &TModel::from_date(d1), &TModel::from_date(dtm), None).unwrap_err();
         assert_eq!(
             err.to_string(),
             "This error has occurred when comparing sequence item at 0-based index 3 to the searched item:\nCan't compare dates of different types. Left date type is DATE, right date type is DATETIME."

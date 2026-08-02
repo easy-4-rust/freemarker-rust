@@ -1,6 +1,7 @@
 //! Java `freemarker.core.MiscErrorMessagesTest` 的 Rust 1:1 实现
 //! （MiscErrorMessagesTest.java：错误消息杂项断言）
 
+#[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
 use freemarker::cache::StringLoader;
 use freemarker::template::Configuration;
