@@ -7,7 +7,6 @@ use crate::template::SimpleBoolean;
 use crate::template::SimpleCollection;
 use crate::template::SimpleDate;
 use crate::template::SimpleHash;
-use crate::template::SimpleNumber;
 use crate::template::SimpleScalar;
 use crate::template::SimpleSequence;
 use crate::template::{
@@ -41,12 +40,32 @@ pub enum ModelKind {
     Lambda,
 }
 
+/// 数字角色：TNumber 内嵌（热路径构造零分配——`${i}` 循环输出、字面量求值、
+/// 范围迭代值等）或外部 trait 对象（自定义 TemplateNumberModel）
+#[derive(Clone)]
+pub enum ModelNumber {
+    /// 内嵌数值（SimpleNumber 角色的零分配等价物）
+    Inline(TNumber),
+    /// 外部数字模型（trait 对象角色）
+    Dyn(Rc<dyn TemplateNumberModel>),
+}
+
+impl ModelNumber {
+    /// 数值读数（Inline 直接取；Dyn 走 trait 的 as_number）
+    pub fn as_number(&self) -> Result<TNumber> {
+        match self {
+            ModelNumber::Inline(n) => Ok(n.clone()),
+            ModelNumber::Dyn(d) => d.as_number(),
+        }
+    }
+}
+
 /// 模板模型：每个槽位对应一个角色 trait（可多角色，如 Python 通用模型）
 
 #[derive(Clone)]
 pub struct TModel {
     pub scalar: Option<Rc<dyn TemplateScalarModel>>,
-    pub number: Option<Rc<dyn TemplateNumberModel>>,
+    pub number: Option<ModelNumber>,
     pub boolean: Option<Rc<dyn TemplateBooleanModel>>,
     pub date: Option<Rc<dyn TemplateDateModel>>,
     pub sequence: Option<Rc<dyn TemplateSequenceModel>>,
@@ -140,8 +159,9 @@ impl TModel {
     }
 
     pub fn from_number(v: TNumber) -> TModel {
+        // 内嵌零分配（SimpleNumber 角色仅在外部模型/显式 Dyn 构造时使用）
         TModel {
-            number: Some(Rc::new(SimpleNumber(v))),
+            number: Some(ModelNumber::Inline(v)),
             type_name: "number",
             kind: ModelKind::Number,
             ..Self::nothing()

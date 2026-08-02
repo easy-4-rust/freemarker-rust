@@ -20,6 +20,7 @@ use crate::core::environment::{
 use crate::core::eval;
 use crate::core::{ArithmeticEngine, AssignOp, CallTarget, Element, ElementKind, OutputFormatKind};
 use crate::error::{FlowKind, Result, TemplateError};
+use crate::span::Span;
 use crate::template::{TModel, TemplateDirectiveBody};
 use crate::utility::java_trim;
 use crate::value::TNumber;
@@ -108,16 +109,13 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
         },
         ElementKind::If { cond, then, else_ } => {
             // Java IfBlock.accept :43-61：条件求布尔（modelToBoolean——classic 兼容
-            // 模式下缺失/空值 → false）；then/else 子块
-            let cm = eval::eval(env, cond)?;
-            let b = eval::model_to_boolean(env, &cm)?;
-            if b {
-                Ok(ExecOutcome::Next(then.clone()))
-            } else if let Some(e) = else_ {
-                Ok(ExecOutcome::Next(e.clone()))
-            } else {
-                Ok(ExecOutcome::Done)
-            }
+            // 模式下缺失/空值 → false）；then/else 子块。
+            // elseif 链扁平化下钻：else 分支为单个 If 元素时（`<#elseif>`/`<#else>`
+            // 内嵌 `<#if>` 结构同形）沿链求值，不克隆未命中分支——热路径
+            // （长 elseif 链）避免每次条件失败都深克隆剩余整条链。
+            // 条件求值错误按各 case 自身 span 附加位置（run_loop 的 attach_location
+            // 检测到已有位置后不会重复附加，与逐元素执行时的错误定位一致）。
+            exec_if(env, el.span, cond, then, else_)
         }
         ElementKind::List {
             seq,
@@ -226,7 +224,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             args,
             body,
             body_params,
-        } => exec_call(env, callee, args, body.as_deref(), body_params),
+        } => exec_call_impl(env, callee, args, body.clone(), body_params.clone()),
         ElementKind::Nested { args, body: _ } => exec_nested(env, args),
         ElementKind::Switch {
             expr,
@@ -366,9 +364,9 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             let fmt = OutputFormatKind::parse(&n)
                 .ok_or_else(|| TemplateError::misc(format!("Unknown output format: {n}")))?;
             let prev = env.settings.output_format;
-            env.settings.output_format = fmt;
+            env.settings.to_mut().output_format = fmt;
             let r = env.run(body);
-            env.settings.output_format = prev;
+            env.settings.to_mut().output_format = prev;
             outcome_from_run(r)
         }
         ElementKind::Compress(body) => {
@@ -447,6 +445,117 @@ enum AssignScope {
     Namespace,
     Global,
     Local,
+}
+
+/// `<#if>` 执行（elseif 链扁平化下钻；借用版：命中分支克隆返回）
+/// `span`：当前 case 的源码位置（`<#elseif>` 下钻时更新为各 case 自身 span）
+fn exec_if(
+    env: &mut crate::core::Environment,
+    span: Span,
+    cond: &crate::core::Expr,
+    then: &[Element],
+    else_: &Option<Vec<Element>>,
+) -> Result<ExecOutcome> {
+    let mut cur_span = span;
+    let mut cond = cond;
+    let mut then = then;
+    let mut else_ = else_;
+    loop {
+        let cm = eval::eval(env, cond)
+            .map_err(|e| crate::core::environment::attach_location(e, &env.current_template_name, cur_span))?;
+        let b = eval::model_to_boolean(env, &cm)
+            .map_err(|e| crate::core::environment::attach_location(e, &env.current_template_name, cur_span))?;
+        if b {
+            return Ok(ExecOutcome::Next(then.to_vec()));
+        }
+        match else_ {
+            Some(v) if v.len() == 1 => {
+                if let ElementKind::If {
+                    cond: c2,
+                    then: t2,
+                    else_: e2,
+                } = &v[0].kind
+                {
+                    cur_span = v[0].span;
+                    cond = c2;
+                    then = t2;
+                    else_ = e2;
+                    continue;
+                }
+                return Ok(ExecOutcome::Next(v.clone()));
+            }
+            Some(v) => return Ok(ExecOutcome::Next(v.clone())),
+            None => return Ok(ExecOutcome::Done),
+        }
+    }
+}
+
+/// 所有权版指令执行 —— run_slice 的 mini 栈路径使用：命中分支/调用 body
+/// 直接移动（零克隆）。非热路径 variant 委托 exec(&Element)（借用语义一致）。
+pub(crate) fn exec_owned(
+    env: &mut crate::core::Environment,
+    el: Element,
+) -> Result<ExecOutcome> {
+    let span = el.span;
+    match el.kind {
+        // `<#if>`：分支 Vec 移动（零克隆）+ elseif 链下钻
+        ElementKind::If { cond, then, else_ } => {
+            let mut cur_span = span;
+            let mut cond = cond;
+            let mut then = then;
+            let mut else_ = else_;
+            loop {
+                let cm = eval::eval(env, &cond).map_err(|e| {
+                    crate::core::environment::attach_location(e, &env.current_template_name, cur_span)
+                })?;
+                let b = eval::model_to_boolean(env, &cm).map_err(|e| {
+                    crate::core::environment::attach_location(e, &env.current_template_name, cur_span)
+                })?;
+                if b {
+                    return Ok(ExecOutcome::Next(then));
+                }
+                match else_ {
+                    Some(v) if v.len() == 1 => match v.into_iter().next().unwrap() {
+                        Element {
+                            kind: ElementKind::If {
+                                cond: c2,
+                                then: t2,
+                                else_: e2,
+                            },
+                            span: s2,
+                        } => {
+                            cur_span = s2;
+                            cond = c2;
+                            then = t2;
+                            else_ = e2;
+                            continue;
+                        }
+                        e => return Ok(ExecOutcome::Next(vec![e])),
+                    },
+                    Some(v) => return Ok(ExecOutcome::Next(v)),
+                    None => return Ok(ExecOutcome::Done),
+                }
+            }
+        }
+        // 多赋值：元素所有权逐个传递
+        ElementKind::Assignments(els) => {
+            for e in els {
+                let outcome = exec_owned(env, e)?;
+                if !matches!(outcome, ExecOutcome::Done) {
+                    return Ok(outcome);
+                }
+            }
+            Ok(ExecOutcome::Done)
+        }
+        // `<@...>` 调用：body/body_params 移动（避免每调用一次 to_vec 克隆）
+        ElementKind::Call {
+            callee,
+            args,
+            body,
+            body_params,
+        } => exec_call_impl(env, &callee, &args, body, body_params),
+        other => exec(env, &Element { kind: other, span }),
+    }
 }
 
 /// 旧式 `#{...}` 数值插值格式化 —— 对应 Java `NumericalOutput.calculateInterpolatedStringOrMarkup`
@@ -987,6 +1096,21 @@ fn materialize_list_items(
         }
         return Ok(crate::core::environment::PendingItems::eager(out));
     }
+    // 有界范围快路径（Java RangeModel 迭代器 O(1) 前视——has_next 不构造下一项值；
+    // 仅限有界范围：无界（`4..`）保持惰性迭代器路径，ICI < 2.3.21 的
+    // NonListableRightUnboundedRange（迭代为空）不受影响）
+    if let Some(rs) = &listed.range {
+        if !rs.unbounded {
+            return Ok(crate::core::environment::PendingItems::range(
+                crate::core::environment::RangeIterState {
+                    start: rs.start,
+                    index: 0,
+                    cap: rs.count,
+                    ascending: rs.ascending,
+                },
+            ));
+        }
+    }
     // Java IteratorBlock.java:278：TemplateCollectionModel 优先 → 惰性迭代器
     if let Some(c) = &listed.collection {
         let iter = c.iterator()?;
@@ -1111,22 +1235,50 @@ fn exec_sep(env: &mut crate::core::Environment, body: &[Element]) -> Result<Exec
     }
 }
 
+/// 宏调用执行（函数角色报错；宏体 run 经 invoke_macro）—— exec_call_impl 的
+/// Name 快路径与常规 as_macro 路径共用
+fn call_macro(
+    env: &mut crate::core::Environment,
+    mv: &Rc<crate::core::environment::MacroValue>,
+    args: &[(String, crate::core::Expr)],
+    body: Option<Vec<Element>>,
+    body_params: Vec<String>,
+) -> Result<ExecOutcome> {
+    if mv.def.is_function {
+        // Java UnifiedCall.java:76-80：Routine "f" is a function, not a directive.
+        return Err(TemplateError::misc(format!(
+            "Routine \"{}\" is a function, not a directive. Functions can only be called from expressions, like in ${{f()}}.",
+            mv.def.name
+        )));
+    }
+    let r = env.invoke_macro(mv, args, body, body_params)?;
+    match r {
+        RunSignal::Completed => Ok(ExecOutcome::Done),
+        RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
+    }
+}
+
 /// `<@...>` 调用 —— 对应 Java `UnifiedCall.accept`（UnifiedCall.java:66-100）：
 /// 宏（Macro 对象）→ invokeMacro；TemplateDirectiveModel → execute；其余报错。
-fn exec_call(
+/// body/body_params 所有权传入：owned 路径（exec_owned）直接移动，
+/// 借用路径（exec）克隆后传入。
+fn exec_call_impl(
     env: &mut crate::core::Environment,
     callee: &CallTarget,
     args: &[(String, crate::core::Expr)],
-    body: Option<&[Element]>,
-    body_params: &[String],
+    body: Option<Vec<Element>>,
+    body_params: Vec<String>,
 ) -> Result<ExecOutcome> {
-    let call_name = match callee {
-        CallTarget::Name(name) => name.clone(),
-        CallTarget::Namespaced { ns, name } => format!("{ns}.{name}"),
-        CallTarget::Expr(e) => expr_desc(e),
-    };
+    // call_name 仅在报错时构造（热路径 `@m/` 调用避免每次 String 克隆）
     let tm = match callee {
-        CallTarget::Name(name) => env.get_variable(name)?,
+        CallTarget::Name(name) => {
+            // 宏快路径：解析链直接取宏值（热路径 `<@m/>` 跳过 macro_model TModel
+            // 构造与 downcast；名字解析为其他值/未找到时回退 get_variable）
+            if let Some(mv) = env.get_macro(name) {
+                return call_macro(env, &mv, args, body, body_params);
+            }
+            env.get_variable(name)?
+        }
         CallTarget::Namespaced { ns, name } => {
             let nsm = env.get_variable(ns)?;
             match env.as_namespace(&nsm) {
@@ -1156,18 +1308,7 @@ fn exec_call(
         CallTarget::Expr(e) => eval::eval(env, e)?,
     };
     if let Some(mv) = env.as_macro(&tm) {
-        if mv.def.is_function {
-            // Java UnifiedCall.java:76-80：Routine "f" is a function, not a directive.
-            return Err(TemplateError::misc(format!(
-                "Routine \"{}\" is a function, not a directive. Functions can only be called from expressions, like in ${{f()}}.",
-                mv.def.name
-            )));
-        }
-        let r = env.invoke_macro(&mv, args, body.map(|b| b.to_vec()), body_params.to_vec())?;
-        return match r {
-            RunSignal::Completed => Ok(ExecOutcome::Done),
-            RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-        };
+        return call_macro(env, &mv, args, body, body_params);
     }
     if let Some(d) = &tm.directive {
         // Java :84-95：env.visit(childBuffer, directiveModel, args, bodyParameterNames)
@@ -1180,10 +1321,11 @@ fn exec_call(
         }
         // Java :432-465：outArgs 槽位按 body 参数名数量（bodyParameters 列表）
         let mut loop_vars: Vec<TModel> = vec![TModel::nothing(); body_params.len()];
+        let has_body = body.is_some();
         let call_body = CallBody {
-            elements: body.map(|b| b.to_vec()).unwrap_or_default(),
+            elements: body.unwrap_or_default(),
         };
-        let body_ref: Option<&dyn TemplateDirectiveBody> = if body.is_some() {
+        let body_ref: Option<&dyn TemplateDirectiveBody> = if has_body {
             Some(&call_body)
         } else {
             None
@@ -1201,13 +1343,18 @@ fn exec_call(
                 params.insert(k.clone(), eval::eval(env, e)?);
             }
         }
-        let body_elems: &[crate::core::Element] = body.unwrap_or(&[]);
+        let body_elems: &[crate::core::Element] = body.as_deref().unwrap_or(&[]);
         let signal = ttm.transform_with_body(env, &params, body_elems)?;
         return match signal {
             RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
             _ => Ok(ExecOutcome::Done),
         };
     }
+    let call_name = match callee {
+        CallTarget::Name(name) => name.clone(),
+        CallTarget::Namespaced { ns, name } => format!("{ns}.{name}"),
+        CallTarget::Expr(e) => expr_desc(e),
+    };
     Err(TemplateError::misc(format!(
         "The value of {call_name} is not a macro or user-defined directive (it's a {})",
         tm.type_name
@@ -1424,8 +1571,8 @@ fn exec_setting(
         }
     };
     match key {
-        "locale" => env.settings.locale = v,
-        "number_format" => env.settings.number_format = v,
+        "locale" => env.settings.to_mut().locale = v,
+        "number_format" => env.settings.to_mut().number_format = v,
         "boolean_format" => {
             // Java Configurable.setBooleanFormat：必须含逗号或为 "c"（否则 IllegalArgumentException）
             if v != "c" && !v.contains(',') {
@@ -1433,25 +1580,25 @@ fn exec_setting(
                     "Setting value must be a string that contains two comma-separated values for true and false, or it must be \"c\", but it was {v:?}."
                 )));
             }
-            env.settings.boolean_format = v;
+            env.settings.to_mut().boolean_format = v;
         }
-        "date_format" => env.settings.date_format = v,
-        "time_format" => env.settings.time_format = v,
+        "date_format" => env.settings.to_mut().date_format = v,
+        "time_format" => env.settings.to_mut().time_format = v,
         // Java 设置键为 "datetime_format"（Configurable.DATETIME_FORMAT_KEY）
-        "datetime_format" => env.settings.date_time_format = v,
-        "output_encoding" => env.settings.output_encoding = v,
-        "url_escaping_charset" => env.settings.url_escaping_charset = v,
+        "datetime_format" => env.settings.to_mut().date_time_format = v,
+        "output_encoding" => env.settings.to_mut().output_encoding = v,
+        "url_escaping_charset" => env.settings.to_mut().url_escaping_charset = v,
         "time_zone" => {
             // P4：`default` → 恢复配置级时区（Java PropertySetting：null → 配置默认）；
             // GMT±HH[:mm]/IANA 名经 TzSetting::from_str（对应 Java TimeZone.getTimeZone）
-            env.settings.time_zone = if v == "default" {
+            env.settings.to_mut().time_zone = if v == "default" {
                 env.base_time_zone
             } else {
                 v.parse()
                     .map_err(|_| TemplateError::misc(format!("Unknown time zone: {v}")))?
             };
             // Java TimeZone.getID()（`.time_zone` 读数；GMT 名归一化为 GMT±HH:MM）
-            env.settings.time_zone_id = if v == "default" {
+            env.settings.to_mut().time_zone_id = if v == "default" {
                 env.base_time_zone_id.clone()
             } else {
                 crate::core::configurable::java_time_zone_id(&v)
@@ -1461,16 +1608,16 @@ fn exec_setting(
             // Java PropertySetting 支持（影响 SQL 日期格式化，v1 忽略 —— 文档化偏差）
         }
         "classic_compatible" => {
-            env.settings.classic_compatible = parse_bool_setting(&v)?;
+            env.settings.to_mut().classic_compatible = parse_bool_setting(&v)?;
         }
-        "whitespace_stripping" => env.settings.whitespace_stripping = parse_bool_setting(&v)?,
-        "strict_syntax" => env.settings.strict_syntax = parse_bool_setting(&v)?,
+        "whitespace_stripping" => env.settings.to_mut().whitespace_stripping = parse_bool_setting(&v)?,
+        "strict_syntax" => env.settings.to_mut().strict_syntax = parse_bool_setting(&v)?,
         "output_format" => {
-            env.settings.output_format = OutputFormatKind::parse(&v)
+            env.settings.to_mut().output_format = OutputFormatKind::parse(&v)
                 .ok_or_else(|| TemplateError::misc(format!("Unknown output format: {v}")))?;
         }
         "auto_escaping" => {
-            env.settings.auto_escaping = match v.as_str() {
+            env.settings.to_mut().auto_escaping = match v.as_str() {
                 "on" => crate::core::AutoEscaping::On,
                 "off" => crate::core::AutoEscaping::Off,
                 "default" => crate::core::AutoEscaping::Default,

@@ -49,8 +49,6 @@ pub struct Environment<'a> {
     pub out: &'a mut dyn Write,
     /// 输出缓冲（内部始终 UTF-8；process() 结束时按 output_encoding 转码写出）
     output_buffer: Vec<u8>,
-    /// 指令栈（Java `instructionStack` :107；docs/04 §2 渲染循环；run() 内保存/恢复）
-    stack: Vec<Element>,
     /// 局部上下文栈（Java `localContextStack`；:2753 pushLocalContext / :2919 popElement）
     pub(crate) local_stack: Vec<LocalEntry>,
     /// 主命名空间（Java `mainNamespace` :181）
@@ -67,8 +65,10 @@ pub struct Environment<'a> {
     /// 等价物——Macro.invoke 的 catch(Return) 按 macroCtx 归属判定捕获；穿透的
     /// return（如 `<@b><#return></@>` 中 return 归调用者宏 m 而非被调宏 b）继续上传）
     pub(crate) return_depth: Option<usize>,
-    /// 运行时设置快照（Java Configurable 继承链；v1 单层，`<#setting>` 修改此副本）
-    pub(crate) settings: Settings,
+    /// 运行时设置快照（Java Configurable 继承链；v1 单层，`<#setting>` 修改此副本）。
+    /// Cow：默认借用 Configuration 的设置（渲染零克隆）；`<#setting>`/`<#outputformat>`
+    /// 首次修改时 to_mut() 惰性深克隆（此后原地修改）。
+    pub(crate) settings: std::borrow::Cow<'a, Settings>,
     /// 配置级时区（`<#setting time_zone="default">` 恢复目标；Java PropertySetting 的 null）
     pub(crate) base_time_zone: TzSetting,
     /// 配置级时区 ID（Java TimeZone.getID；`.time_zone` 读数）
@@ -87,6 +87,10 @@ pub struct Environment<'a> {
     /// recover 期间压栈、结束弹出——嵌套 attempt 的内层 recover 结束后 `.error`
     /// 恢复为外层错误；BuiltinVariable.java:283-285 `.error` 读栈顶）
     pub(crate) recovered_errors: Vec<String>,
+    /// 数字格式解析缓存（默认 `#,##0.###` 模式的 DecimalFmt；首次使用时解析，
+    /// 此后直接复用——热路径（`${n}` 循环输出）避免每次重新解析模式串）。
+    /// 键为 (number_format, locale)，`<#setting>` 改动任一后自然失效重解析。
+    pub(crate) number_fmt_cache: RefCell<Option<(String, String, std::rc::Rc<crate::builtins::format::DecimalFmt>)>>,
 }
 
 /// run 循环结束信号（`<#return>` 专用；Java ReturnInstruction.Return）。
@@ -152,10 +156,23 @@ pub(crate) struct LoopItem {
 /// 待迭代项（Java IterationContext.openedIterator，IteratorBlock.java:280-305）：
 /// 惰性拉取——已物化项存 cache；集合角色保留底层迭代器按需取项
 /// （`<#list (4..) as i>` 不会物化 2^31-1 项，Java 同样惰性驱动）；
-/// `has_next` 前视：从迭代器拉一项入 cache（peek 语义，IteratorBlock.java:293-300）
+/// `has_next` 前视：从迭代器拉一项入 cache（peek 语义，IteratorBlock.java:293-300）。
+/// 有界范围（`1..100`）走 `range` 快路径：has_next 按 index/cap 判定（O(1) 零物化，
+/// 对应 Java BoundedRangeModel 迭代器同样不构造下一项值）。
 pub(crate) struct PendingItems {
     cache: std::collections::VecDeque<LoopItem>,
     iter: Option<Box<dyn Iterator<Item = Result<LoopItem>>>>,
+    /// 范围快路径状态（start ± index 按需取值；仅遍历，不物化 ahead）
+    range: Option<RangeIterState>,
+}
+
+/// 范围迭代状态（start + ascending*index；cap = 元素总数）
+#[derive(Clone, Copy)]
+pub(crate) struct RangeIterState {
+    pub start: i64,
+    pub index: usize,
+    pub cap: usize,
+    pub ascending: bool,
 }
 
 impl PendingItems {
@@ -164,6 +181,7 @@ impl PendingItems {
         PendingItems {
             cache: items,
             iter: None,
+            range: None,
         }
     }
 
@@ -172,6 +190,16 @@ impl PendingItems {
         PendingItems {
             cache: std::collections::VecDeque::new(),
             iter: Some(iter),
+            range: None,
+        }
+    }
+
+    /// 有界范围来源（`1..100` 等；has_next 零物化前视）
+    pub(crate) fn range(state: RangeIterState) -> Self {
+        PendingItems {
+            cache: std::collections::VecDeque::new(),
+            iter: None,
+            range: Some(state),
         }
     }
 
@@ -179,6 +207,21 @@ impl PendingItems {
     pub(crate) fn pop(&mut self) -> Result<Option<LoopItem>> {
         if let Some(item) = self.cache.pop_front() {
             return Ok(Some(item));
+        }
+        if let Some(r) = &mut self.range {
+            if r.index < r.cap {
+                let v = if r.ascending {
+                    r.start + r.index as i64
+                } else {
+                    r.start - r.index as i64
+                };
+                r.index += 1;
+                return Ok(Some(LoopItem {
+                    key: None,
+                    value: Some(TModel::from_number(crate::value::TNumber::from_i64(v))),
+                }));
+            }
+            return Ok(None);
         }
         if let Some(it) = self.iter.as_mut() {
             return match it.next() {
@@ -193,10 +236,13 @@ impl PendingItems {
         Ok(None)
     }
 
-    /// 是否还有下一项（前视：从迭代器拉一项进 cache）
+    /// 是否还有下一项（前视：从迭代器拉一项进 cache；范围路径 O(1) 判定）
     pub(crate) fn has_next(&mut self) -> Result<bool> {
         if !self.cache.is_empty() {
             return Ok(true);
+        }
+        if let Some(r) = &self.range {
+            return Ok(r.index < r.cap);
         }
         if let Some(it) = self.iter.as_mut() {
             return match it.next() {
@@ -245,13 +291,19 @@ impl LoopCtx {
                 };
             }
         }
-        if name == format!("{}_index", self.var_name) {
-            return Some(TModel::from_number(crate::value::TNumber::from_i64(
-                self.index as i64,
-            )));
+        // `x_index`/`x_has_next` 判定：strip_suffix 零分配（format! 每次变量查找
+        // 都会构造新 String——循环体内热路径）
+        if let Some(prefix) = name.strip_suffix("_index") {
+            if prefix == self.var_name {
+                return Some(TModel::from_number(crate::value::TNumber::from_i64(
+                    self.index as i64,
+                )));
+            }
         }
-        if name == format!("{}_has_next", self.var_name) {
-            return Some(TModel::from_boolean(self.has_next));
+        if let Some(prefix) = name.strip_suffix("_has_next") {
+            if prefix == self.var_name {
+                return Some(TModel::from_boolean(self.has_next));
+            }
         }
         None
     }
@@ -268,7 +320,8 @@ pub(crate) struct BodyCtx {
 /// （Java Context 中的 getMacro/getLocals 对应本帧 + macro_frames 栈）。
 pub struct MacroFrame {
     /// 宏参数 + `<#local>` 变量（Java `Context.localVars`；:414 setLocalVar）
-    pub(crate) locals: RefCell<HashMap<String, TModel>>,
+    /// FNV 哈希（热路径查找）
+    pub(crate) locals: RefCell<HashMap<String, TModel, crate::utility::FnvBuildHasher>>,
     /// 调用方 body 元素（`<@m>body</@m>`；`<#nested>` 回插，Java callPlace.getChildBuffer()）
     pub(crate) call_body: Option<Vec<Element>>,
     /// 体参数名列表（`<@m ; a, b>`；`<#nested v1 v2>` 按位置赋给 a、b ——
@@ -321,9 +374,10 @@ pub struct LambdaValue {
 /// 命名空间 —— 对应 Java `Environment.Namespace`（Environment.java:3445-3500，extends SimpleHash）
 /// 变量与宏同表（Java Namespace 是 SimpleHash，宏以 `Macro` 对象存入）；
 /// 同时实现 TemplateHashModel/Ex → 可作 TModel 值（`<@ns.macro>`、`ns.var`、`?keys` 等）。
+/// 变量/宏表用 FNV 哈希（热路径查找；迭代序无依赖——keys() 已排序）。
 pub struct Namespace {
-    vars: RefCell<HashMap<String, TModel>>,
-    macros: RefCell<HashMap<String, Rc<MacroValue>>>,
+    vars: RefCell<HashMap<String, TModel, crate::utility::FnvBuildHasher>>,
+    macros: RefCell<HashMap<String, Rc<MacroValue>, crate::utility::FnvBuildHasher>>,
     /// 关联模板名（Java `Namespace.getTemplate()` :3470-3478；错误定位/相对 include 基名）
     template_name: String,
 }
@@ -331,8 +385,8 @@ pub struct Namespace {
 impl Namespace {
     fn new(template_name: String) -> Self {
         Namespace {
-            vars: RefCell::new(HashMap::new()),
-            macros: RefCell::new(HashMap::new()),
+            vars: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
+            macros: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
             template_name,
         }
     }
@@ -346,6 +400,16 @@ impl Namespace {
             .borrow()
             .get(name)
             .map(|mv| macro_model(mv.clone()))
+    }
+
+    /// 仅变量表读取（宏快路径用：变量存在则以变量为准——可遮蔽宏）
+    pub(crate) fn get_variable_only(&self, name: &str) -> Option<TModel> {
+        self.vars.borrow().get(name).cloned()
+    }
+
+    /// 仅宏表读取（宏快路径用）
+    pub(crate) fn get_macro(&self, name: &str) -> Option<Rc<MacroValue>> {
+        self.macros.borrow().get(name).cloned()
     }
 
     pub(crate) fn put_var(&self, name: String, m: TModel) {
@@ -408,9 +472,9 @@ impl<'a> Environment<'a> {
     /// 构造环境 —— 对应 Java `Environment(Template, TemplateHashModel, Writer)`（:201-217）：
     /// 构造时 `importMacros(template)` 预先注册主模板宏（Java 宏定义在渲染前全局可见）。
     pub fn new(template: &'a Template, root: TModel, out: &'a mut dyn Write) -> Self {
-        let settings = template.configuration.settings.clone();
-        let base_time_zone = settings.time_zone;
-        let base_time_zone_id = settings.time_zone_id.clone();
+        let base_settings = &template.configuration.settings;
+        let base_time_zone = base_settings.time_zone;
+        let base_time_zone_id = base_settings.time_zone_id.clone();
         let main_ns = Rc::new(Namespace::new(template.name.clone()));
         for (name, def) in &template.macros {
             register_macro(&main_ns, name, def);
@@ -418,16 +482,15 @@ impl<'a> Environment<'a> {
         let current_ns = main_ns.clone();
         let global_ns = Rc::new(Namespace::new(template.name.clone()));
         // Java autoEscaping 默认随 outputFormat 与 incompatibleImprovements（docs/08 §1）
-        let auto_escape = match settings.auto_escaping {
+        let auto_escape = match base_settings.auto_escaping {
             crate::core::AutoEscaping::On => true,
             crate::core::AutoEscaping::Off => false,
-            crate::core::AutoEscaping::Default => settings.output_format.is_markup(),
+            crate::core::AutoEscaping::Default => base_settings.output_format.is_markup(),
         };
         Environment {
             template,
             root,
             out,
-            stack: Vec::new(),
             local_stack: Vec::new(),
             main_ns,
             current_ns,
@@ -435,16 +498,18 @@ impl<'a> Environment<'a> {
             loaded_libs: HashMap::new(),
             macro_frames: Vec::new(),
             return_depth: None,
-            settings,
+            settings: std::borrow::Cow::Borrowed(base_settings),
             base_time_zone,
             base_time_zone_id,
             attempt_depth: 0,
             redirect: None,
-            output_buffer: Vec::new(),
+            // 预分配输出缓冲（小模板避免多次扩容拷贝；大模板按需增长）
+            output_buffer: Vec::with_capacity(128),
             escapes: Vec::new(),
             auto_escape,
             current_template_name: template.name.clone(),
             recovered_errors: Vec::new(),
+            number_fmt_cache: RefCell::new(None),
         }
     }
 
@@ -454,8 +519,10 @@ impl<'a> Environment<'a> {
         if !self.root.is_hash() {
             return Err(TemplateError::misc("The data model must be a hash"));
         }
-        let root = self.template.root.clone();
-        let signal = self.run(&root)?;
+        // 引用拷贝技巧：先复制 &Template 引用再借 root，避免整棵根元素树深克隆
+        // （run 零克隆执行，见 run_slice）
+        let t = self.template;
+        let signal = self.run(&t.root)?;
         match signal {
             RunSignal::Completed => {
                 let output_encoding = &self.settings.output_encoding;
@@ -475,47 +542,70 @@ impl<'a> Environment<'a> {
         }
     }
 
-    /// 执行一组元素 —— Java `visit(TemplateElement[])`（:367-405）的栈驱动等价物。
+    /// 执行一组元素 —— Java `visit(TemplateElement[])`（:367-405）的等价物。
+    /// 零克隆驱动：`els` 借引用执行（`run_slice`），Next/Replace 产物进本地 mini 栈；
     /// - `Next(children)`：子元素入栈（逆序保证执行顺序）；`Replace`：入栈替换；
     /// - `ReturnValue` → RunSignal::Returned（Java ReturnInstruction.Return 异常语义）；
     /// - `Flow`/`Stop` → Err 上传（Java RuntimeException / StopException 穿透）；
     /// - 其他错误：附加源码位置（模板名 + 行列，docs/09 §2）后上传。
-    ///   嵌套调用（宏体/指令 body/捕获块）会保存并恢复外层待执行栈。
+    ///   嵌套调用（宏体/指令 body/捕获块）各持有自己的 mini 栈，外层待执行元素
+    ///   不受影响（旧实现以指令栈保存/恢复达成同一效果）。
     pub(crate) fn run(&mut self, els: &[Element]) -> Result<RunSignal> {
-        let saved = std::mem::take(&mut self.stack);
-        // 逆序入栈：栈顶先出（与 run_loop 中 Next(children) 的逆序入栈一致）
-        self.stack.extend(els.iter().rev().cloned());
-        let r = self.run_loop();
-        self.stack = saved;
-        r
+        self.run_slice(els)
     }
 
-    fn run_loop(&mut self) -> Result<RunSignal> {
-        while let Some(el) = self.stack.pop() {
-            let span = el.span;
-            match crate::core::exec::exec(self, &el) {
-                Ok(crate::core::exec::ExecOutcome::Next(children)) => {
-                    for c in children.into_iter().rev() {
-                        self.stack.push(c);
-                    }
+    /// 切片驱动：els 借引用执行（零元素克隆）；Next/Replace 产物压入本地 mini 栈
+    /// （子元素优先于后续元素——与旧栈驱动一致）。Returned/Flow/Stop 返回时
+    /// mini 栈遗留元素丢弃（旧实现中由 run() 的栈保存/恢复实现同样的丢弃）。
+    fn run_slice(&mut self, els: &[Element]) -> Result<RunSignal> {
+        let mut mini: Vec<Element> = Vec::new();
+        let mut i = 0usize;
+        loop {
+            if let Some(el) = mini.pop() {
+                let span = el.span;
+                let outcome = crate::core::exec::exec_owned(self, el);
+                if let Some(sig) = self.consume_outcome(outcome, span, &mut mini)? {
+                    return Ok(sig);
                 }
-                Ok(crate::core::exec::ExecOutcome::Replace(e)) => self.stack.push(e),
-                Ok(crate::core::exec::ExecOutcome::Done) => {}
-                Ok(crate::core::exec::ExecOutcome::ReturnValue(v)) => {
-                    return Ok(RunSignal::Returned(v));
+            } else if i < els.len() {
+                let el = &els[i];
+                i += 1;
+                let span = el.span;
+                let outcome = crate::core::exec::exec(self, el);
+                if let Some(sig) = self.consume_outcome(outcome, span, &mut mini)? {
+                    return Ok(sig);
                 }
-                Ok(crate::core::exec::ExecOutcome::Flow(k)) => {
-                    return Err(TemplateError::Flow(k));
-                }
-                Ok(crate::core::exec::ExecOutcome::Stop(m)) => {
-                    return Err(TemplateError::Stop { message: m });
-                }
-                Err(e) => {
-                    return Err(attach_location(e, &self.current_template_name, span));
-                }
+            } else {
+                break;
             }
         }
         Ok(RunSignal::Completed)
+    }
+
+    /// exec 结果消费（Next/Replace → mini 栈；Returned → 信号；Flow/Stop/Err → 上传）
+    fn consume_outcome(
+        &mut self,
+        outcome: Result<crate::core::exec::ExecOutcome>,
+        span: Span,
+        mini: &mut Vec<Element>,
+    ) -> Result<Option<RunSignal>> {
+        match outcome {
+            Ok(crate::core::exec::ExecOutcome::Next(children)) => {
+                for c in children.into_iter().rev() {
+                    mini.push(c);
+                }
+                Ok(None)
+            }
+            Ok(crate::core::exec::ExecOutcome::Replace(e)) => {
+                mini.push(e);
+                Ok(None)
+            }
+            Ok(crate::core::exec::ExecOutcome::Done) => Ok(None),
+            Ok(crate::core::exec::ExecOutcome::ReturnValue(v)) => Ok(Some(RunSignal::Returned(v))),
+            Ok(crate::core::exec::ExecOutcome::Flow(k)) => Err(TemplateError::Flow(k)),
+            Ok(crate::core::exec::ExecOutcome::Stop(m)) => Err(TemplateError::Stop { message: m }),
+            Err(e) => Err(attach_location(e, &self.current_template_name, span)),
+        }
     }
 
     /// 执行元素序列到完成（自定义指令 body / include / 测试入口；
@@ -577,6 +667,51 @@ impl<'a> Environment<'a> {
             return Ok(TModel::nothing());
         }
         Err(TemplateError::invalid_reference(name))
+    }
+
+    /// 宏值解析快路径（`<@m>` 调用热路径）——与 get_variable 相同的解析链，
+    /// 但直接取回 Rc<MacroValue>（跳过 macro_model TModel 构造 + 后续 downcast）。
+    /// 名字解析为宏值 → Some；解析为其他值或未找到 → None（调用方回退
+    /// get_variable 常规路径，错误语义不变）。
+    pub fn get_macro(&self, name: &str) -> Option<Rc<MacroValue>> {
+        // ① 局部上下文（自顶向下；值可为宏值 TModel）
+        for entry in self.local_stack.iter().rev() {
+            if let Some(m) = entry.get(name, self.settings.fallback_on_null_loop_variable) {
+                return m.internal::<MacroValue>();
+            }
+        }
+        // ② 当前宏帧局部变量
+        if let Some(frame) = self.macro_frames.last() {
+            if let Some(m) = frame.get_local_variable(name) {
+                return m.internal::<MacroValue>();
+            }
+        }
+        // ③ 当前命名空间（变量优先——变量可遮蔽宏）
+        if let Some(m) = self.current_ns.get_variable_only(name) {
+            return m.internal::<MacroValue>();
+        }
+        if let Some(mv) = self.current_ns.get_macro(name) {
+            return Some(mv);
+        }
+        // ④ 全局命名空间
+        if let Some(m) = self.global_ns.get_variable_only(name) {
+            return m.internal::<MacroValue>();
+        }
+        if let Some(mv) = self.global_ns.get_macro(name) {
+            return Some(mv);
+        }
+        // ⑤ 根数据模型（成员可为宏值）
+        if let Ok(h) = self.root.get_hash() {
+            if let Ok(Some(m)) = h.get(name) {
+                return m.internal::<MacroValue>();
+            }
+        }
+        // ⑥ 共享变量
+        self.template
+            .configuration
+            .shared_vars
+            .get(name)
+            .and_then(|m| m.internal::<MacroValue>())
     }
 
     /// 设置当前命名空间变量（Java `setVariable` :2523-2528；`<#assign>`）
@@ -852,7 +987,7 @@ impl<'a> Environment<'a> {
     ) -> Result<RunSignal> {
         // Java :848-879：宏帧 + 参数绑定（求值发生在调用方上下文）
         let frame = Rc::new(MacroFrame {
-            locals: RefCell::new(HashMap::new()),
+            locals: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
             call_body: body,
             body_params,
             caller_ns: self.current_ns.clone(),
@@ -861,14 +996,20 @@ impl<'a> Environment<'a> {
             def: mv.def.clone(),
             is_function,
         });
-        bind_macro_args(self, &frame, &mv.def, args)?;
+        // 无参数宏：跳过参数绑定（空循环开销——热路径 `<@m/>` 调用）
+        if !mv.def.params.is_empty() {
+            bind_macro_args(self, &frame, &mv.def, args)?;
+        }
         // Java :880-894：压帧、切换命名空间、清空局部上下文
         self.macro_frames.push(frame.clone());
         let prev_ns = self.current_ns.clone();
         self.current_ns = mv.ns.clone();
         let prev_local = std::mem::take(&mut self.local_stack);
-        // Java :893 checkParamsSetAndApplyDefaults（宏上下文内求值默认参数）
-        apply_macro_defaults(self, &frame, &mv.def)?;
+        // Java :893 checkParamsSetAndApplyDefaults（宏上下文内求值默认参数；
+        // 必须在压帧/清空局部上下文之后——默认值表达式经宏帧局部变量解析）
+        if !mv.def.params.is_empty() {
+            apply_macro_defaults(self, &frame, &mv.def)?;
+        }
         // Java :344-397：`.args` 特殊变量值**惰性**构建——仅在模板访问 `.args` 时
         // 由 build_args_special 填充（Java BuiltinVariable.Args 访问时才构造，且
         // "位置 catch-all 非空 + .args" 限制只在访问时触发）；此处不再急切构建
@@ -1809,7 +1950,7 @@ fn collect_ident_names_into(e: &Expr, out: &mut Vec<String>) {
 /// 错误附加源码位置 —— `[in template "name" at line L, column C]`（docs/09 §2 消息模板）。
 /// 只附加一次（消息已含 "[in template" 则跳过）；Flow/Stop/Parse/Io 不附加
 /// （Flow 是流控信号；Stop 是 Java StopException 语义，自带消息）。
-fn attach_location(err: TemplateError, template_name: &str, span: Span) -> TemplateError {
+pub(crate) fn attach_location(err: TemplateError, template_name: &str, span: Span) -> TemplateError {
     let loc = format!(
         "[in template \"{template_name}\" at line {}, column {}]",
         span.line, span.col

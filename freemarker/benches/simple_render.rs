@@ -6,6 +6,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use freemarker::cache::StringLoader;
 use freemarker::template::{Configuration, TModel};
+use freemarker::value::TNumber;
 use indexmap::IndexMap;
 use std::sync::Arc;
 
@@ -90,7 +91,10 @@ fn bench_if_else_chain(c: &mut Criterion) {
     let t = cfg.get_template("ifchain").unwrap();
 
     let mut root_map = IndexMap::new();
-    root_map.insert("x".to_string(), TModel::from_scalar("5".to_string()));
+    root_map.insert(
+        "x".to_string(),
+        TModel::from_number(TNumber::from_i64(5)),
+    );
     let root = TModel::from_hash(root_map);
 
     c.bench_function("if_else_chain", |b| {

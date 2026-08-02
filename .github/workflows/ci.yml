@@ -60,6 +60,61 @@ jobs:
             exit 1
           fi
 
+  pyo3:
+    name: Python bindings (pyo3) ${{ matrix.os }} py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.9", "3.11", "3.13"]
+    env:
+      # abi3 前向兼容（docs/10 §7；可选：当前未传 --abi3，此变量对非 abi3
+      # 构建无副作用，仅文档化该特性入口，见 freemarker-pyo3/pyproject.toml）
+      PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-pyo3-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-pyo3-
+
+      - name: Install maturin and pytest
+        run: pip install maturin pytest
+
+      - name: Build wheel
+        working-directory: freemarker-pyo3
+        run: maturin build --release
+
+      # maturin 输出到 workspace 共享 target 目录（仓库根 target/wheels/）
+      - name: Install wheel
+        run: pip install target/wheels/*.whl
+
+      - name: Python tests (smoke + threading + golden suite)
+        run: python -m pytest freemarker-pyo3/tests/ -q
+
+      - name: Rust unit tests (freemarker-pyo3, rlib links libpython)
+        run: |
+          PY_LIBDIR="$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          export LD_LIBRARY_PATH="$PY_LIBDIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export DYLD_LIBRARY_PATH="$PY_LIBDIR${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+          cargo test -p freemarker-pyo3
+
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest

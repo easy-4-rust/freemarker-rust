@@ -345,6 +345,13 @@ pub fn parse_decimal_format(pattern: &str, locale: &str) -> Result<DecimalFmt> {
 
 /// 用 DecimalFormat 子集格式化数字（Java DecimalFormat.format；HALF_EVEN 舍入）
 pub fn format_decimal(fmt: &DecimalFmt, n: &TNumber) -> String {
+    // 整数快路径（Int/Long 值 BigDecimal 转换精确、无小数舍入——结果与慢路径逐字节一致，
+    // 避免每次输出的 BigDecimal 构造 + to_plain_string 分配）
+    match n {
+        TNumber::Int(v) => return format_integer_decimal(fmt, *v as i64),
+        TNumber::Long(v) => return format_integer_decimal(fmt, *v),
+        _ => {}
+    }
     // Java DecimalFormat 对 Float/Double 走快路径（JDK FastDecimalFormat）：
     // 以**最短往返表示**为基准（Float 先加宽为 Double，如 1.01f → 1.0099999904632568）
     // 再按 max_frac 舍入 —— 与慢路径（BigDecimal 精确值）结果不同
@@ -419,6 +426,57 @@ pub fn format_decimal(fmt: &DecimalFmt, n: &TNumber) -> String {
     out
 }
 
+/// 整数格式化快路径（与 format_decimal 慢路径对 Int/Long 的结果逐字节一致：
+/// 精确 BigDecimal 无小数位、无舍入；补齐 min_int、按 grouping 分组、
+/// 小数部分补齐 min_frac 个 '0'）
+fn format_integer_decimal(fmt: &DecimalFmt, v: i64) -> String {
+    let mut int_s = v.to_string();
+    while int_s.len() < fmt.min_int {
+        int_s.insert(0, '0');
+    }
+    // 分组（每 3 位一组，从右往左；负号不参与分组——与慢路径一致）
+    if fmt.grouping && int_s.len() > 3 {
+        let (sign, digits) = match int_s.strip_prefix('-') {
+            Some(d) => ("-", d),
+            None => ("", int_s.as_str()),
+        };
+        if digits.len() > 3 {
+            let chars: Vec<char> = digits.chars().collect();
+            let n = chars.len();
+            let first = n % 3;
+            let mut out = String::new();
+            let mut idx = 0;
+            if first > 0 {
+                out.extend(&chars[..first]);
+                idx = first;
+            }
+            while idx < n {
+                if !out.is_empty() {
+                    out.push(fmt.group_sep);
+                }
+                out.extend(&chars[idx..idx + 3]);
+                idx += 3;
+            }
+            int_s = format!("{sign}{out}");
+        }
+    }
+    // 无前缀/后缀/小数位 → 直接返回（避免第二次 String 构造）
+    if fmt.prefix.is_empty() && fmt.suffix.is_empty() && fmt.min_frac == 0 {
+        return int_s;
+    }
+    let mut out = String::new();
+    out.push_str(&fmt.prefix);
+    out.push_str(&int_s);
+    if fmt.min_frac > 0 {
+        out.push(fmt.decimal_sep);
+        for _ in 0..fmt.min_frac {
+            out.push('0');
+        }
+    }
+    out.push_str(&fmt.suffix);
+    out
+}
+
 /// 数字 → 整/小数字符串（BigDecimal.toPlainString 拆开）
 fn split_digits(bd: &BigDecimal) -> (String, String) {
     let s = bd.to_plain_string();
@@ -436,7 +494,31 @@ fn split_digits(bd: &BigDecimal) -> (String, String) {
 pub fn format_number(env: &Environment, n: &TNumber) -> String {
     let fmt = env.settings.number_format.as_str();
     let locale = env.settings.locale.as_str();
-    format_number_with(fmt, locale, n)
+    if fmt == "number" || fmt.is_empty() {
+        // 默认模式解析结果缓存（首次解析后复用，热路径避免每次模式解析；
+        // 键为 (number_format, locale)，`<#setting>` 改动后自动失效）
+        let mut cache = env.number_fmt_cache.borrow_mut();
+        let df = match &*cache {
+            Some((f, l, df)) if f == fmt && l == locale => df.clone(),
+            _ => {
+                let parsed = match parse_decimal_format("#,##0.###", locale) {
+                    Ok(df) => df,
+                    Err(_) => return n.to_plain_string(),
+                };
+                let rc = std::rc::Rc::new(parsed);
+                *cache = Some((fmt.to_string(), locale.to_string(), rc.clone()));
+                rc
+            }
+        };
+        format_decimal(&df, n)
+    } else if fmt == "c" || fmt == "computer" {
+        format_c_number(n)
+    } else {
+        match parse_decimal_format(fmt, locale) {
+            Ok(df) => format_decimal(&df, n),
+            Err(_) => n.to_plain_string(),
+        }
+    }
 }
 
 /// 与 format_number 相同，但显式指定格式串（?string('pattern') 用）

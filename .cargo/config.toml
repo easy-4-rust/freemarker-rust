@@ -1,0 +1,4 @@
+# pyo3 测试二进制链接 libpython 的 rpath（仅本机开发环境）
+# CI 使用 actions/setup-python + LD_LIBRARY_PATH/LIBRARY_PATH 动态设置，不依赖此文件
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-args=-Wl,-rpath,/opt/anaconda3/lib"]
