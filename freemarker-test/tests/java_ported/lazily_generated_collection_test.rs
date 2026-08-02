@@ -5,7 +5,8 @@
 //! size/get/iterator/hasNext/next 调用写入输出（"[size]"、"[get 1]"…）来验证
 //! 惰性求值路径的调用次数与顺序。v1 无法监听模型内部调用（无对应 API），
 //! 且以下特性未实现：
-//! - `?sequence` 内建（v1 报 "Unknown built-in: ?sequence"）；
+//! - `?sequence` 内建已实现：对序列为透传（pass-through），对 collection 也为透传
+//!   （v1 无法把 collection 转为 sequence，后续操作报 "not applicable to a collection"）；
 //! - `?size` 对 collection（含 collection_ex）不适用（v1 报 "not applicable to a collection"）；
 //! - `?filter`/`?map` 对 collection 不适用（仅 sequence）；
 //! - 内建的"方法引用"形式（`?join`/`?seq_contains`/`?seq_index_of` 赋值后延迟调用）
@@ -54,8 +55,8 @@ fn cfg() -> (Configuration, Arc<StringLoader>) {
 #[test]
 fn dynamic_index_test() {
     let (c, loader) = cfg();
-    // 引擎差异：所有断言都经 `?sequence` 把 collection 转 sequence；v1 未实现
-    // `?sequence` → 一律报 "Unknown built-in: ?sequence"（Java 期望见各注释）。
+    // ?sequence on a collection is a pass-through; subsequent ?map/?filter fail
+    // because they are not applicable to a collection value.
     let gappy = [
         // Java assertErrorContains "hash", "evaluated to a sequence"
         "${coll?sequence?map(it -> it)['x']}",
@@ -77,7 +78,7 @@ fn dynamic_index_test() {
         "${collLong?sequence?map(it -> it)[1 .. 2]?join(', ')}",
     ];
     for ftl in gappy {
-        assert_error_contains(&c, &loader, ftl, &["Unknown built-in: ?sequence"]);
+        assert_error_contains(&c, &loader, ftl, &["not applicable to a collection value"]);
     }
 }
 
@@ -93,12 +94,12 @@ fn dynamic_index_non_sequence_input() {
         "${coll[1]}",
         &["sequence", "evaluated to a collection"],
     );
-    // 引擎差异：`?sequence` 未实现（Java 期望 "[iterator][hasNext][next][hasNext][next]2"）
+    // ?sequence on a collection is a pass-through → [1] still fails on collection
     assert_error_contains(
         &c,
         &loader,
         "${coll?sequence[1]}",
-        &["Unknown built-in: ?sequence"],
+        &["evaluated to a collection"],
     );
 
     // Java assertErrorContains "sequence", "evaluated to a collection"：v1 消息含二者
@@ -108,19 +109,19 @@ fn dynamic_index_non_sequence_input() {
         "<#assign t = coll[1..2]>",
         &["sequence", "evaluated to a collection"],
     );
-    // 引擎差异：`?sequence` 未实现（Java 期望 "[iterator][hasNext][next][hasNext][next][hasNext][next]23"）
+    // ?sequence on a collection is a pass-through → [1..2] still fails on collection
     assert_error_contains(
         &c,
         &loader,
         "<#assign t = coll?sequence[1..2]>${t?join('')}",
-        &["Unknown built-in: ?sequence"],
+        &["evaluated to a collection"],
     );
-    // 引擎差异：`?sequence` 未实现（Java 期望 "[iterator][hasNext][next][hasNext][next]2[hasNext][next]3"）
+    // ?sequence on a collection is a pass-through → <#list> fails on collection
     assert_error_contains(
         &c,
         &loader,
         "<#list coll?sequence[1..2] as it>${it}</#list>",
-        &["Unknown built-in: ?sequence"],
+        &["evaluated to a collection"],
     );
 }
 
@@ -146,35 +147,35 @@ fn size_basics_test() {
     );
 
     assert_output(&c, &loader, "${seq?map(x -> x * 10)?size}", "3");
-    // 引擎差异：`?sequence` 未实现（Java 期望 "[size]3"）
+    // ?sequence on collEx is pass-through → ?map fails on collection
     assert_error_contains(
         &c,
         &loader,
         "${collEx?sequence?map(x -> x * 10)?size}",
-        &["Unknown built-in: ?sequence"],
+        &["not applicable to a collection value"],
     );
-    // 引擎差异：`?sequence` 未实现（Java 期望 "[size]3"）
+    // ?map fails before ?sequence is reached
     assert_error_contains(
         &c,
         &loader,
         "${collEx?map(x -> x * 10)?sequence?size}",
-        &["Unknown built-in: ?sequence"],
+        &["not applicable to a collection value"],
     );
 
     assert_output(&c, &loader, "${seq?filter(x -> x != 1)?size}", "2");
-    // 引擎差异：`?sequence` 未实现（Java 期望 "[iterator][hasNext]...2"）
+    // ?sequence on collEx is pass-through → ?filter fails on collection
     assert_error_contains(
         &c,
         &loader,
         "${collEx?sequence?filter(x -> x != 1)?size}",
-        &["Unknown built-in: ?sequence"],
+        &["not applicable to a collection value"],
     );
-    // 引擎差异：`?sequence` 未实现（Java 期望 "[iterator][hasNext]...2"）
+    // ?filter fails before ?sequence is reached
     assert_error_contains(
         &c,
         &loader,
         "${collEx?filter(x -> x != 1)?sequence?size}",
-        &["Unknown built-in: ?sequence"],
+        &["not applicable to a collection value"],
     );
 }
 
@@ -210,9 +211,9 @@ fn size_comparison_test() {
     for ftl in gappy {
         // Java 期望值：前 15 个为 "[size]3"/"[isEmpty]true"/"[isEmpty]false"/"[size]false"
         //（见 Java 源码注释）；后 6 个为带 [iterator][hasNext][next] 日志的布尔结果。
-        // 引擎差异：`?size` 对 collection 不适用 / `?sequence` 未实现。
+        // ?size on collection / ?filter or ?map on collection → not applicable
         if ftl.contains("?sequence") {
-            assert_error_contains(&c, &loader, ftl, &["Unknown built-in: ?sequence"]);
+            assert_error_contains(&c, &loader, ftl, &["not applicable to a collection value"]);
         } else {
             assert_error_contains(
                 &c,
@@ -235,12 +236,12 @@ fn size_non_sequence_input() {
         "${coll?size}",
         &["?size is not applicable to a collection"],
     );
-    // 引擎差异：`?sequence` 未实现（Java 期望 "[iterator][hasNext]...3"）
+    // ?sequence on collection is pass-through → ?size still fails on collection
     assert_error_contains(
         &c,
         &loader,
         "${coll?sequence?size}",
-        &["Unknown built-in: ?sequence"],
+        &["?size is not applicable to a collection"],
     );
 }
 

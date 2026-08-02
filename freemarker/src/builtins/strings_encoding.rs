@@ -166,14 +166,20 @@ fn hex_escape(c: char, json: bool) -> String {
     }
 }
 
-/// ?url —— Java `StringUtil.URLEnc`（safe 集 + 按 url_escaping_charset 编码）
+/// ?url —— Java `StringUtil.URLEnc`（safe 集 + 按 url_escaping_charset 编码；
+/// 未设置时回退到 output_encoding——Java getEffectiveURLEscapingCharset 语义）
 pub fn url(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<Option<TModel>> {
     check_arg_count("url", args, 0, 1)?;
     let s = target_string(env, target)?;
     let charset = if arg_count(args) > 0 {
         arg_string(env, args, 0)?
     } else {
-        env.settings.url_escaping_charset.clone()
+        let c = env.settings.url_escaping_charset.clone();
+        if c.is_empty() {
+            env.settings.output_encoding.clone()
+        } else {
+            c
+        }
     };
     Ok(Some(TModel::from_scalar(url_enc(&s, &charset, false)?)))
 }
@@ -189,7 +195,12 @@ pub fn url_path(
     let charset = if arg_count(args) > 0 {
         arg_string(env, args, 0)?
     } else {
-        env.settings.url_escaping_charset.clone()
+        let c = env.settings.url_escaping_charset.clone();
+        if c.is_empty() {
+            env.settings.output_encoding.clone()
+        } else {
+            c
+        }
     };
     Ok(Some(TModel::from_scalar(url_enc(&s, &charset, true)?)))
 }

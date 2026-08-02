@@ -125,28 +125,10 @@ fn test_string_overloaded_built_ins() {
 #[test]
 fn test_markup_string_built_ins() {
     let (c, loader) = cfg();
-    // 引擎差异：?markupString 内建 v1 未实现 → "Unknown built-in: ?markup_string"；
-    // Java：n?string?markupString 报 "Expected ... markup ... string"
-    assert_error_contains(
-        &c,
-        &loader,
-        "${n?string?markupString}",
-        &["Unknown built-in: ?markup_string"],
-    );
-    // Java：n?markupString 报 "Expected ... markup ... number"
-    assert_error_contains(
-        &c,
-        &loader,
-        "${n?markupString}",
-        &["Unknown built-in: ?markup_string"],
-    );
-    // Java：dt?markupString 报 "Expected ... markup ... date"
-    assert_error_contains(
-        &c,
-        &loader,
-        "${dt?markupString}",
-        &["Unknown built-in: ?markup_string"],
-    );
+    // ?markupString is now implemented; returns the string representation of its input
+    assert_output(&c, &loader, "${n?string?markupString}", "1,500");
+    assert_output(&c, &loader, "${n?markupString}", "1,500");
+    assert_output(&c, &loader, "${dt?markupString}", "Sep 6, 2015 1:00:00 PM");
 }
 
 /// Java testSimpleInterpolation

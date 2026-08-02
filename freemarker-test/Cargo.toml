@@ -20,3 +20,7 @@ chrono.workspace = true
 
 [lib]
 path = "src/lib.rs"
+
+[[bin]]
+name = "probe"
+path = "src/bin/probe.rs"

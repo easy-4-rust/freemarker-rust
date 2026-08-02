@@ -19,6 +19,13 @@ pub fn read_suite(rel: &str) -> String {
         .unwrap_or_else(|e| panic!("cannot read {SUITE_DIR}/{rel}: {e}"))
 }
 
+/// 读取预期文件并按指定编码解码（output_encoding 非 UTF-8 的测试用例）
+pub fn read_suite_encoded(rel: &str, encoding: &str) -> String {
+    let bytes = std::fs::read(format!("{SUITE_DIR}/{rel}"))
+        .unwrap_or_else(|e| panic!("cannot read {SUITE_DIR}/{rel}: {e}"));
+    decode_bytes(&bytes, encoding)
+}
+
 /// 剥掉 expected 文件开头的 `/* ... */` 许可证注释块（Java 侧同样先剥除后比较；
 /// 对应 FileTestCase.assertExpectedFileEqualsString 的 CopyrightCommentRemover）
 pub fn strip_license_comment(s: &str) -> String {
@@ -49,6 +56,7 @@ pub fn base_config() -> (Configuration, Arc<StringLoader>) {
     // Java TemplateTestCase.java:146 setTimeZone(TimeZone.getTimeZone("GMT+1")) →
     // getID() = "GMT+01:00"（`.time_zone` 内置变量读数；Etc/GMT-1 仅时刻计算等价）
     c.settings.time_zone_id = "GMT+01:00".to_string();
+    c.settings.strict_syntax = true;
     c.settings.whitespace_stripping = true;
     let loader = Arc::new(StringLoader::default());
     c.template_loader = loader.clone();
@@ -204,7 +212,8 @@ pub fn apply_settings(
     skipped
 }
 
-/// 渲染用例，返回输出（Java runTest：process(dataModel, out)）
+/// 渲染用例，返回输出（Java runTest：process(dataModel, out)）。
+/// 内部按 output_encoding 转码后写出，再由本函数解码回 String 供比较。
 pub fn render_case(c: &Configuration, name: &str, root: TModel) -> Result<String> {
     // Java Configuration.getTemplate(name, locale, ..., encoding=cfg default)：
     // input_encoding 设置时按该编码解码（charset-in-header），`<#ftl encoding>`
@@ -215,7 +224,66 @@ pub fn render_case(c: &Configuration, name: &str, root: TModel) -> Result<String
     };
     let mut out = Vec::new();
     t.process(root, &mut out)?;
-    Ok(String::from_utf8_lossy(&out).into_owned())
+    // 按 output_encoding 解码字节为 String
+    let output_encoding = &c.settings.output_encoding;
+    if output_encoding.eq_ignore_ascii_case("UTF-8") || output_encoding.is_empty() {
+        Ok(String::from_utf8_lossy(&out).into_owned())
+    } else {
+        Ok(decode_bytes(&out, output_encoding))
+    }
+}
+
+/// 按 IANA 编码名解码字节为 String（编码未知时回退到 UTF-8 lossy）
+fn decode_bytes(bytes: &[u8], encoding_name: &str) -> String {
+    // ISO-8859-1：逐字节映射到 Unicode 码点
+    if encoding_name.eq_ignore_ascii_case("ISO-8859-1") {
+        return bytes.iter().map(|&b| b as char).collect();
+    }
+    // UTF-16 系列：按 BOM 或显式字节序解码
+    if encoding_name.to_uppercase().contains("UTF-16") {
+        let (start, big_endian) = if bytes.len() >= 2 {
+            match (bytes[0], bytes[1]) {
+                (0xFE, 0xFF) => (2, true),   // UTF-16BE BOM
+                (0xFF, 0xFE) => (2, false),  // UTF-16LE BOM
+                _ => (0, !encoding_name.to_uppercase().contains("LE")),
+            }
+        } else {
+            (0, !encoding_name.to_uppercase().contains("LE"))
+        };
+        let mut s = String::with_capacity((bytes.len() - start) / 2);
+        let mut i = start;
+        while i + 1 < bytes.len() {
+            let cu = if big_endian {
+                u16::from_be_bytes([bytes[i], bytes[i + 1]])
+            } else {
+                u16::from_le_bytes([bytes[i], bytes[i + 1]])
+            };
+            if let Some(c) = char::from_u32(cu as u32) {
+                s.push(c);
+            } else {
+                // 代理对（高位 → 低位拼接）
+                if (0xD800..=0xDBFF).contains(&cu) && i + 3 < bytes.len() {
+                    let low = if big_endian {
+                        u16::from_be_bytes([bytes[i + 2], bytes[i + 3]])
+                    } else {
+                        u16::from_le_bytes([bytes[i + 2], bytes[i + 3]])
+                    };
+                    if (0xDC00..=0xDFFF).contains(&low) {
+                        let cp = 0x10000 + ((cu as u32 - 0xD800) << 10) + (low as u32 - 0xDC00);
+                        if let Some(c) = char::from_u32(cp) {
+                            s.push(c);
+                            i += 2;
+                        }
+                    }
+                }
+                s.push('\u{FFFD}');
+            }
+            i += 2;
+        }
+        return s;
+    }
+    // 未知编码：UTF-8 lossy 兜底
+    String::from_utf8_lossy(bytes).into_owned()
 }
 
 /// 数字模型辅助
@@ -758,6 +826,91 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             mm.insert("overloaded".to_string(), TModel::from_method(VarOverloaded));
             mm.insert("noVarArgs".to_string(), TModel::from_method(VarNoVarArgs));
             m.insert("m".to_string(), TModel::from_hash(mm));
+        }
+        "bean-maps" => {
+            // TemplateTestCase.java:321-333 + TestMapBean + TestBean ——
+            // Java Bean → TemplateHashModel + TemplateScalarModel 双角色；
+            // shadow 变体有 scalar（toString→name），非 shadow 变体无 scalar；
+            // "all" 变体暴露全部 Object 方法（getClass/notify/wait 等，值恒 "UNKNOWN"）
+            fn bean_props(name: &str) -> IndexMap<String, TModel> {
+                let mut h = IndexMap::new();
+                h.insert("age".to_string(), num(27));
+                h.insert("location".to_string(), TModel::from_scalar("San Francisco".to_string()));
+                h.insert("luckyNumber".to_string(), num(7));
+                h.insert("name".to_string(), TModel::from_scalar(name.to_string()));
+                h.insert("empty".to_string(), TModel::from_boolean(false));
+                h.insert("class".to_string(), TModel::from_scalar(
+                    "class freemarker.test.templatesuite.TemplateTestCase$TestMapBean".to_string()));
+                h
+            }
+            fn shadow_bean(name: &str) -> TModel {
+                let mut tm = TModel::from_hash(bean_props(name));
+                tm.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar(name.to_string())));
+                tm.kind = freemarker::template::ModelKind::Wrapped;
+                tm.type_name = "wrapped";
+                tm
+            }
+            fn all_bean_props(name: &str) -> IndexMap<String, TModel> {
+                let mut h = bean_props(name);
+                // Java Object 方法（TemplateHashModelEx2 不暴露 → 值恒 "UNKNOWN"）
+                for method in &["clear","clone","containsKey","containsValue","entrySet",
+                    "equals","get","getClass","getLuckyNumber","getName","hashCode",
+                    "isEmpty","keySet","notify","notifyAll","put","putAll","remove",
+                    "size","toString","values","wait"] {
+                    if !h.contains_key(*method) {
+                        h.insert(method.to_string(), TModel::from_scalar("UNKNOWN".to_string()));
+                    }
+                }
+                h
+            }
+            fn shadow_all_bean(name: &str) -> TModel {
+                let mut tm = TModel::from_hash(all_bean_props(name));
+                tm.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar(name.to_string())));
+                tm.kind = freemarker::template::ModelKind::Wrapped;
+                tm.type_name = "wrapped";
+                tm
+            }
+            // m1: properties only, shadow（scalar "Christopher" + hash 属性）
+            m.insert("m1".to_string(), shadow_bean("Christopher"));
+            // m2: properties only（纯 hash，无 scalar）
+            m.insert("m2".to_string(), TModel::from_hash(bean_props("Chris")));
+            // m3: nothing, shadow（scalar "Chris" + 仅 age/location/name）
+            {
+                let mut h3 = IndexMap::new();
+                h3.insert("age".to_string(), num(27));
+                h3.insert("location".to_string(), TModel::from_scalar("San Francisco".to_string()));
+                h3.insert("name".to_string(), TModel::from_scalar("Chris".to_string()));
+                let mut tm3 = TModel::from_hash(h3);
+                tm3.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar("Chris".to_string())));
+                tm3.kind = freemarker::template::ModelKind::Wrapped;
+                tm3.type_name = "wrapped";
+                m.insert("m3".to_string(), tm3);
+            }
+            // m4: nothing（纯 hash，仅 age/location/name）
+            {
+                let mut h4 = IndexMap::new();
+                h4.insert("age".to_string(), num(27));
+                h4.insert("location".to_string(), TModel::from_scalar("San Francisco".to_string()));
+                h4.insert("name".to_string(), TModel::from_scalar("Chris".to_string()));
+                m.insert("m4".to_string(), TModel::from_hash(h4));
+            }
+            // m5: all, shadow（scalar "Christopher" + 全部属性/方法）
+            m.insert("m5".to_string(), shadow_all_bean("Christopher"));
+            // m6: all（纯 hash，全部属性/方法）
+            m.insert("m6".to_string(), TModel::from_hash(all_bean_props("Chris")));
+            // m7: simple map mode（纯 hash，仅 age/location/name，3 键）
+            {
+                let mut h7 = IndexMap::new();
+                h7.insert("age".to_string(), num(27));
+                h7.insert("location".to_string(), TModel::from_scalar("San Francisco".to_string()));
+                h7.insert("name".to_string(), TModel::from_scalar("Chris".to_string()));
+                m.insert("m7".to_string(), TModel::from_hash(h7));
+            }
+            // 字符串拼接测试用
+            m.insert("s1".to_string(), TModel::from_scalar("hello".to_string()));
+            m.insert("s2".to_string(), TModel::from_scalar("world".to_string()));
+            m.insert("s3".to_string(), TModel::from_scalar("hello".to_string()));
+            m.insert("s4".to_string(), TModel::from_scalar("world".to_string()));
         }
         _ => {}
     }

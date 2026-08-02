@@ -526,6 +526,215 @@ fn trim_impl(s: &str) -> String {
     java_trim(s).to_string()
 }
 
+// ---------------------------------------------------------------------------
+// truncate 家族 —— 对应 Java BuiltInsForStringsBasic.java（truncate/truncate_w/
+// truncate_c 及其 markup-aware 变体）。_m 变体 v1 暂不支持。
+// ---------------------------------------------------------------------------
+
+/// 字符串的 UTF-16 码元数（对应 Java `String.length()`）
+fn utf16_len(s: &str) -> usize {
+    s.encode_utf16().count()
+}
+
+/// 从开头取 `max_units` 个 UTF-16 码元，返回截断位置（字节偏移）
+fn utf16_cut_point(s: &str, max_units: usize) -> usize {
+    let mut total = 0usize;
+    for (i, c) in s.char_indices() {
+        let cu = c.len_utf16();
+        if total + cu > max_units {
+            return i;
+        }
+        total += cu;
+        if total == max_units {
+            return i + c.len_utf8();
+        }
+    }
+    s.len()
+}
+
+/// 核心截断实现（UTF-16 码元计数）：
+/// - `max_len <= 0` → 返回空串
+/// - 原串 UTF-16 长度 ≤ max_len → 原样返回
+/// - `max_len <= terminator_utf16_len` → 仅返回能装下的 terminator 前缀（或空）
+/// - 否则：在 `max_len - term_units` 码元处截断 + 拼接 terminator
+fn truncate_impl(s: &str, max_len: i64, terminator: &str) -> String {
+    if max_len <= 0 {
+        return String::new();
+    }
+    let max_len = max_len as usize;
+    let s_units = utf16_len(s);
+    if s_units <= max_len {
+        return s.to_string();
+    }
+    let term_units = utf16_len(terminator);
+    if max_len <= term_units {
+        // terminator 装不下 → 返回空；若正好装下 → 返回 terminator
+        if max_len == term_units {
+            return terminator.to_string();
+        }
+        return String::new();
+    }
+    let keep_units = max_len - term_units;
+    let cut = utf16_cut_point(s, keep_units);
+    let mut out = String::with_capacity(cut + terminator.len());
+    out.push_str(&s[..cut]);
+    out.push_str(terminator);
+    out
+}
+
+/// `?truncate(length)` 或 `?truncate(length, terminator)`
+/// 按 UTF-16 码元计数截断；默认 terminator = "..."
+pub fn truncate(
+    env: &mut Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("truncate", args, 1, 2)?;
+    let s = get_string(env, target)?;
+    let max_len = crate::builtins::eval_util::arg_number(env, args, 0)?;
+    let max_len = crate::core::eval::trunc_i64(&max_len).unwrap_or(0);
+    let terminator = if arg_count(args) > 1 {
+        arg_string(env, args, 1)?
+    } else {
+        "...".to_string()
+    };
+    Ok(Some(TModel::from_scalar(truncate_impl(
+        &s, max_len, &terminator,
+    ))))
+}
+
+/// `?truncate_w(maxWords)` 或 `?truncate_w(maxWords, terminator)`
+/// 按词数截断；默认 terminator = "..."
+pub fn truncate_w(
+    env: &mut Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("truncate_w", args, 1, 2)?;
+    let s = get_string(env, target)?;
+    let max_words = crate::builtins::eval_util::arg_number(env, args, 0)?;
+    let max_words = crate::core::eval::trunc_i64(&max_words).unwrap_or(0);
+    let terminator = if arg_count(args) > 1 {
+        arg_string(env, args, 1)?
+    } else {
+        "...".to_string()
+    };
+    if max_words <= 0 {
+        return Ok(Some(TModel::from_scalar(String::new())));
+    }
+    let max_words = max_words as usize;
+    // 按空白分词（保留原词间空白信息用于重组）
+    let words: Vec<&str> = s.split_whitespace().collect();
+    if words.len() <= max_words {
+        return Ok(Some(TModel::from_scalar(s)));
+    }
+    // 截取前 max_words 个词：找到第 max_words 个词的结尾
+    let mut word_count = 0usize;
+    let mut in_word = false;
+    let mut cut = 0usize;
+    for (i, c) in s.char_indices() {
+        if c.is_whitespace() {
+            if in_word {
+                word_count += 1;
+                in_word = false;
+                cut = i;
+                if word_count >= max_words {
+                    break;
+                }
+            }
+        } else {
+            in_word = true;
+        }
+    }
+    if in_word {
+        // 最后一个词
+        cut = s.len();
+    }
+    // 移除尾部空白后追加 terminator
+    let trimmed = s[..cut].trim_end();
+    let mut out = String::with_capacity(trimmed.len() + terminator.len());
+    out.push_str(trimmed);
+    out.push_str(&terminator);
+    Ok(Some(TModel::from_scalar(out)))
+}
+
+/// `?truncate_c(maxChars)` 或 `?truncate_c(maxChars, terminator)`
+/// 按 Unicode 字符（char/code point）计数截断；默认 terminator = "..."
+pub fn truncate_c(
+    env: &mut Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("truncate_c", args, 1, 2)?;
+    let s = get_string(env, target)?;
+    let max_chars = crate::builtins::eval_util::arg_number(env, args, 0)?;
+    let max_chars = crate::core::eval::trunc_i64(&max_chars).unwrap_or(0);
+    let terminator = if arg_count(args) > 1 {
+        arg_string(env, args, 1)?
+    } else {
+        "...".to_string()
+    };
+    if max_chars <= 0 {
+        return Ok(Some(TModel::from_scalar(String::new())));
+    }
+    let max_chars = max_chars as usize;
+    let s_chars = s.chars().count();
+    if s_chars <= max_chars {
+        return Ok(Some(TModel::from_scalar(s)));
+    }
+    let term_chars = terminator.chars().count();
+    if max_chars <= term_chars {
+        if max_chars == term_chars {
+            return Ok(Some(TModel::from_scalar(terminator)));
+        }
+        return Ok(Some(TModel::from_scalar(String::new())));
+    }
+    let keep_chars = max_chars - term_chars;
+    // 找到第 keep_chars 个 Unicode 字符之后的字节偏移
+    let cut: usize = s
+        .char_indices()
+        .nth(keep_chars)
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    let mut out = String::with_capacity(cut + terminator.len());
+    out.push_str(&s[..cut]);
+    out.push_str(&terminator);
+    Ok(Some(TModel::from_scalar(out)))
+}
+
+/// `?truncate_m` —— markup-aware truncate（v1 不支持）
+pub fn truncate_m(
+    _env: &mut Environment,
+    _target: &Expr,
+    _args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    Err(TemplateError::misc(
+        "The \"truncate_m\" built-in requires markup/node infrastructure which isn't supported yet.",
+    ))
+}
+
+/// `?truncate_w_m` —— markup-aware word truncate（v1 不支持）
+pub fn truncate_w_m(
+    _env: &mut Environment,
+    _target: &Expr,
+    _args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    Err(TemplateError::misc(
+        "The \"truncate_w_m\" built-in requires markup/node infrastructure which isn't supported yet.",
+    ))
+}
+
+/// `?truncate_c_m` —— markup-aware character truncate（v1 不支持）
+pub fn truncate_c_m(
+    _env: &mut Environment,
+    _target: &Expr,
+    _args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    Err(TemplateError::misc(
+        "The \"truncate_c_m\" built-in requires markup/node infrastructure which isn't supported yet.",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -712,5 +921,154 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("\"m\" flag"), "{err}");
+    }
+
+    // -----------------------------------------------------------------------
+    // truncate 家族单元测试
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn truncate_no_truncation_needed() {
+        // 串长 ≤ max_len → 原样返回
+        assert_eq!(render_out("${'hello'?truncate(10)}").unwrap(), "hello");
+        assert_eq!(render_out("${'hello'?truncate(5)}").unwrap(), "hello");
+    }
+
+    #[test]
+    fn truncate_basic() {
+        // "hello world", truncate(8) → "hello..."
+        // UTF-16: 'hello world' = 11 码元；8 码元预算；terminator "..." = 3 码元；
+        // 保留 8-3=5 码元 → "hello" + "..." → "hello..."
+        assert_eq!(render_out("${'hello world'?truncate(8)}").unwrap(), "hello...");
+    }
+
+    #[test]
+    fn truncate_zero_length() {
+        // max_len <= 0 → 空串
+        assert_eq!(render_out("${'hello'?truncate(0)}").unwrap(), "");
+        assert_eq!(render_out("${'hello'?truncate(-1)}").unwrap(), "");
+    }
+
+    #[test]
+    fn truncate_custom_terminator() {
+        assert_eq!(
+            render_out("${'hello world'?truncate(7, '!')}").unwrap(),
+            "hello !"
+        );
+    }
+
+    #[test]
+    fn truncate_terminator_wont_fit() {
+        // max_len=2, terminator="..." (3 UTF-16) → max_len < terminator len → 空串
+        assert_eq!(render_out("${'hello'?truncate(2)}").unwrap(), "");
+    }
+
+    #[test]
+    fn truncate_non_bmp() {
+        // 😀 (U+1F600) 占 2 个 UTF-16 码元；"a😀b😀c" → UTF-16 长度=7
+        // truncate(5) → 保留 5-3=2 码元 → "a" + "..." → "a..."
+        assert_eq!(
+            render_out("${'a\u{1F600}b\u{1F600}c'?truncate(5)}").unwrap(),
+            "a..."
+        );
+    }
+
+    #[test]
+    fn truncate_w_basic() {
+        assert_eq!(
+            render_out("${'one two three four'?truncate_w(2)}").unwrap(),
+            "one two..."
+        );
+    }
+
+    #[test]
+    fn truncate_w_no_truncation() {
+        assert_eq!(
+            render_out("${'one two'?truncate_w(5)}").unwrap(),
+            "one two"
+        );
+    }
+
+    #[test]
+    fn truncate_w_custom_terminator() {
+        assert_eq!(
+            render_out("${'a b c d'?truncate_w(2, ' [more]')}").unwrap(),
+            "a b [more]"
+        );
+    }
+
+    #[test]
+    fn truncate_c_basic() {
+        // "hello world" = 11 char; truncate_c(8 char) → 保留 8-3=5 char → "hello..."
+        assert_eq!(
+            render_out("${'hello world'?truncate_c(8)}").unwrap(),
+            "hello..."
+        );
+    }
+
+    #[test]
+    fn truncate_c_non_bmp() {
+        // 😀 (U+1F600) 是一个 Unicode char（code point）
+        // "a😀b😀c" = 5 Unicode chars
+        // truncate_c(4) → 保留 4-3=1 char → "a..."
+        assert_eq!(
+            render_out("${'a\u{1F600}b\u{1F600}c'?truncate_c(4)}").unwrap(),
+            "a..."
+        );
+    }
+
+    #[test]
+    fn truncate_c_custom_terminator() {
+        assert_eq!(
+            render_out("${'hello world'?truncate_c(6, '!')}").unwrap(),
+            "hello!"
+        );
+    }
+
+    #[test]
+    fn truncate_c_no_truncation() {
+        assert_eq!(
+            render_out("${'hi'?truncate_c(5)}").unwrap(),
+            "hi"
+        );
+    }
+
+    #[test]
+    fn truncate_m_not_supported() {
+        let err = render_out("${'hello'?truncate_m(5)}").unwrap_err().to_string();
+        assert!(err.contains("truncate_m"), "{err}");
+        assert!(err.contains("isn't supported yet"), "{err}");
+    }
+
+    #[test]
+    fn truncate_w_m_not_supported() {
+        let err = render_out("${'hello'?truncate_w_m(5)}")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("truncate_w_m"), "{err}");
+    }
+
+    #[test]
+    fn truncate_c_m_not_supported() {
+        let err = render_out("${'hello'?truncate_c_m(5)}")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("truncate_c_m"), "{err}");
+    }
+
+    #[test]
+    fn truncate_arg_count_validation() {
+        let err = render_out("${'x'?truncate()}").unwrap_err().to_string();
+        assert!(
+            err.contains("?truncate(...) expects 1 or 2 arguments but has received none."),
+            "{err}"
+        );
+        let err = render_out("${'x'?truncate(1, '...', 2)}")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("?truncate(...) expects 1 or 2 arguments but has received 3."),
+            "{err}"
+        );
     }
 }

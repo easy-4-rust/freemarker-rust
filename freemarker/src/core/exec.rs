@@ -83,7 +83,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             // 不经过 <#escape> 栈，仅 autoesc/outputFormat 转义）
             (Some(min), Some(max)) => {
                 let n = eval::eval(env, expr)?.get_number()?;
-                let s = legacy_number_format(&n, *min, *max);
+                let s = legacy_number_format(&n, *min, *max, &env.settings.locale);
                 env.emit(&legacy_auto_escaped(env, &s))?;
                 Ok(ExecOutcome::Done)
             }
@@ -453,7 +453,7 @@ enum AssignScope {
 /// （NumericalOutput.java:84-112）：`NumberFormat.getNumberInstance(locale)` +
 /// setMinimum/MaximumFractionDigits + setGroupingUsed(false)；NumberFormat 默认舍入为
 /// HALF_EVEN；超出 max 的位舍入、不足 min 的位补零、超出 min 的尾零剥除。
-fn legacy_number_format(n: &TNumber, min_frac: u32, max_frac: u32) -> String {
+fn legacy_number_format(n: &TNumber, min_frac: u32, max_frac: u32, locale: &str) -> String {
     use bigdecimal::RoundingMode;
     match n {
         TNumber::Float(f) if f.is_nan() || f.is_infinite() => {
@@ -489,6 +489,18 @@ fn legacy_number_format(n: &TNumber, min_frac: u32, max_frac: u32) -> String {
         } else {
             s.truncate(frac_end);
         }
+    }
+    // Locale 感知的小数点替换：fr_FR 等欧洲 locale 用 ',' 作小数点
+    // （Java NumberFormat.getNumberInstance(locale) 的行为；
+    //  与 format.rs decimal_separator/group_separator 一致）
+    let dec_sep = match locale.split('_').next().unwrap_or("en") {
+        "fr" | "de" | "es" | "tr" | "it" | "pt" | "nl" | "sv" | "cs" | "pl" | "hu" | "ro"
+        | "ru" | "uk" | "bg" | "el" | "fi" | "da" | "no" | "sk" | "sl" | "hr" | "lt" | "lv"
+        | "et" | "id" | "vi" | "th" => ',',
+        _ => '.',
+    };
+    if dec_sep != '.' {
+        s = s.replace('.', &dec_sep.to_string());
     }
     s
 }

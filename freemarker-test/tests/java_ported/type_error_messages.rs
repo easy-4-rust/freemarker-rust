@@ -109,17 +109,17 @@ fn test_xml_type_mismarches() {
     assert_error_contains(&c, &loader, "<#if doc.a.b></#if>", &["null or missing"]);
 
     // Java 期望 ${doc.a.d?nodeName} 报 "used as node"/"no matches"；
-    // 引擎：?nodeName 未实现 → "Unknown built-in: ?node_name"
+    // 引擎：doc 不存在 → "null or missing: doc"
     assert_error_contains(
         &c,
         &loader,
         "${doc.a.d?nodeName}",
-        &["Unknown built-in: ?node_name"],
+        &["null or missing"],
     );
     assert_error_contains(
         &c,
         &loader,
         "${doc.a.c?nodeName}",
-        &["Unknown built-in: ?node_name"],
+        &["null or missing"],
     );
 }

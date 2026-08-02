@@ -705,27 +705,36 @@ fn compare_cast_keys(a: &CastKey, b: &CastKey) -> Ordering {
 
 /// 近似 Java `Collator`（Locale.US，TERTIARY 强度）的字符串排序比较（对应 Java
 /// LexicalKVPComparator :637-649 的 `Collator.compare`）：
-/// - 主强度忽略大小写（小写折叠后按 UTF-16 码元序比较）；
-/// - 折叠相同 → 第三强度逐码元区分大小写：同字母小写 < 大写
-///   （jar 实测：["a","A","aa","aA","Aa","AA"] → a,A,aa,aA,Aa,AA；
-///   ["Barbara","barbara","BARBARA"] → barbara,Barbara,BARBARA；
-///   ["whale","Barbara","zeppelin","aardvark","beetroot"] → aardvark,Barbara,...）；
-/// - 重音次序（ICU 次强度）与标点/数字权重仍为 UTF-16 码元序近似（P4 对齐项，
-///   与 eval.rs compare_models 的 NFKC 近似同一层级）。
+///
+/// **核心原理**：标点符号在 Collator 中有非零的主权重（primary weight），不能像
+/// `?sort` 的简单码元序那样直接剥离。本实现为每个 ASCII 标点分配一个排序键代理字符，
+/// 其相对顺序由 jar 实测 Java Collator.getInstance(Locale.US).setStrength(TERTIARY)
+/// 确定。字母数字使用自身的小写码元。
+///
+/// **代理顺序**（jar ProbeCollator 实测，左=先排序）：
+/// `_` < `:` < `!` < `/` < `.` < `'` < `"` < `-` < `@`
+///
+/// **已知限制（P4）**：
+/// - 非 ASCII 标点与带重音字符使用码元序作为近似
+/// - 次强度（secondary）的重音差异不区分
+/// - 完整 Collator 需 ICU/CLDR 数据表（>100KB），留待 P6 对齐
 fn collator_cmp(a: &str, b: &str) -> Ordering {
-    let la = a.to_lowercase();
-    let lb = b.to_lowercase();
-    match utf16_cmp(&la, &lb) {
+    let ka = collation_sort_key(a);
+    let kb = collation_sort_key(b);
+    // 主强度比较（使用排序键 = 代理字符替换标点后的序列）
+    match ka.cmp(&kb) {
         Ordering::Equal => {
-            // 第三强度：逐码元比较；同字母异大小写 → 小写在前
+            // 第三强度：逐字符比较大小写与标点权重
             let au: Vec<u16> = a.encode_utf16().collect();
             let bu: Vec<u16> = b.encode_utf16().collect();
             for (x, y) in au.iter().zip(bu.iter()) {
                 if x == y {
                     continue;
                 }
-                if let (Some(xc), Some(yc)) = (char::from_u32(*x as u32), char::from_u32(*y as u32))
+                if let (Some(xc), Some(yc)) =
+                    (char::from_u32(*x as u32), char::from_u32(*y as u32))
                 {
+                    // 同字母异大小写 → 小写在前（Java Collator TERTIARY）
                     let xl = xc.to_lowercase().next();
                     let yl = yc.to_lowercase().next();
                     if xl.is_some() && xl == yl && xc.is_lowercase() != yc.is_lowercase() {
@@ -734,6 +743,12 @@ fn collator_cmp(a: &str, b: &str) -> Ordering {
                         } else {
                             Ordering::Greater
                         };
+                    }
+                    // 标点第三强度权重（jar 实测 TERTIARY 标点顺序）
+                    let xw = collation_weight(xc);
+                    let yw = collation_weight(yc);
+                    if xw != yw {
+                        return xw.cmp(&yw);
                     }
                 }
                 return x.cmp(y);
@@ -744,7 +759,75 @@ fn collator_cmp(a: &str, b: &str) -> Ordering {
     }
 }
 
-/// UTF-16 码元字典序（同 eval.rs utf16_cmp）
+/// 构建 Collator 排序键：将每个字符映射为其主权重代理。
+/// 标点代理在 U+0001‥U+0009 区段，保证标点 < 数字 < 字母的顺序。
+fn collation_sort_key(s: &str) -> Vec<u16> {
+    s.chars()
+        .flat_map(|c| {
+            // 小写折叠
+            let lc = c.to_lowercase().next().unwrap_or(c);
+            match lc {
+                '_' => vec![0x0001],
+                ':' => vec![0x0002],
+                '!' => vec![0x0003],
+                '/' => vec![0x0004],
+                '.' => vec![0x0005],
+                '\'' => vec![0x0006],
+                '"' => vec![0x0007],
+                '-' => vec![0x0008],
+                '@' => vec![0x0009],
+                // 其他 ASCII 标点：码元偏移到 0x000A-0x002F（保持相对顺序）
+                c if c.is_ascii_punctuation() => vec![0x000A + (c as u32 as u16).saturating_sub(0x21)],
+                // 字母数字：小写码元（>= 0x30）
+                c => vec![c as u16],
+            }
+        })
+        .collect()
+}
+
+/// Java Collator（Locale.US，TERTIARY）的 ASCII 标点第三强度权重（jar ProbeCollator
+/// 实测；权重越大在排序中越靠后）。
+fn collation_weight(c: char) -> u32 {
+    match c {
+        '_' => 1,
+        ':' => 2,
+        '!' => 3,
+        '/' => 4,
+        '.' => 5,
+        '\'' => 6,
+        '"' => 7,
+        '-' => 8,
+        '@' => 9,
+        ' ' => 10,
+        ',' => 11,
+        ';' => 12,
+        '?' => 13,
+        '`' => 14,
+        '^' => 15,
+        '~' => 16,
+        '(' => 17,
+        ')' => 18,
+        '[' => 19,
+        ']' => 20,
+        '{' => 21,
+        '}' => 22,
+        '$' => 23,
+        '*' => 24,
+        '\\' => 25,
+        '&' => 26,
+        '#' => 27,
+        '%' => 28,
+        '+' => 29,
+        '<' => 30,
+        '=' => 31,
+        '>' => 32,
+        '|' => 33,
+        _ => u32::from(c), // 非 ASCII：码点兜底
+    }
+}
+
+/// UTF-16 码元字典序（保留供其他模块使用）
+#[allow(dead_code)]
 fn utf16_cmp(a: &str, b: &str) -> Ordering {
     let au: Vec<u16> = a.encode_utf16().collect();
     let bu: Vec<u16> = b.encode_utf16().collect();
@@ -856,6 +939,31 @@ pub fn min(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Resul
 
 pub fn max(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<Option<TModel>> {
     min_max_impl(env, target, args, true)
+}
+
+/// ?sequence —— Java BuiltInsForSequences.sequence：目标已是序列/集合 → 原样返回；
+/// 字符串 → 字符序列（每字符一个单字符串）；其余 → 报错。
+pub fn sequence(
+    env: &mut Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("sequence", args, 0, 0)?;
+    let t = crate::core::eval::eval(env, target)?;
+    // 已是序列或集合 → 原样返回
+    if t.is_sequence() || t.is_collection() {
+        return Ok(Some(t));
+    }
+    // 字符串 → 字符序列（每字符一个单字符串）
+    if t.is_scalar() {
+        let s = t.get_scalar()?;
+        let chars: Vec<TModel> = s.chars().map(|c| TModel::from_scalar(c.to_string())).collect();
+        return Ok(Some(TModel::from_sequence(chars)));
+    }
+    Err(TemplateError::misc(format!(
+        "?sequence is not applicable to a {} value",
+        t.type_name
+    )))
 }
 
 #[cfg(test)]
@@ -1439,6 +1547,83 @@ mod tests {
             err.to_string()
                 .contains("value of the comparison is a date-like value where it's not known"),
             "{err}"
+        );
+    }
+
+    // ---- ?sequence ----
+
+    #[test]
+    fn sequence_on_sequence() {
+        // 已是序列 → 原样返回
+        assert_eq!(
+            eval_out(no_root(), "[1,2,3]?sequence?size").unwrap(),
+            "3"
+        );
+        assert_eq!(
+            eval_out(no_root(), "([1,2]?sequence)?first").unwrap(),
+            "1"
+        );
+    }
+
+    #[test]
+    fn sequence_on_string() {
+        // 字符串 → 字符序列
+        assert_eq!(
+            eval_out(no_root(), "'abc'?sequence?size").unwrap(),
+            "3"
+        );
+        assert_eq!(
+            eval_out(no_root(), "('abc'?sequence)?join(',')").unwrap(),
+            "a,b,c"
+        );
+        assert_eq!(
+            eval_out(no_root(), "('abc'?sequence)?first").unwrap(),
+            "a"
+        );
+        assert_eq!(
+            eval_out(no_root(), "('abc'?sequence)?last").unwrap(),
+            "c"
+        );
+    }
+
+    #[test]
+    fn sequence_on_collection() {
+        // 集合 → 原样返回
+        let root_model = TModel::from_hash(IndexMap::from([(
+            "coll".to_string(),
+            TModel::from_collection(vec![
+                TModel::from_scalar("x".to_string()),
+                TModel::from_scalar("y".to_string()),
+                TModel::from_scalar("z".to_string()),
+            ]),
+        )]));
+        // ?seq_contains 适用于序列和集合
+        assert_eq!(
+            render_model(root_model.clone(), "coll?sequence?seq_contains('y')?c").unwrap(),
+            "true"
+        );
+        assert_eq!(
+            render_model(root_model.clone(), "coll?sequence?seq_contains('w')?c").unwrap(),
+            "false"
+        );
+    }
+
+    #[test]
+    fn sequence_on_number_errors() {
+        // 数字 → 报错
+        let err = eval_out(no_root(), "42?sequence").unwrap_err();
+        assert!(
+            err.to_string().contains("?sequence is not applicable to a number value"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn sequence_on_empty_string() {
+        // 空字符串 → 空字符序列
+        assert_eq!(
+            eval_out(no_root(), "''?sequence?size").unwrap(),
+            "0"
         );
     }
 }

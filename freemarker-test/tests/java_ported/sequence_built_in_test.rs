@@ -5,8 +5,8 @@
 //! - Java 用 DefaultIterableAdapter/DefaultNonListCollectionAdapter 把 Set 适配为
 //!   纯 collection / CollectionEx；v1 用 TModel::from_collection（collection_ex 标志
 //!   可设）模拟。
-//! - `?sequence` 内建 v1 **未实现** —— 所有 `${x?sequence...}` 用例报
-//!   "Unknown built-in: ?sequence"（Java 期望 "b"/"2"/"12"）。
+//! - `?sequence` 内建已实现：对序列为透传（pass-through），对 collection 返回
+//!   null/missing（v1 无法把 collection 转为 sequence）。
 //! - 集合 `[i]` 索引：Java 报错含 "?sequence" 提示；v1 报
 //!   "Expected a sequence or string ... but this has evaluated to a collection"
 //!   （提示 ?api，无 "?sequence" 子串）。
@@ -56,12 +56,14 @@ fn test_with_collection() {
         dm.clone(),
         &["has evaluated to a collection"],
     );
-    // 引擎差异：?sequence 未实现 → "Unknown built-in: ?sequence"；Java 期望 "b"
-    assert_error_contains(
+    // ?sequence on a collection is a pass-through (v1 cannot convert collection to sequence)
+    // → subsequent [1] fails with collection error
+    assert_error_contains_with_dm(
         &c,
         &loader,
         "${xs?sequence[1]}",
-        &["Unknown built-in: ?sequence"],
+        dm.clone(),
+        &["has evaluated to a collection"],
     );
 
     // 引擎消息差异：Java 报错含 "?sequence" 提示；v1 "?size is not applicable to a collection value"
@@ -72,12 +74,13 @@ fn test_with_collection() {
         dm.clone(),
         &["not applicable to a collection value"],
     );
-    // 引擎差异：?sequence 未实现 → 未知内建；Java 期望 "2"
-    assert_error_contains(
+    // ?sequence on a collection is a pass-through → ?size still fails on collection
+    assert_error_contains_with_dm(
         &c,
         &loader,
         "${xs?sequence?size}",
-        &["Unknown built-in: ?sequence"],
+        dm.clone(),
+        &["not applicable to a collection value"],
     );
 }
 
@@ -100,12 +103,13 @@ fn test_with_collection_ex() {
         dm.clone(),
         &["has evaluated to a collection"],
     );
-    // 引擎差异：?sequence 未实现 → 未知内建；Java 期望 "b"
-    assert_error_contains(
+    // ?sequence on a collection is a pass-through → [1] fails with collection error
+    assert_error_contains_with_dm(
         &c,
         &loader,
         "${xs?sequence[1]}",
-        &["Unknown built-in: ?sequence"],
+        dm.clone(),
+        &["has evaluated to a collection"],
     );
 
     // CollectionEx：Java 可直接 ?size（无需 ?sequence）→ "2"；
@@ -123,22 +127,12 @@ fn test_with_collection_ex() {
 #[test]
 fn test_with_sequence() {
     let (c, loader) = cfg();
-    // Java：${[11, 12]?sequence[1]} → "12"；v1 ?sequence 未实现（引擎差异）
-    assert_error_contains(
-        &c,
-        &loader,
-        "${[11, 12]?sequence[1]}",
-        &["Unknown built-in: ?sequence"],
-    );
+    // ?sequence on a sequence is a pass-through → returns same sequence
+    assert_output(&c, &loader, "${[11, 12]?sequence[1]}", "12");
 
     // Java：setIncompatibleImprovements(2.3.23) 后 ?sequence 原样返回序列，
-    // 对无限序列 (11..) 也有效 → "12"；v1 ?sequence 未实现（引擎差异）
+    // 对无限序列 (11..) 也有效 → "12"
     let (mut c, loader) = cfg();
     c.settings.incompatible_improvements = freemarker::template::Version::parse("2.3.23").unwrap();
-    assert_error_contains(
-        &c,
-        &loader,
-        "${(11..)?sequence[1]}",
-        &["Unknown built-in: ?sequence"],
-    );
+    assert_output(&c, &loader, "${(11..)?sequence[1]}", "12");
 }

@@ -426,6 +426,15 @@ impl Lexer {
     /// 消费标签/指令结束符 `>`、`/>`、`]`、`/]`（允许任意组合，宽于 JavaCC 的
     /// CLOSE_TAG1/CLOSE_TAG2 区分；文档化偏差）。返回 false 表示不匹配。
     pub(crate) fn try_read_tag_end(&mut self) -> Option<bool> {
+        // 跳过前面空白：FreeMarker 允许 `</#if >` 的 `>` 前有空格
+        // （Java FTL.jj LOOKAHEAD 在标签结束匹配 `>` 时隐含允许空白）
+        while let Some(c) = self.peek() {
+            if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+                self.bump();
+            } else {
+                break;
+            }
+        }
         // 返回 Some(true) = `/>`（自闭合），Some(false) = `>`
         match self.peek() {
             Some('>') => {

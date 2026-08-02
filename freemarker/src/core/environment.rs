@@ -47,6 +47,8 @@ pub struct Environment<'a> {
     pub root: TModel,
     /// 输出目标（Java `out: Writer`；:175 字段、:3666 write(Writer)）
     pub out: &'a mut dyn Write,
+    /// 输出缓冲（内部始终 UTF-8；process() 结束时按 output_encoding 转码写出）
+    output_buffer: Vec<u8>,
     /// 指令栈（Java `instructionStack` :107；docs/04 §2 渲染循环；run() 内保存/恢复）
     stack: Vec<Element>,
     /// 局部上下文栈（Java `localContextStack`；:2753 pushLocalContext / :2919 popElement）
@@ -376,12 +378,14 @@ impl TemplateHashModel for Namespace {
 
 impl TemplateHashModelEx for Namespace {
     fn size(&self) -> Result<usize> {
-        // Java SimpleHash.size 含宏；v1 仅统计变量（文档化差异）
-        Ok(self.vars.borrow().len())
+        // Java SimpleHash.size 含宏——变量 + 宏定义总数
+        Ok(self.vars.borrow().len() + self.macros.borrow().len())
     }
     fn keys(&self) -> Result<Vec<String>> {
-        // Java 为 LinkedHashMap 插入序；Rust HashMap 无序遍历 → 排序保证确定性
+        // Java SimpleHash.keys() 返回 LinkedHashMap 插入序的所有键（含宏定义）；
+        // Rust HashMap 无序遍历 → 排序保证确定性
         let mut k: Vec<String> = self.vars.borrow().keys().cloned().collect();
+        k.extend(self.macros.borrow().keys().cloned());
         k.sort();
         Ok(k)
     }
@@ -436,6 +440,7 @@ impl<'a> Environment<'a> {
             base_time_zone_id,
             attempt_depth: 0,
             redirect: None,
+            output_buffer: Vec::new(),
             escapes: Vec::new(),
             auto_escape,
             current_template_name: template.name.clone(),
@@ -444,14 +449,26 @@ impl<'a> Environment<'a> {
     }
 
     /// 渲染入口 —— 对应 Java `Environment.process()`（:315-336）：
-    /// 执行根元素，结束后自动 flush（Java :323-325 `if (getAutoFlush()) out.flush()`）。
+    /// 执行根元素，按 output_encoding 将内部 UTF-8 缓冲转码后写出，最后 flush。
     pub fn process(&mut self) -> Result<()> {
         if !self.root.is_hash() {
             return Err(TemplateError::misc("The data model must be a hash"));
         }
         let root = self.template.root.clone();
-        match self.run(&root)? {
-            RunSignal::Completed => self.out.flush().map_err(TemplateError::Io),
+        let signal = self.run(&root)?;
+        match signal {
+            RunSignal::Completed => {
+                let output_encoding = &self.settings.output_encoding;
+                if output_encoding.eq_ignore_ascii_case("UTF-8") || output_encoding.is_empty() {
+                    // UTF-8 或未指定：缓冲中的 UTF-8 直接写出
+                    self.out.write_all(&self.output_buffer).map_err(TemplateError::Io)?;
+                } else {
+                    // 非 UTF-8：将 UTF-8 缓冲转码为输出编码
+                    let encoded = transcode_output(&self.output_buffer, output_encoding)?;
+                    self.out.write_all(&encoded).map_err(TemplateError::Io)?;
+                }
+                self.out.flush().map_err(TemplateError::Io)
+            }
             RunSignal::Returned(_) => Err(TemplateError::misc(
                 "<#return> is illegal here (not inside a macro or function)",
             )),
@@ -668,7 +685,8 @@ impl<'a> Environment<'a> {
             buf.borrow_mut().extend_from_slice(s.as_bytes());
             return Ok(());
         }
-        self.out.write_all(s.as_bytes()).map_err(TemplateError::Io)
+        self.output_buffer.extend_from_slice(s.as_bytes());
+        Ok(())
     }
 
     /// 捕获输出（`<#assign x>...</#assign>`、`<#trim>`、`<#attempt>`、函数调用丢弃输出）
@@ -1319,6 +1337,57 @@ pub(crate) fn build_args_special(
 /// Java `_CoreStringUtils.jQuote` 的简化形式（错误消息用）
 fn quote_name(s: &str) -> String {
     format!("\"{}\"", s)
+}
+
+/// 输出转码：内部 UTF-8 → 目标编码（ISO-8859-1 / UTF-16BE 等）
+/// 对应 Java `Writer` + `OutputStreamWriter` 包装：
+/// OutputStreamWriter(out, Charset.forName(outputEncoding))
+fn transcode_output(utf8: &[u8], encoding_name: &str) -> Result<Vec<u8>> {
+    let s = std::str::from_utf8(utf8).map_err(|_| {
+        TemplateError::misc("Internal output is not valid UTF-8")
+    })?;
+    // ISO-8859-1（Latin-1）：Unicode 码点 ≤ 0xFF 逐字节输出；超出 → '?'
+    if encoding_name.eq_ignore_ascii_case("ISO-8859-1") {
+        let mut out = Vec::with_capacity(s.len());
+        for ch in s.chars() {
+            let cu = ch as u32;
+            if cu <= 0xFF {
+                out.push(cu as u8);
+            } else {
+                out.push(b'?');
+            }
+        }
+        return Ok(out);
+    }
+    // UTF-16（Java 默认 UTF-16BE + BOM；含 UTF-16BE/UTF-16LE/UTF-16 等别名）
+    if encoding_name.to_uppercase().contains("UTF-16") {
+        let is_le = encoding_name.to_uppercase().contains("LE");
+        let with_bom = !encoding_name.to_uppercase().contains("BE")
+            && !encoding_name.to_uppercase().contains("LE");
+        let mut out = Vec::new();
+        // BOM（Java OutputStreamWriter 对 UTF-16 默认写 BOM）
+        if with_bom {
+            out.extend_from_slice(&[0xFE, 0xFF]); // UTF-16BE BOM
+        }
+        for cu in s.encode_utf16() {
+            let bytes = if is_le {
+                cu.to_le_bytes()
+            } else {
+                cu.to_be_bytes()
+            };
+            out.extend_from_slice(&bytes);
+        }
+        return Ok(out);
+    }
+    // 兜底：使用 encoding_rs（支持广泛的 IANA 编码名）
+    if let Some(enc) = encoding_rs::Encoding::for_label(encoding_name.as_bytes()) {
+        let (encoded, _enc, _replaced) = enc.encode(s);
+        // encode 返回 (Cow<[u8]>, ...)，直接取字节
+        return Ok(encoded.into_owned());
+    }
+    Err(TemplateError::misc(format!(
+        "Unknown output encoding: \"{encoding_name}\""
+    )))
 }
 
 // ---------------------------------------------------------------------------

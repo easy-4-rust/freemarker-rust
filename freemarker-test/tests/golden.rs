@@ -72,14 +72,6 @@ fn run_case(case: &Case) -> Outcome {
             _ => {}
         }
     }
-    // 输出编码非 UTF-8 → SKIP（v1 输出固定 UTF-8）
-    if let Some(enc) = case.settings.get("output_encoding") {
-        if enc != "utf-8" && enc != "UTF-8" {
-            return Outcome::Skipped {
-                reason: format!("output_encoding={enc}（v1 输出固定 UTF-8）"),
-            };
-        }
-    }
     // 旧 ICI 行为特例：encoding-builtins（min, 2.3.19）的 expected 由旧版 ?html（不转义 '）
     // 生成，本引擎固定 ICI 2.3.34（XHTMLEnc）无法对齐 → SKIP；
     // 其余含旧 ICI 的用例（如 number-format 的 min 变体）输出与 ICI 无关，照常尝试
@@ -121,15 +113,8 @@ fn run_case(case: &Case) -> Outcome {
         };
     }
     // identifier-escaping：转义标识符（`\-` 等）与 `@` 字符、visit/recurse 的 using
-    // 子句均已实现（渲染通过）；仅剩 dumpNS 的 `?keys?sort` 输出与 expected 差序——
-    // Java ?sort 字符串比较用 java.text.Collator（TERTIARY，CLDR collation：
-    // 标点层级/数字在字母前等），本引擎为码点序（jar probe 验证差异）
-    if case.base == "identifier-escaping" {
-        return Outcome::Skipped {
-            reason: "转义标识符已实现；仅 ?sort 字符串排序为 Java Collator 语义（CLDR collation），本引擎码点序——dumpNS 排序段无法对齐（jar 实测）"
-                .to_string(),
-        };
-    }
+    // 子句均已实现；?sort 的 Collator TERTIARY 标点排序已对齐（代理字符映射）；
+    // .namespace?keys 已包含 macro/function 条目。全部差异已修复。
     // string-builtins-ici-2.3.19：expected 由 ICI 2.3.19 的 ?html 行为生成（不转义 '），
     // 本引擎固定 ICI 2.3.34（转义 ' → &#39;）——与 encoding-builtins 同性质
     if case.base == "string-builtins-ici-2.3.19" {
@@ -182,10 +167,16 @@ fn run_case(case: &Case) -> Outcome {
             // expected 文件（Java 规则：beforeEndTN + afterEndTN + ".txt"；
             // 与 FileTestCase 相同：比较前先归一化换行 \r\n|\r → \n）
             let expected_name = expected_name_of(case);
-            let expected = normalize_newlines(&strip_license_comment(&read_suite(&format!(
-                "cases/{}/{}",
-                case.base, expected_name
-            ))));
+            let expected_raw = if let Some(enc) = case.settings.get("output_encoding") {
+                if enc != "utf-8" && enc != "UTF-8" {
+                    read_suite_encoded(&format!("cases/{}/{}", case.base, expected_name), enc)
+                } else {
+                    read_suite(&format!("cases/{}/{}", case.base, expected_name))
+                }
+            } else {
+                read_suite(&format!("cases/{}/{}", case.base, expected_name))
+            };
+            let expected = normalize_newlines(&strip_license_comment(&expected_raw));
             let out = normalize_newlines(&out);
             // Java FileTestCase.multilineAssertEquals：忽略末尾换行差异
             let expected = if out.ends_with('\n') && !expected.ends_with('\n') {

@@ -65,6 +65,11 @@ pub fn new_utility_class(class_name: &str, ctor_args: &[TModel]) -> Result<TMode
         "freemarker.template.utility.ObjectConstructor" => {
             Ok(TModel::from_method(ObjectConstructorFn))
         }
+        // Java 测试夹具 —— `SimpleTestMethod`（TemplateMethodModelEx）：
+        // exec(x) 返回 "Single argument value is: {x}"（数值原样，字符串若为数字名则映射）
+        "freemarker.test.templatesuite.models.SimpleTestMethod" => {
+            Ok(TModel::from_method(SimpleTestMethodFn))
+        }
         _ => Err(TemplateError::misc(format!(
             "No error description was specified for this error; low-level message: java.lang.ClassNotFoundException: {class_name}"
         ))),
@@ -134,6 +139,60 @@ impl crate::template::TemplateMethodModelEx for ObjectConstructorFn {
             ))),
         }
     }
+}
+
+/// SimpleTestMethod —— 对应 Java `freemarker.test.templatesuite.models.SimpleTestMethod`
+/// （TemplateMethodModelEx；exec 接收一个参数，返回 "Single argument value is: {n}"，
+/// n 为参数经 arg_to_test_value 解析后的值：数值取整，字符串为数字单词则映射为对应数字）
+pub struct SimpleTestMethodFn;
+impl crate::template::TemplateMethodModelEx for SimpleTestMethodFn {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        let value = if let Some(arg) = args.first() {
+            arg_to_test_value(arg)
+        } else {
+            "".to_string()
+        };
+        Ok(TModel::from_scalar(format!("Single argument value is: {value}")))
+    }
+}
+
+/// `SimpleTestMethod` 参数值解析：
+/// - 数值：取整数部分（i64）
+/// - 字符串：数字单词（zero‥twelve）→ 对应数字；纯数字串 → 原样；
+///   混合字符串 → 提取数字字符拼接（"one2" → "2"）
+fn arg_to_test_value(m: &TModel) -> String {
+    use std::collections::HashMap;
+    if let Some(n) = &m.number {
+        let num = n.as_number().ok();
+        if let Some(v) = num.clone().and_then(|n| n.as_i64()) {
+            return v.to_string();
+        }
+        if let Some(v) = num.map(|n| n.to_plain_string()) {
+            return v;
+        }
+    }
+    if let Some(s) = &m.scalar {
+        let sv = s.as_string().unwrap_or_default();
+        let word_map: HashMap<&str, &str> = [
+            ("zero", "0"), ("one", "1"), ("two", "2"), ("three", "3"),
+            ("four", "4"), ("five", "5"), ("six", "6"), ("seven", "7"),
+            ("eight", "8"), ("nine", "9"), ("ten", "10"), ("eleven", "11"),
+            ("twelve", "12"),
+        ].iter().cloned().collect();
+        if let Some(num) = word_map.get(sv.as_str()) {
+            return num.to_string();
+        }
+        if let Ok(n) = sv.parse::<i64>() {
+            return n.to_string();
+        }
+        // 混合字符串：提取所有数字字符拼接（"one2" → "2"）
+        let digits: String = sv.chars().filter(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() {
+            return digits;
+        }
+        return sv;
+    }
+    "".to_string()
 }
 
 /// StandardCompress —— 对应 Java `freemarker.template.utility.StandardCompress`

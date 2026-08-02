@@ -26,6 +26,7 @@ pub mod java_date_format;
 pub mod lazy;
 pub mod loop_vars;
 pub mod multi;
+pub mod nodes;
 pub mod numbers;
 pub mod sequences;
 pub mod strings;
@@ -60,6 +61,12 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "left_pad" => Some(strings::left_pad),
         "right_pad" => Some(strings::right_pad),
         "last_index_of" => Some(strings::last_index_of),
+        "truncate" => Some(strings::truncate),
+        "truncate_w" => Some(strings::truncate_w),
+        "truncate_c" => Some(strings::truncate_c),
+        "truncate_m" => Some(strings::truncate_m),
+        "truncate_w_m" => Some(strings::truncate_w_m),
+        "truncate_c_m" => Some(strings::truncate_c_m),
         // ---- 字符串编码（BuiltInsForStringsEncoding.java）----
         "j_string" => Some(strings_encoding::j_string),
         "js_string" => Some(strings_encoding::js_string),
@@ -88,6 +95,7 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "max" => Some(sequences::max),
         "seq_index_of" => Some(sequences::seq_index_of),
         "seq_last_index_of" => Some(sequences::seq_last_index_of),
+        "sequence" => Some(sequences::sequence),
         // ---- 数字（BuiltInsForNumbers.java）----
         "abs" => Some(numbers::abs),
         "ceiling" => Some(numbers::ceiling),
@@ -145,6 +153,9 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "is_datetime" => Some(multi::is_datetime),
         "is_unknown_date_like" => Some(multi::is_unknown_date_like),
         "namespace" => Some(multi::namespace),
+        "absolute_template_name" => Some(multi::absolute_template_name),
+        "api" => Some(multi::api),
+        "markup_string" => Some(multi::markup_string),
         // ---- 惰性条件（BuiltInsWithLazyConditionals.java）----
         "then" => Some(lazy::then),
         "switch" => Some(lazy::switch),
@@ -159,6 +170,14 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         // ---- 柯里化（BuiltInsForCallables.java 基础版）----
         "with_args" => Some(callables::with_args),
         "with_args_last" => Some(callables::with_args_last),
+        // ---- 节点（BuiltInsForNode.java）----
+        "children" => Some(nodes::children),
+        "parent" => Some(nodes::parent),
+        "root" => Some(nodes::root),
+        "ancestors" => Some(nodes::ancestors),
+        "node_name" => Some(nodes::node_name),
+        "node_type" => Some(nodes::node_type),
+        "node_namespace" => Some(nodes::node_namespace),
         _ => None,
     }
 }

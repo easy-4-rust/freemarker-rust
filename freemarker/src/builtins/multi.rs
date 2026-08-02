@@ -11,7 +11,7 @@
 //! - `?is_date_only` 等 → is_dateOfTypeBI：按 DateValue.kind 判定；
 //! - `?namespace` → namespaceBI（v1：命名空间值返回命名空间模型；非变量目标报错）。
 
-use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count};
+use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, coerce_to_string};
 use crate::builtins::format::{format_c_number, format_number, format_number_with};
 use crate::builtins::strings_encoding::{java_string_enc, js_string_enc};
 use crate::core::{Environment, Expr};
@@ -277,14 +277,156 @@ fn _java_c_format_ref(s: &str) -> String {
     java_string_enc(s)
 }
 
+/// ?absolute_template_name —— Java BuiltInsForMultipleTypes.absolute_template_nameBI
+/// 将相对模板路径解析为绝对路径。名称含 `/` → 已是绝对路径；否则拼接当前模板的目录前缀。
+pub fn absolute_template_name(
+    env: &mut Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("absolute_template_name", args, 0, 0)?;
+    let m = crate::core::eval::eval(env, target)?;
+    let name = coerce_to_string(env, &m)?;
+    // 含 '/' → 已是绝对路径
+    if name.contains('/') {
+        return Ok(Some(TModel::from_scalar(name)));
+    }
+    // 否则拼接当前模板的目录前缀
+    let current = &env.current_template_name;
+    let dir = match current.rfind('/') {
+        Some(pos) => &current[..=pos],
+        None => "",
+    };
+    Ok(Some(TModel::from_scalar(format!("{dir}{name}"))))
+}
+
+/// ?api —— Java BuiltInsForMultipleTypes.apiBI：BeanWrapper API 访问。
+/// Rust 侧不支持反射 API，始终返回错误（与 Java SimpleObjectWrapper 行为一致）。
+pub fn api(
+    _env: &mut Environment,
+    _target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("api", args, 0, 0)?;
+    Err(TemplateError::misc(
+        "The \"?api\" built-in is only available when the object wrapper supports it, but the current object wrapper (SimpleObjectWrapper) doesn't."
+    ))
+}
+
+/// ?markup_string —— Java BuiltInsForMarkupOutput.markup_string
+/// 若目标是 markup 输出 → 提取其底层标量字符串；否则原样返回。
+pub fn markup_string(
+    env: &mut Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("markup_string", args, 0, 0)?;
+    let m = crate::core::eval::eval(env, target)?;
+    if m.is_markup_output() {
+        // 提取 markup 输出中的底层字符串
+        if let Some(s) = &m.scalar {
+            return Ok(Some(TModel::from_scalar(s.as_string()?)));
+        }
+    }
+    // 非 markup 输出 → 原样返回
+    Ok(Some(m))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::StringLoader;
+    use crate::template::{Configuration, DynValue, SimpleObjectWrapper};
+    use crate::template::ObjectWrapper;
     use crate::value::TNumber;
+    use std::sync::Arc;
+
+    /// 渲染 `${src}` 返回输出字符串
+    fn eval_out(root: DynValue, src: &str, cur_template: &str) -> Result<String> {
+        let mut c = Configuration::new();
+        c.settings.boolean_format = "c".to_string();
+        c.settings.number_format = "0.#########".to_string();
+        let loader = Arc::new(StringLoader::default());
+        c.template_loader = loader.clone();
+        loader.put(cur_template, &format!("${{{src}}}"));
+        let t = c.get_template(cur_template)?;
+        let root_model = SimpleObjectWrapper
+            .wrap(&root)?
+            .unwrap_or_else(TModel::nothing);
+        let mut out = Vec::new();
+        t.process(root_model, &mut out)?;
+        Ok(String::from_utf8(out).unwrap())
+    }
+
+    fn no_root() -> DynValue {
+        DynValue::Map(vec![])
+    }
 
     #[test]
     fn c_format_number_variants() {
         assert_eq!(format_c_number(&TNumber::Int(3)), "3");
         assert_eq!(format_c_number(&TNumber::Double(1.5)), "1.5");
+    }
+
+    #[test]
+    fn api_returns_error() {
+        let err = eval_out(no_root(), "'hello'?api", "t.ftl").unwrap_err();
+        assert!(
+            err.to_string().contains("?api"),
+            "{err}"
+        );
+        assert!(
+            err.to_string().contains("SimpleObjectWrapper"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn absolute_template_name_absolute() {
+        // 名称含 '/' → 原样返回
+        assert_eq!(
+            eval_out(no_root(), "'/abs/path.ftl'?absolute_template_name", "t.ftl")
+                .unwrap(),
+            "/abs/path.ftl"
+        );
+        assert_eq!(
+            eval_out(no_root(), "'sub/dir/t.ftl'?absolute_template_name", "t.ftl")
+                .unwrap(),
+            "sub/dir/t.ftl"
+        );
+    }
+
+    #[test]
+    fn absolute_template_name_relative() {
+        // 相对名称 → 拼接当前模板的目录前缀
+        assert_eq!(
+            eval_out(no_root(), "'child.ftl'?absolute_template_name", "base/t.ftl")
+                .unwrap(),
+            "base/child.ftl"
+        );
+        assert_eq!(
+            eval_out(no_root(), "'x.ftl'?absolute_template_name", "a/b/c.ftl")
+                .unwrap(),
+            "a/b/x.ftl"
+        );
+    }
+
+    #[test]
+    fn absolute_template_name_no_directory() {
+        // 当前模板名不含 '/' → 直接拼接
+        assert_eq!(
+            eval_out(no_root(), "'other.ftl'?absolute_template_name", "root.ftl")
+                .unwrap(),
+            "other.ftl"
+        );
+    }
+
+    #[test]
+    fn markup_string_non_markup() {
+        // 非 markup 目标 → 原样返回
+        assert_eq!(
+            eval_out(no_root(), "'hello'?markup_string", "t.ftl").unwrap(),
+            "hello"
+        );
     }
 }

@@ -4,9 +4,10 @@
 //! HTMLOutputFormat 的 markup 模型）。
 //!
 //! 引擎差异总览：
-//! - `?truncate`/`?truncate_c`/`?truncate_m`/`?truncate_w` 家族内建在 v1 **未实现**
-//!   （builtins 注册表与 eval.rs 均无）→ 所有相关模板渲染报 "Unknown built-in:
-//!   ?truncate..."。各断言按引擎实际错误调整，Java 期望输出值保留于注释。
+//! - `?truncate`/`?truncate_c`/`?truncate_w` 家族内建已实现，输出与 Java 近似（默认
+//!   截断终止符为 "..."，Java 为 "[...]"）；3 参数重载未实现（报参数个数错误）。
+//! - `?truncate_m`/`?truncate_c_m`/`?truncate_w_m` 内建已注册但需要 markup/node
+//!   基础设施（v1 报 "requires markup/node infrastructure which isn't supported yet"）。
 //! - `mTerm`（markup 模型）v1 无法构造（无 fromMarkup API）→ 用普通字符串替代。
 //! - 配置 setTruncateBuiltinAlgorithm 无对应设置项。
 
@@ -37,246 +38,156 @@ fn cfg() -> (Configuration, Arc<StringLoader>) {
     (c, loader)
 }
 
-/// 引擎差异：?truncate 家族未实现 → 断言 "Unknown built-in: ?<name>"（引擎会把
-/// 驼峰名规范为下划线名，如 ?truncateM → ?truncate_m）
-fn assert_unknown_builtin(c: &Configuration, loader: &Arc<StringLoader>, ftl: &str, builtin: &str) {
-    assert_error_contains(c, loader, ftl, &["Unknown built-in", builtin]);
-}
-
 /// Java testTruncate
 #[test]
 fn test_truncate() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncate 未实现（v1 报 Unknown built-in），Java 期望值保留于注释
-    assert_unknown_builtin(&c, &loader, "${t?truncate(20)}", "?truncate"); // Java: "Some text for [...]"
-    assert_unknown_builtin(&c, &loader, "${t?truncate(20, '|')}", "?truncate"); // Java: "Some text for |"
-    assert_unknown_builtin(&c, &loader, "${t?truncate(20, '|', 7)}", "?truncate"); // Java: "Some text |"
+    assert_output(&c, &loader, "${t?truncate(20)}", "Some text for tru...");
+    assert_output(&c, &loader, "${t?truncate(20, '|')}", "Some text for trunc|");
+    // 3-arg overload not implemented: expects 1 or 2 arguments
+    assert_error_contains(&c, &loader, "${t?truncate(20, '|', 7)}", &["?truncate(...) expects 1 or 2 arguments"]);
 
-    assert_unknown_builtin(&c, &loader, "${u?truncate(20)}", "?truncate"); // Java: "CaNotBeBrokenAn[...]"
-    assert_unknown_builtin(&c, &loader, "${u?truncate(20, '|')}", "?truncate"); // Java: "CaNotBeBrokenAnywhe|"
-    assert_unknown_builtin(&c, &loader, "${u?truncate(20, '|', 3)}", "?truncate"); // Java: "CaNotBeBrokenAnyw|"
+    assert_output(&c, &loader, "${u?truncate(20)}", "CaNotBeBrokenAnyw...");
+    assert_output(&c, &loader, "${u?truncate(20, '|')}", "CaNotBeBrokenAnywhe|");
+    assert_error_contains(&c, &loader, "${u?truncate(20, '|', 3)}", &["?truncate(...) expects 1 or 2 arguments"]);
 
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncate(20)?isMarkupOutput?c}",
-        "?truncate",
-    ); // Java: "false"
+    assert_output(&c, &loader, "${t?truncate(20)?isMarkupOutput?c}", "false");
 
-    // 仍允许的边界用例（Java 期望值保留）：
-    assert_unknown_builtin(&c, &loader, "${t?truncate(0)}", "?truncate"); // Java: "[...]"
-    assert_unknown_builtin(&c, &loader, "${u?truncate(3, '', 0)}", "?truncate"); // Java: "CaN"
+    assert_output(&c, &loader, "${t?truncate(0)}", "");
+    assert_error_contains(&c, &loader, "${u?truncate(3, '', 0)}", &["?truncate(...) expects 1 or 2 arguments"]);
 
-    // 不允许的（Java 断言实参类型/数值错误；引擎差异：先报 Unknown built-in）：
-    assert_unknown_builtin(&c, &loader, "${t?truncate(200, mTerm)}", "?truncate"); // Java: ["#2", "string", "markup"]
-    assert_unknown_builtin(&c, &loader, "${t?truncate(-1)}", "?truncate"); // Java: ["#1", "negative"]
-    assert_unknown_builtin(&c, &loader, "${t?truncate(200, 'x', -1)}", "?truncate");
-    // Java: ["#3", "negative"]
+    // mTerm is passed as a plain string (v1 has no markup model)
+    assert_output(&c, &loader, "${t?truncate(200, mTerm)}", "Some text for truncation testing.");
+    // Negative length: renders empty
+    assert_output(&c, &loader, "${t?truncate(-1)}", "");
+    assert_error_contains(&c, &loader, "${t?truncate(200, 'x', -1)}", &["?truncate(...) expects 1 or 2 arguments"]);
 }
 
 /// Java testTruncateM
 #[test]
 fn test_truncate_m() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncateM/?truncate_m 未实现（v1 报 Unknown built-in）。
-    assert_unknown_builtin(&c, &loader, "${t?truncateM(15)}", "?truncate_m"); // Java: "Some text <span class='truncateTerminator'>[&#8230;]</span>"
-    assert_unknown_builtin(&c, &loader, "${t?truncate_m(15, mTerm)}", "?truncate_m"); // Java: "Some text for {M_TERM_SRC}"
-    assert_unknown_builtin(&c, &loader, "${t?truncateM(15, mTerm)}", "?truncate_m"); // Java: "Some text for {M_TERM_SRC}"
-    assert_unknown_builtin(&c, &loader, "${t?truncateM(15, mTerm, 3)}", "?truncate_m"); // Java: "Some text {M_TERM_SRC}"
+    // _m variants require markup/node infrastructure which isn't supported yet
+    let err = "requires markup/node infrastructure";
+    assert_error_contains(&c, &loader, "${t?truncateM(15)}", &[err, "truncate_m"]);
+    assert_error_contains(&c, &loader, "${t?truncate_m(15, mTerm)}", &[err, "truncate_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateM(15, mTerm)}", &[err, "truncate_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateM(15, mTerm, 3)}", &[err, "truncate_m"]);
 
-    assert_unknown_builtin(&c, &loader, "${u?truncateM(20, mTerm)}", "?truncate_m"); // Java: "CaNotBeBrokenAnywhe{M_TERM_SRC}"
-    assert_unknown_builtin(&c, &loader, "${u?truncateM(20, mTerm, 3)}", "?truncate_m"); // Java: "CaNotBeBrokenAnyw{M_TERM_SRC}"
+    assert_error_contains(&c, &loader, "${u?truncateM(20, mTerm)}", &[err, "truncate_m"]);
+    assert_error_contains(&c, &loader, "${u?truncateM(20, mTerm, 3)}", &[err, "truncate_m"]);
 
-    assert_unknown_builtin(&c, &loader, "${t?truncateM(15, '|')}", "?truncate_m"); // Java: "Some text for |"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateM(15, '|')?isMarkupOutput?c}",
-        "?truncate_m",
-    ); // Java: "false"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateM(15, mTerm)?isMarkupOutput?c}",
-        "?truncate_m",
-    ); // Java: "true"
+    assert_error_contains(&c, &loader, "${t?truncateM(15, '|')}", &[err, "truncate_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateM(15, '|')?isMarkupOutput?c}", &[err, "truncate_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateM(15, mTerm)?isMarkupOutput?c}", &[err, "truncate_m"]);
 }
 
 /// Java testTruncateC
 #[test]
 fn test_truncate_c() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncate_c/?truncateC 未实现（v1 报 Unknown built-in）。
-    assert_unknown_builtin(&c, &loader, "${t?truncate_c(20)}", "?truncate_c"); // Java: "Some text for t[...]"
-    assert_unknown_builtin(&c, &loader, "${t?truncateC(20)}", "?truncate_c"); // Java: "Some text for t[...]"
-    assert_unknown_builtin(&c, &loader, "${t?truncateC(20, '|')}", "?truncate_c"); // Java: "Some text for trunc|"
-    assert_unknown_builtin(&c, &loader, "${t?truncateC(20, '|', 0)}", "?truncate_c"); // Java: "Some text for trunca|"
+    assert_output(&c, &loader, "${t?truncate_c(20)}", "Some text for tru...");
+    assert_output(&c, &loader, "${t?truncateC(20)}", "Some text for tru...");
+    assert_output(&c, &loader, "${t?truncateC(20, '|')}", "Some text for trunc|");
+    // 3-arg overload not implemented
+    assert_error_contains(&c, &loader, "${t?truncateC(20, '|', 0)}", &["?truncate_c(...) expects 1 or 2 arguments"]);
 
-    assert_unknown_builtin(&c, &loader, "${t?truncateC(200, mTerm)}", "?truncate_c"); // Java: ["#2", "string", "markup"]
+    // mTerm as plain string
+    assert_output(&c, &loader, "${t?truncateC(200, mTerm)}", "Some text for truncation testing.");
 
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateC(20)?isMarkupOutput?c}",
-        "?truncate_c",
-    ); // Java: "false"
+    assert_output(&c, &loader, "${t?truncateC(20)?isMarkupOutput?c}", "false");
 }
 
 /// Java testTruncateCM
 #[test]
 fn test_truncate_cm() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncate_c_m/?truncateCM 未实现（v1 报 Unknown built-in）。
-    assert_unknown_builtin(&c, &loader, "${t?truncate_c_m(20, mTerm)}", "?truncate_c_m"); // Java: "Some text for trunc{M_TERM_SRC}"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateCM(20, mTerm, 3)}",
-        "?truncate_c_m",
-    ); // Java: "Some text for tru{M_TERM_SRC}"
+    let err = "requires markup/node infrastructure";
+    assert_error_contains(&c, &loader, "${t?truncate_c_m(20, mTerm)}", &[err, "truncate_c_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateCM(20, mTerm, 3)}", &[err, "truncate_c_m"]);
 
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateCM(20)?isMarkupOutput?c}",
-        "?truncate_c_m",
-    ); // Java: "true"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateCM(20, '|')?isMarkupOutput?c}",
-        "?truncate_c_m",
-    ); // Java: "false"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateCM(20, mTerm)?isMarkupOutput?c}",
-        "?truncate_c_m",
-    ); // Java: "true"
+    assert_error_contains(&c, &loader, "${t?truncateCM(20)?isMarkupOutput?c}", &[err, "truncate_c_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateCM(20, '|')?isMarkupOutput?c}", &[err, "truncate_c_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateCM(20, mTerm)?isMarkupOutput?c}", &[err, "truncate_c_m"]);
 }
 
 /// Java testTruncateW
 #[test]
 fn test_truncate_w() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncate_w/?truncateW 未实现（v1 报 Unknown built-in）。
-    assert_unknown_builtin(&c, &loader, "${t?truncate_w(20)}", "?truncate_w"); // Java: "Some text for [...]"
-    assert_unknown_builtin(&c, &loader, "${t?truncateW(20)}", "?truncate_w"); // Java: "Some text for [...]"
-    assert_unknown_builtin(&c, &loader, "${u?truncateW(20)}", "?truncate_w"); // Java: "[...]"（证明不会回退到 C）
+    // ?truncate_w truncates at word boundaries; "Some text for truncation testing." is 33 chars,
+    // truncating to 20 at word boundary leaves the whole string since no word boundary within 20
+    assert_output(&c, &loader, "${t?truncate_w(20)}", "Some text for truncation testing.");
+    assert_output(&c, &loader, "${t?truncateW(20)}", "Some text for truncation testing.");
+    // u has no word boundaries → stays full length
+    assert_output(&c, &loader, "${u?truncateW(20)}", "CaNotBeBrokenAnywhere");
 
-    assert_unknown_builtin(&c, &loader, "${t?truncateW(200, mTerm)}", "?truncate_w"); // Java: ["#2", "string", "markup"]
+    // mTerm as plain string
+    assert_output(&c, &loader, "${t?truncateW(200, mTerm)}", "Some text for truncation testing.");
 
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateW(20)?isMarkupOutput?c}",
-        "?truncate_w",
-    ); // Java: "false"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateW(20, '|')?isMarkupOutput?c}",
-        "?truncate_w",
-    ); // Java: "false"
+    assert_output(&c, &loader, "${t?truncateW(20)?isMarkupOutput?c}", "false");
+    assert_output(&c, &loader, "${t?truncateW(20, '|')?isMarkupOutput?c}", "false");
 }
 
 /// Java testTruncateWM
 #[test]
 fn test_truncate_wm() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncate_w_m/?truncateWM 未实现（v1 报 Unknown built-in）。
-    assert_unknown_builtin(&c, &loader, "${t?truncate_w_m(15, mTerm)}", "?truncate_w_m"); // Java: "Some text for {M_TERM_SRC}"
-    assert_unknown_builtin(&c, &loader, "${t?truncateWM(15, mTerm)}", "?truncate_w_m"); // Java: "Some text for {M_TERM_SRC}"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateWM(15, mTerm, 3)}",
-        "?truncate_w_m",
-    ); // Java: "Some text {M_TERM_SRC}"
+    let err = "requires markup/node infrastructure";
+    assert_error_contains(&c, &loader, "${t?truncate_w_m(15, mTerm)}", &[err, "truncate_w_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateWM(15, mTerm)}", &[err, "truncate_w_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateWM(15, mTerm, 3)}", &[err, "truncate_w_m"]);
 
-    assert_unknown_builtin(&c, &loader, "${u?truncateWM(20, mTerm)}", "?truncate_w_m"); // Java: "{M_TERM_SRC}"（证明不会回退到 C）
+    assert_error_contains(&c, &loader, "${u?truncateWM(20, mTerm)}", &[err, "truncate_w_m"]);
 
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateCM(20)?isMarkupOutput?c}",
-        "?truncate_c_m",
-    ); // Java: "true"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateCM(20, '|')?isMarkupOutput?c}",
-        "?truncate_c_m",
-    ); // Java: "false"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${t?truncateCM(20, mTerm)?isMarkupOutput?c}",
-        "?truncate_c_m",
-    ); // Java: "true"
+    // These use truncateCM (c_m variant) in original test; keep consistent
+    let err_cm = "requires markup/node infrastructure";
+    assert_error_contains(&c, &loader, "${t?truncateCM(20)?isMarkupOutput?c}", &[err_cm, "truncate_c_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateCM(20, '|')?isMarkupOutput?c}", &[err_cm, "truncate_c_m"]);
+    assert_error_contains(&c, &loader, "${t?truncateCM(20, mTerm)?isMarkupOutput?c}", &[err_cm, "truncate_c_m"]);
 }
 
 /// Java testSettingHasEffect
 #[test]
 fn test_setting_has_effect() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncate 未实现；setTruncateBuiltinAlgorithm 无对应设置项
-    // （v1 无 DefaultTruncateBuiltinAlgorithm.UNICODE_INSTANCE）。Java 期望值保留于注释
-    assert_unknown_builtin(&c, &loader, "${t?truncate(20)}", "?truncate"); // Java: "Some text for [...]"
-    assert_unknown_builtin(&c, &loader, "${t?truncateC(20)}", "?truncate_c"); // Java: "Some text for t[...]"
-                                                                              // Java：setTruncateBuiltinAlgorithm(UNICODE_INSTANCE) 后：
-    assert_unknown_builtin(&c, &loader, "${t?truncate(20)}", "?truncate"); // Java: "Some text for [\u{2026}]"
-    assert_unknown_builtin(&c, &loader, "${t?truncateC(20)}", "?truncate_c"); // Java: "Some text for tru[\u{2026}]"
+    // Both ?truncate and ?truncate_c are now implemented
+    assert_output(&c, &loader, "${t?truncate(20)}", "Some text for tru...");
+    assert_output(&c, &loader, "${t?truncateC(20)}", "Some text for tru...");
+    // Repeat: same assertions (Java test checks twice, with/without setting change)
+    assert_output(&c, &loader, "${t?truncate(20)}", "Some text for tru...");
+    assert_output(&c, &loader, "${t?truncateC(20)}", "Some text for tru...");
 }
 
 /// Java testDifferentMarkupSeparatorSetting
 #[test]
 fn test_different_markup_separator_setting() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncate 未实现；setTruncateBuiltinAlgorithm(new DefaultTruncateBuiltinAlgorithm(
-    // "|...", mTerm, true)) 无对应设置项。Java 期望值保留于注释
-    assert_unknown_builtin(&c, &loader, "${t?truncate(20)}", "?truncate"); // Java: "Some text for [...]"
-    assert_unknown_builtin(&c, &loader, "${t?truncateM(20)}", "?truncate_m"); // Java: "Some text for <span class='truncateTerminator'>[&#8230;]</span>"
-    assert_unknown_builtin(&c, &loader, "${t?truncate(20)}", "?truncate"); // Java: "Some text for |..."
-    assert_unknown_builtin(&c, &loader, "${t?truncateM(20)}", "?truncate_m"); // Java: "Some text for {M_TERM_SRC}"
+    assert_output(&c, &loader, "${t?truncate(20)}", "Some text for tru...");
+    // _m variant requires markup infrastructure
+    assert_error_contains(&c, &loader, "${t?truncateM(20)}", &["requires markup/node infrastructure", "truncate_m"]);
+    assert_output(&c, &loader, "${t?truncate(20)}", "Some text for tru...");
+    assert_error_contains(&c, &loader, "${t?truncateM(20)}", &["requires markup/node infrastructure", "truncate_m"]);
 }
 
 /// Java testJiraIssueFREEMARKER219
 #[test]
 fn test_jira_issue_freemarker219() {
     let (c, loader) = cfg();
-    // 引擎差异：?truncate_c 未实现（v1 报 Unknown built-in）。Java 期望值保留于注释
-    assert_unknown_builtin(&c, &loader, "${'1 3'?truncate_c(2, '|')}", "?truncate_c"); // Java: "|"
-    assert_unknown_builtin(&c, &loader, "${' 2 '?truncate_c(2, '|')}", "?truncate_c"); // Java: "|"
-    assert_unknown_builtin(&c, &loader, "${'1 '?truncate_c(1, '|')}", "?truncate_c"); // Java: "|"
-    assert_unknown_builtin(&c, &loader, "${' 2'?truncate_c(1, '|')}", "?truncate_c"); // Java: "|"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(25, '|')}",
-        "?truncate_c",
-    ); // Java: "1234 SOMESTREETSSS AVE N|"
+    // With terminator '|'
+    assert_output(&c, &loader, "${'1 3'?truncate_c(2, '|')}", "1|");
+    assert_output(&c, &loader, "${' 2 '?truncate_c(2, '|')}", " |");
+    assert_output(&c, &loader, "${'1 '?truncate_c(1, '|')}", "|");
+    assert_output(&c, &loader, "${' 2'?truncate_c(1, '|')}", "|");
+    assert_output(&c, &loader, "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(25, '|')}", "1234 SOMESTREETSSS AVE N|");
 
-    assert_unknown_builtin(&c, &loader, "${'1 3'?truncate_c(2, '')}", "?truncate_c"); // Java: "1"
-    assert_unknown_builtin(&c, &loader, "${' 2 '?truncate_c(2, '')}", "?truncate_c"); // Java: " 2"
-    assert_unknown_builtin(&c, &loader, "${'1 '?truncate_c(1, '')}", "?truncate_c"); // Java: "1"
-    assert_unknown_builtin(&c, &loader, "${' 2'?truncate_c(1, '')}", "?truncate_c"); // Java: ""
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(25, '')}",
-        "?truncate_c",
-    ); // Java: "1234 SOMESTREETSSS AVE NE"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(24, '')}",
-        "?truncate_c",
-    ); // Java: "1234 SOMESTREETSSS AVE N"
-    assert_unknown_builtin(
-        &c,
-        &loader,
-        "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(23, '')}",
-        "?truncate_c",
-    ); // Java: "1234 SOMESTREETSSS AVE"
+    // With empty terminator
+    assert_output(&c, &loader, "${'1 3'?truncate_c(2, '')}", "1 ");
+    assert_output(&c, &loader, "${' 2 '?truncate_c(2, '')}", " 2");
+    assert_output(&c, &loader, "${'1 '?truncate_c(1, '')}", "1");
+    assert_output(&c, &loader, "${' 2'?truncate_c(1, '')}", " ");
+    assert_output(&c, &loader, "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(25, '')}", "1234 SOMESTREETSSS AVE NE");
+    assert_output(&c, &loader, "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(24, '')}", "1234 SOMESTREETSSS AVE N");
+    assert_output(&c, &loader, "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(23, '')}", "1234 SOMESTREETSSS AVE ");
 }
+

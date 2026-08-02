@@ -307,7 +307,7 @@ fn test_sequence_and_collection_target() {
 /// 引擎差异：v1 的 ?filter 只接受序列（sequence_items），对纯 collection 目标
 /// 报 "?filter is not applicable to a collection value"（Java filterBI 支持集合目标，
 /// 消息为 "Expected a sequence or collection ... evaluated to a collection"）；
-/// `?sequence` 未实现（报 "Unknown built-in: ?sequence"）。
+/// `?sequence` 已实现：对 collection 为透传（pass-through），无法转换。
 #[test]
 fn test_non_sequence_input() {
     let (c, loader) = cfg();
@@ -337,20 +337,21 @@ fn test_non_sequence_input() {
         dm.clone(),
         &["?filter is not applicable to a collection value"],
     );
-    // Java 经 ?sequence 转换后 [0] → "b"；v1 ?sequence 未实现 → 报 Unknown built-in
+    // Java 经 ?sequence 转换后 [0] → "b"；v1 ?sequence 对 collection 为透传，?filter 仍报错
     assert_error_contains_with_dm(
         &c,
         &loader,
         "${coll?sequence?filter(it -> it != 'a')[0]}",
         dm.clone(),
-        &["Unknown built-in: ?sequence"],
+        &["?filter is not applicable to a collection value"],
     );
+    // ?filter fails before ?sequence is reached
     assert_error_contains_with_dm(
         &c,
         &loader,
         "${coll?filter(it -> it != 'a')?sequence[0]}",
         dm.clone(),
-        &["Unknown built-in: ?sequence"],
+        &["?filter is not applicable to a collection value"],
     );
     // Java：<#list> 可迭代过滤后的 collection → "bc"；引擎 ?filter 对集合报错
     assert_error_contains_with_dm(

@@ -358,7 +358,7 @@ fn test_error_messages() {
 
 /// Java testNonSequenceInput（coll = ImmutableSet，Java 暴露为 collection）
 /// 引擎差异：v1 ?map 目标仅限序列（collection 报 "not applicable to a collection
-/// value"）；?sequence 内建未实现（"Unknown built-in: ?sequence"）。
+/// value"）；?sequence 已实现：对 collection 为透传（pass-through），无法转换。
 #[test]
 fn test_non_sequence_input() {
     let (c, loader) = cfg();
@@ -388,18 +388,21 @@ fn test_non_sequence_input() {
         dm.clone(),
         &["not applicable to a collection value"],
     );
-    // Java 经 ?sequence 转换后 [0] → "A"；v1 ?sequence 未实现 → 未知内建
-    assert_error_contains(
+    // Java 经 ?sequence 转换后 [0] → "A"；v1 ?sequence 对 collection 为透传，?map 仍报错
+    assert_error_contains_with_dm(
         &c,
         &loader,
         "${coll?sequence?map(it -> it?upperCase)[0]}",
-        &["Unknown built-in: ?sequence"],
+        dm.clone(),
+        &["not applicable to a collection value"],
     );
-    assert_error_contains(
+    // ?map fails before ?sequence is reached
+    assert_error_contains_with_dm(
         &c,
         &loader,
         "${coll?map(it -> it?upperCase)?sequence[0]}",
-        &["Unknown built-in: ?sequence"],
+        dm.clone(),
+        &["not applicable to a collection value"],
     );
     // Java 期望 "ABC"；v1：collection 目标不可用 → 报错
     assert_error_contains_with_dm(
