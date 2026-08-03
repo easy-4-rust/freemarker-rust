@@ -136,12 +136,15 @@ jobs:
         # 任何未登记的公开 API 变更（增/删/改签名）都会使 diff 非空而失败；
         # 有意的 API 变更须显式更新基线并在 PR 说明。
         # 注意：cargo-public-api 输出随 rustc 版本漂移（实测 1.97.1 缺 builtins
-        # 模块）——用 +1.93.0 固定到 api-baseline.txt 的生成版本；升级工具链须
-        # 重新生成基线。cargo-audit（audit-check）需较新 rustc，故本 job 用
-        # stable，仅此步骤切 1.93
+        # 模块）——固定到 api-baseline.txt 的生成版本（1.93）；升级工具链须重新
+        # 生成基线。cargo-audit（audit-check）需较新 rustc，故本 job 用 stable，
+        # 仅此步骤用 rustup override 切 1.93（不能只用 cargo +1.93.0：
+        # cargo-public-api 二进制 spawn 的 rustc 走 PATH 仍是 stable）。
+        # 基线用 `rustup run 1.93.0 cargo public-api` 生成（与 CI 同环境）。
         run: |
           rustup toolchain install 1.93.0 --profile minimal
-          cargo +1.93.0 public-api -p freemarker 2>/dev/null | diff - docs/release/api-baseline.txt
+          rustup override set 1.93.0
+          cargo public-api -p freemarker 2>/dev/null | diff - docs/release/api-baseline.txt
 
   coverage:
     name: Code Coverage
