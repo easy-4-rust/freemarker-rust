@@ -1684,6 +1684,9 @@ fn builtin_impl(
         "is_number" => is_type_test(env, target, |m| m.is_number()),
         "is_boolean" => is_type_test(env, target, |m| m.is_boolean()),
         "is_date" => is_type_test(env, target, |m| m.is_date()),
+        // Java BuiltIn.java:149-150：is_date 与 is_date_like 是同一 BI（misnomer）——
+        // 均为 `instanceof TemplateDateModel`（任何日期模型，含 unknown 类型）
+        "is_date_like" => is_type_test(env, target, |m| m.is_date()),
         // Java is_dateOfTypeBI（BuiltInsForMultipleTypes.java:291-305）：
         // is_unknown_date_like/is_date_only/is_time/is_datetime
         "is_unknown_date_like" => is_type_test(
@@ -1775,6 +1778,8 @@ fn builtin_impl(
         }),
         "trim" => str_builtin(env, target, |s| java_trim(s).to_string()),
         "html" => str_builtin(env, target, crate::utility::html_escape),
+        // Java BuiltIn.java:312：web_safe 是 ?html 的弃用别名（deprecated; use ?html）
+        "web_safe" => str_builtin(env, target, crate::utility::html_escape),
         "xml" => str_builtin(env, target, crate::utility::xml_escape),
         "contains" => {
             let arg = arg_expr(args, 0, "?contains requires one argument")?;
@@ -1914,6 +1919,21 @@ fn builtin_impl(
             }
             let s = m.get_scalar()?;
             Ok(Some(TModel::from_number(parse_number(&s)?)))
+        }
+        "eval_json" => {
+            // Java evalJsonBI（BuiltInsForStringsMisc.java:116-131）：JSON 字符串
+            // 解析为模型；失败消息 = "Failed to "?eval_json" string with this error:"
+            // + EMBEDDED_MESSAGE 段 + "The failing expression:"（源码拼接，jar 实测
+            // 格式）。内嵌消息用 serde_json 原文（Java JSONParser 逐字消息无 golden/
+            // parity 场景覆盖——文档化偏差）
+            let m = eval(env, target)?;
+            let s = m.get_scalar()?;
+            match serde_json::from_str::<serde_json::Value>(&s) {
+                Ok(v) => Ok(Some(json_value_to_model(&v))),
+                Err(e) => Err(TemplateError::misc(format!(
+                    "Failed to \"?eval_json\" string with this error:\n\n---begin-message---\n{e}\n---end-message---\n\nThe failing expression:"
+                ))),
+            }
         }
         "boolean" => {
             // Java booleanBI（BuiltInsForStringsMisc.java:37）：布尔原样；字符串仅接受
@@ -2496,6 +2516,40 @@ fn arg_expr<'a>(args: &'a BuiltinArgs, idx: usize, err: &str) -> Result<&'a Expr
         .ok_or_else(|| TemplateError::misc(err.to_string()))
 }
 
+/// JSON 值 → 模型（Java JSONParser.parse 的类型映射：object→hash、array→sequence、
+/// 数字→Integer/Long/Double、字符串/布尔/null 直映；与 freemarker-test 的
+/// json_to_model 同口径）
+fn json_value_to_model(v: &serde_json::Value) -> TModel {
+    match v {
+        serde_json::Value::Null => TModel::nothing(),
+        serde_json::Value::Bool(b) => TModel::from_boolean(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                TModel::from_number(crate::value::TNumber::from_i64(i))
+            } else if let Some(f) = n.as_f64() {
+                if f.fract() == 0.0 && f.is_finite() {
+                    TModel::from_number(crate::value::TNumber::from_i64(f as i64))
+                } else {
+                    TModel::from_number(crate::value::TNumber::Double(f))
+                }
+            } else {
+                TModel::nothing()
+            }
+        }
+        serde_json::Value::String(s) => TModel::from_scalar(s.clone()),
+        serde_json::Value::Array(arr) => {
+            TModel::from_sequence(arr.iter().map(json_value_to_model).collect())
+        }
+        serde_json::Value::Object(obj) => {
+            let mut map = indexmap::IndexMap::new();
+            for (k, v) in obj {
+                map.insert(k.clone(), json_value_to_model(v));
+            }
+            TModel::from_hash(map)
+        }
+    }
+}
+
 /// 从字符下标切出子串（Java String.substring 语义近似；下标为 char 计数）
 fn char_index_from(s: &str, from: usize) -> Option<&str> {
     let mut chars = 0;
@@ -2705,6 +2759,53 @@ mod tests {
             !err.to_string().contains("?definitely_not_a_builtin"),
             "{err}"
         );
+    }
+
+    /// 内建补齐（M5 后缺口 5 个）：is_date_like/web_safe/eval_json/节点 sibling
+    #[test]
+    fn filled_builtins() {
+        let root = DynValue::Map(vec![
+            ("s".into(), DynValue::Str("a<b&c".into())),
+            ("n".into(), DynValue::Int(5)),
+            (
+                "d".into(),
+                DynValue::Map(vec![("k".into(), DynValue::Int(1))]),
+            ),
+        ]);
+        // web_safe = ?html 弃用别名（BuiltIn.java:312）
+        assert_eq!(
+            eval_out(root.clone(), "s?web_safe").unwrap(),
+            "a&lt;b&amp;c"
+        );
+        assert_eq!(
+            eval_out(root.clone(), "s?web_safe").unwrap(),
+            eval_out(root.clone(), "s?html").unwrap()
+        );
+        // is_date_like：与 is_date 同一 BI（misnomer）；非日期为 false
+        assert_eq!(
+            eval_out(root.clone(), "n?is_date_like?string('yes','no')").unwrap(),
+            "no"
+        );
+        assert_eq!(
+            eval_out(root.clone(), "n?is_date?string('yes','no')").unwrap(),
+            eval_out(root.clone(), "n?is_date_like?string('yes','no')").unwrap()
+        );
+        // eval_json：对象→hash、数组→sequence、嵌套访问
+        assert_eq!(
+            eval_out(
+                root.clone(),
+                "'{\"a\": 1, \"b\": [true, null]}'?eval_json.a"
+            )
+            .unwrap(),
+            "1"
+        );
+        let err = eval_out(root.clone(), "'{bad'?eval_json").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Failed to \"?eval_json\" string with this error"),
+            "{err}"
+        );
+        assert!(err.to_string().contains("---begin-message---"), "{err}");
     }
 
     #[test]

@@ -178,6 +178,8 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "node_name" => Some(nodes::node_name),
         "node_type" => Some(nodes::node_type),
         "node_namespace" => Some(nodes::node_namespace),
+        "next_sibling" => Some(nodes::next_sibling),
+        "previous_sibling" => Some(nodes::previous_sibling),
         _ => None,
     }
 }

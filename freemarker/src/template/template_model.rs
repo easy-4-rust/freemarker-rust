@@ -62,6 +62,15 @@ pub trait TemplateNodeModel {
     fn name(&self) -> Result<Option<String>>;
     fn node_type(&self) -> Result<String>;
     fn namespace(&self) -> Result<Option<String>>;
+    /// Java TemplateNodeModelEx.getNextSibling（BuiltInsForNodes.nextSiblingBI）：
+    /// 无兄弟节点 → None（?next_sibling 求值为 null）
+    fn next_sibling(&self) -> Result<Option<TModel>> {
+        Ok(None)
+    }
+    /// Java TemplateNodeModelEx.getPreviousSibling（BuiltInsForNodes.previousSiblingBI）
+    fn previous_sibling(&self) -> Result<Option<TModel>> {
+        Ok(None)
+    }
 }
 
 /// 节点哈希访问 —— 对应 Java `NodeModel` 的 `TemplateHashModel` 角色

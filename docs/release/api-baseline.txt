@@ -215,10 +215,12 @@ pub fn freemarker::builtins::multi::string(&mut freemarker::Environment<'_>, &fr
 pub mod freemarker::builtins::nodes
 pub fn freemarker::builtins::nodes::ancestors(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::nodes::children(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::builtins::nodes::next_sibling(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::nodes::node_name(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::nodes::node_namespace(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::nodes::node_type(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::nodes::parent(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::builtins::nodes::previous_sibling(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::nodes::root(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::numbers
 pub fn freemarker::builtins::numbers::abs(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
@@ -3122,14 +3124,18 @@ pub trait freemarker::template::TemplateNodeModel
 pub fn freemarker::template::TemplateNodeModel::children(&self) -> freemarker::Result<alloc::vec::Vec<freemarker::TModel>>
 pub fn freemarker::template::TemplateNodeModel::name(&self) -> freemarker::Result<core::option::Option<alloc::string::String>>
 pub fn freemarker::template::TemplateNodeModel::namespace(&self) -> freemarker::Result<core::option::Option<alloc::string::String>>
+pub fn freemarker::template::TemplateNodeModel::next_sibling(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::template::TemplateNodeModel::node_type(&self) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::template::TemplateNodeModel::parent(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::template::TemplateNodeModel::previous_sibling(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 impl freemarker::template::TemplateNodeModel for freemarker::xml::XmlNode
 pub fn freemarker::xml::XmlNode::children(&self) -> freemarker::Result<alloc::vec::Vec<freemarker::TModel>>
 pub fn freemarker::xml::XmlNode::name(&self) -> freemarker::Result<core::option::Option<alloc::string::String>>
 pub fn freemarker::xml::XmlNode::namespace(&self) -> freemarker::Result<core::option::Option<alloc::string::String>>
+pub fn freemarker::xml::XmlNode::next_sibling(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::xml::XmlNode::node_type(&self) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::xml::XmlNode::parent(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::xml::XmlNode::previous_sibling(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub trait freemarker::template::TemplateNumberModel
 pub fn freemarker::template::TemplateNumberModel::as_number(&self) -> freemarker::Result<freemarker::value::TNumber>
 impl freemarker::template::TemplateNumberModel for freemarker::template::SimpleNumber
@@ -3368,8 +3374,10 @@ impl freemarker::template::TemplateNodeModel for freemarker::xml::XmlNode
 pub fn freemarker::xml::XmlNode::children(&self) -> freemarker::Result<alloc::vec::Vec<freemarker::TModel>>
 pub fn freemarker::xml::XmlNode::name(&self) -> freemarker::Result<core::option::Option<alloc::string::String>>
 pub fn freemarker::xml::XmlNode::namespace(&self) -> freemarker::Result<core::option::Option<alloc::string::String>>
+pub fn freemarker::xml::XmlNode::next_sibling(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::xml::XmlNode::node_type(&self) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::xml::XmlNode::parent(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::xml::XmlNode::previous_sibling(&self) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 impl freemarker::template::TemplateScalarModel for freemarker::xml::XmlNode
 pub fn freemarker::xml::XmlNode::as_string(&self) -> freemarker::Result<alloc::string::String>
 impl core::marker::Freeze for freemarker::xml::XmlNode

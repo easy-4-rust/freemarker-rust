@@ -90,6 +90,39 @@ pub fn parent(
     }
 }
 
+/// ?next_sibling —— 下一个兄弟节点（Java BuiltInsForNodes.nextSiblingBI）；
+/// 无兄弟时返回 nothing
+pub fn next_sibling(
+    env: &mut Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("next_sibling", args, 0, 0)?;
+    let m = crate::core::eval::eval(env, target)?;
+    if let Some(node) = &m.node {
+        Ok(Some(node.next_sibling()?.unwrap_or_else(TModel::nothing)))
+    } else {
+        Err(TemplateError::type_mismatch("node", m.type_name))
+    }
+}
+
+/// ?previous_sibling —— 上一个兄弟节点（Java BuiltInsForNodes.previousSiblingBI）
+pub fn previous_sibling(
+    env: &mut Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    check_arg_count("previous_sibling", args, 0, 0)?;
+    let m = crate::core::eval::eval(env, target)?;
+    if let Some(node) = &m.node {
+        Ok(Some(
+            node.previous_sibling()?.unwrap_or_else(TModel::nothing),
+        ))
+    } else {
+        Err(TemplateError::type_mismatch("node", m.type_name))
+    }
+}
+
 /// ?root —— 沿父链向上走到根节点（自身若无父节点则就是根）
 pub fn root(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<Option<TModel>> {
     check_arg_count("root", args, 0, 0)?;

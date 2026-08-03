@@ -171,6 +171,58 @@ impl XmlNode {
         out
     }
 
+    /// 下一兄弟节点（Java getNextSibling：simplify 后兄弟链不含注释/PI；
+    /// 属性节点无兄弟）
+    fn next_sibling_node(&self) -> Option<XmlNode> {
+        if self.is_attr() {
+            return None;
+        }
+        let mut seen_self = false;
+        for c in self.node().parent()?.children() {
+            if c.id() == self.node_id {
+                seen_self = true;
+                continue;
+            }
+            if seen_self
+                && !matches!(
+                    c.node_type(),
+                    roxmltree::NodeType::Comment | roxmltree::NodeType::PI
+                )
+            {
+                return Some(XmlNode {
+                    tree: self.tree.clone(),
+                    node_id: c.id(),
+                    attr: None,
+                });
+            }
+        }
+        None
+    }
+
+    /// 上一兄弟节点（Java getPreviousSibling）
+    fn previous_sibling_node(&self) -> Option<XmlNode> {
+        if self.is_attr() {
+            return None;
+        }
+        let mut prev = None;
+        for c in self.node().parent()?.children() {
+            if c.id() == self.node_id {
+                return prev;
+            }
+            if !matches!(
+                c.node_type(),
+                roxmltree::NodeType::Comment | roxmltree::NodeType::PI
+            ) {
+                prev = Some(XmlNode {
+                    tree: self.tree.clone(),
+                    node_id: c.id(),
+                    attr: None,
+                });
+            }
+        }
+        None
+    }
+
     /// 子元素（Java NodeListModel 按名称过滤时只考虑元素）
     fn child_elements(&self) -> Vec<XmlNode> {
         self.child_nodes()
@@ -973,6 +1025,14 @@ impl TemplateNodeModel for XmlNode {
             .collect())
     }
 
+    fn next_sibling(&self) -> Result<Option<TModel>> {
+        Ok(self.next_sibling_node().map(|n| n.into_model()))
+    }
+
+    fn previous_sibling(&self) -> Result<Option<TModel>> {
+        Ok(self.previous_sibling_node().map(|n| n.into_model()))
+    }
+
     fn name(&self) -> Result<Option<String>> {
         Ok(self.node_name())
     }
@@ -1245,5 +1305,61 @@ mod tests {
             markup_with_prefixes(&doc, m),
             "<book xmlns=\"http://example.com/eBook\">\n  <title>Test Book</title>\n</book>"
         );
+    }
+}
+
+#[cfg(test)]
+mod sibling_tests {
+    use super::*;
+
+    /// ?next_sibling / ?previous_sibling（BuiltInsForNodes）：兄弟链不含注释/PI
+    #[test]
+    fn node_siblings() {
+        let doc = XmlNode::parse("<root><a/>text<b/><!--c--><c/></root>").unwrap();
+        // root 元素（doc 是文档节点）的 children：[a, text, b, c]（注释被过滤）
+        let root_el = doc.node().children().next().unwrap();
+        let children = root_el.children().collect::<Vec<_>>();
+        let a = children
+            .iter()
+            .find(|n| n.tag_name().name() == "a")
+            .unwrap();
+        let b = children
+            .iter()
+            .find(|n| n.tag_name().name() == "b")
+            .unwrap();
+        let c = children
+            .iter()
+            .find(|n| n.tag_name().name() == "c")
+            .unwrap();
+        let a_node = XmlNode {
+            tree: doc.tree.clone(),
+            node_id: a.id(),
+            attr: None,
+        };
+        let b_node = XmlNode {
+            tree: doc.tree.clone(),
+            node_id: b.id(),
+            attr: None,
+        };
+        let c_node = XmlNode {
+            tree: doc.tree.clone(),
+            node_id: c.id(),
+            attr: None,
+        };
+
+        // a 的下一个兄弟 = text 节点（不是 b；b 是 text 之后）
+        let nxt = a_node.next_sibling().unwrap().unwrap();
+        assert_eq!(nxt.node.as_ref().unwrap().node_type().unwrap(), "text");
+        // b 的上一兄弟 = text
+        let prev = b_node.previous_sibling().unwrap().unwrap();
+        assert_eq!(prev.node.as_ref().unwrap().node_type().unwrap(), "text");
+        // b 的下一兄弟 = c（注释被跳过）
+        let nxt = b_node.next_sibling().unwrap().unwrap();
+        assert_eq!(nxt.node.as_ref().unwrap().node_type().unwrap(), "element");
+        assert_eq!(nxt.node.as_ref().unwrap().name().unwrap().unwrap(), "c");
+        // c 无下一兄弟
+        assert!(c_node.next_sibling().unwrap().is_none());
+        // a 无上一兄弟
+        assert!(a_node.previous_sibling().unwrap().is_none());
     }
 }
