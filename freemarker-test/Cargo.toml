@@ -24,3 +24,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "probe"
 path = "src/bin/probe.rs"
+
+[dev-dependencies]
+proptest = "1.6"
