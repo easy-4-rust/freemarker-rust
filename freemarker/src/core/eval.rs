@@ -572,6 +572,16 @@ fn eval_dyn_key(env: &mut crate::core::Environment, target: &Expr, key: &Expr) -
             // "Range item index ... is out of bounds." 仅负下标路径，见上）
             return Ok(TModel::nothing());
         }
+        // Java NodeModel 实现 TemplateSequenceModel（NodeModel.java:415-423）：
+        // size()=1、get(0)=自身——`node[0]` 返回节点自身（`doc.*[0]`/`r["N:t1"][0]`
+        // 即此语义）；越界 → null（缺失）
+        if t.node.is_some() {
+            return if i == 0 {
+                Ok(t.clone())
+            } else {
+                Ok(TModel::nothing())
+            };
+        }
         // Java 2.3.34 dealWithNumericalKey :121-147 回退：目标经
         // evalAndCoerceToPlainText 强制转字符串后按下标取单字符——数字/布尔/日期等
         // 非序列目标均走此路径（`${true[0]}` → 布尔强制转字符串按 boolean_format

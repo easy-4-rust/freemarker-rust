@@ -63,7 +63,13 @@ fn object_wrapper_emulatable(case: &Case, v: &str) -> bool {
     }
     if matches!(
         case.base.as_str(),
-        "xml-fragment" | "xml-ns_prefix-scope" | "xmlns1" | "xmlns3" | "xmlns4"
+        "xml-fragment"
+            | "xml-ns_prefix-scope"
+            | "xmlns1"
+            | "xmlns3"
+            | "xmlns4"
+            | "default-xmlns"
+            | "xmlns5"
     ) {
         return true;
     }
@@ -169,19 +175,10 @@ fn run_case(case: &Case) -> Outcome {
         };
     }
 
-    // xmlns3/xmlns4：模板用 `<#macro "x:title">` 等带前缀宏名配合 `<#recurse>` 分派
-    // （xmlns3.xml 的 x:/y: 命名空间元素）。Java 按节点命名空间 URI + ns_prefixes
-    // 解析前缀后查 "x:title" 宏；本引擎 visit_node 仅按节点本地名查宏（引擎缺口）
-    // → 未命中的元素回落到 @text 输出文本，与 expected 不一致（实测 FAIL）。
-    // 数据模型无法影响宏分派，harness 内不可复刻 → 保持 SKIP（B6 批内引擎能力
-    // 未就绪项；xmlns1 同批已 PASS——其模板用无前缀宏名，走本地名分派路径）
-    if matches!(case.base.as_str(), "xmlns3" | "xmlns4") {
-        return Outcome::Skipped {
-            reason:
-                "引擎缺口：<#recurse> 的带前缀宏分派（x:title/y:title 按命名空间 URI + ns_prefixes 解析）未实现，visit_node 仅按本地名查宏"
-                    .to_string(),
-        };
-    }
+    // xmlns3/xmlns4：模板用 `<#macro "x:title">` 等带前缀宏名配合 `<#recurse>` 分派。
+    // 引擎 visit_node 已按 Java getNodeProcessor（Environment.java :2943-3000）实现
+    // 带命名空间节点的前缀宏分派（NsPrefixes.get_prefix_for_namespace 反查）——
+    // 2026-08 B5 批次收口，走正常路径
 
     let (mut c, loader) = base_config();
     // 可复刻的 Java wrapper 设置（XML 用例 / collectionAdapter / sequence-builtins

@@ -1361,9 +1361,30 @@ fn visit_node(env: &mut crate::core::Environment, node: &TModel) -> Result<ExecO
         None => String::new(),
     };
     let ns = env.get_current_namespace();
-    // 1. `@<node_name>` 宏（Java :2899-2902 macroToNamespaceLookup.get(nodeName)）
-    if !node_name.is_empty() {
-        if let Some(m) = ns.get_member(&node_name) {
+    // 1. `@<node_name>` 宏（Java getNodeProcessor，Environment.java :2943-3000）：
+    //    带命名空间节点 → 宏名 = 前缀:本地名（NsPrefixes.get_prefix_for_namespace
+    //    反查宏所在模板的 ns_prefixes；default ns → 无前缀本地名；未注册前缀 →
+    //    该模板不处理，跳过宏查找直接 @default）
+    let macro_name = if !node_name.is_empty() {
+        match &node.node {
+            Some(n) => match n.namespace()? {
+                Some(uri) if !uri.is_empty() => {
+                    match env.current_ns_prefixes().get_prefix_for_namespace(&uri) {
+                        Some(p) if !p.is_empty() => format!("{p}:{node_name}"),
+                        // default ns（空前缀）→ 本地名；未注册 → 不查宏
+                        Some(_) => node_name.clone(),
+                        None => String::new(),
+                    }
+                }
+                _ => node_name.clone(),
+            },
+            None => String::new(),
+        }
+    } else {
+        String::new()
+    };
+    if !macro_name.is_empty() {
+        if let Some(m) = ns.get_member(&macro_name) {
             if let Some(mv) = env.as_macro(&m) {
                 return call_macro(env, &mv, &[], None, Vec::new());
             }

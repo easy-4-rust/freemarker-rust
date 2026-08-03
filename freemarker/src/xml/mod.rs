@@ -511,21 +511,24 @@ impl XmlNode {
                     None => Ok(Some(TModel::from_sequence(Vec::new()))),
                 }
             }
-            _ if is_xml_name_like(key) => {
-                // 子元素按名过滤：恰 1 个 → 节点；否则序列（Java filterByName）
-                let matches: Vec<TModel> = self
-                    .child_elements()
-                    .into_iter()
-                    .filter(|c| c.matches_name(env, key))
-                    .map(|c| c.into_model())
-                    .collect();
-                if matches.len() == 1 {
-                    Ok(Some(matches.into_iter().next().unwrap()))
-                } else {
-                    Ok(Some(TModel::from_sequence(matches)))
-                }
-            }
+            _ if is_xml_name_like(key) => self.filter_child_by_name(env, key),
             _ => self.xpath_subset(env, key),
+        }
+    }
+
+    /// 子元素按名过滤：恰 1 个 → 节点；否则序列（Java ElementModel.get 的
+    /// filterByName 语义，ElementModel.java:123-124）
+    fn filter_child_by_name(&self, env: &mut Environment, key: &str) -> Result<Option<TModel>> {
+        let matches: Vec<TModel> = self
+            .child_elements()
+            .into_iter()
+            .filter(|c| c.matches_name(env, key))
+            .map(|c| c.into_model())
+            .collect();
+        if matches.len() == 1 {
+            Ok(Some(matches.into_iter().next().unwrap()))
+        } else {
+            Ok(Some(TModel::from_sequence(matches)))
         }
     }
 
@@ -795,6 +798,16 @@ impl XmlNode {
         if key == "/" {
             // XPath "/"：上下文节点的文档根
             return Ok(Some(self.document_node().into_model()));
+        }
+        if key == "true()" {
+            // XPath true() 函数（default-xmlns 用例：`doc["true()"]` → 布尔 true；
+            // Java XPath 对常量函数求值）
+            return Ok(Some(TModel::from_boolean(true)));
+        }
+        if let Some(rest) = key.strip_prefix("./") {
+            // 相对路径 `./name`：当前节点的子元素按名过滤（XPath child::axis；
+            // default-xmlns 用例 `r["./D:t4"]`）
+            return self.filter_child_by_name(env, rest);
         }
         if let Some(rest) = key.strip_prefix("//") {
             // 后代元素匹配（descendant-or-self::node()/child::X —— 不含自身）

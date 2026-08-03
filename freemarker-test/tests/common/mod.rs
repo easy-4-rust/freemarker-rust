@@ -1011,6 +1011,14 @@ pub fn build_data_model(simple_test_name: &str, case_name: &str) -> TModel {
             let doc = freemarker::xml::parse_xml(xml).expect("xmlns1/2 XML parse");
             m.insert("doc".to_string(), doc);
         }
+        "default-xmlns" | "xmlns5" => {
+            // Java TemplateTestCase：doc = NodeModel.parse(models/defaultxmlns1.xml)
+            // （root 下 t1 无命名空间、x:t2 x NS、y:t3 y NS、t4 默认 x NS；
+            // default-xmlns.ftl 用 D/y 前缀、xmlns5.ftl 用 D/xx 前缀，同模型）
+            let xml = "<root xmlns:x=\"http://x.com\" xmlns:y=\"http://y.com\">\n  <t1>No NS</t1>\n  <x:t2>x NS</x:t2>\n  <y:t3>y NS</y:t3>\n  <t4 xmlns=\"http://x.com\">x NS</t4>\n</root>";
+            let doc = freemarker::xml::parse_xml(xml).expect("default-xmlns/xmlns5 XML parse");
+            m.insert("doc".to_string(), doc);
+        }
         "xmlns3" | "xmlns4" => {
             // Java TemplateTestCase：doc = NodeModel.parse(models/xmlns3.xml)；
             // xmlns3.ftl/xmlns4.ftl 用 ns_prefixes x/y + 字面前缀访问
