@@ -1057,6 +1057,10 @@ fn xml_enc_nqg(s: &str) -> String {
 
 /// Java DomStringUtil.isXMLNameLike：字母/数字/_/-/. + 单个 ":"；首字符非 -/. 数字
 fn is_xml_name_like(name: &str) -> bool {
+    // XPath/特殊符号开头 → 非元素名（`/`、`//`、`@`、`*`、`[` 等走 XPath 子集）
+    if matches!(name.chars().next(), Some('/') | Some('@') | Some('*') | Some('[') | Some('.')) {
+        return false;
+    }
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c == '-' || c == '.' || c.is_ascii_digit() => return false,

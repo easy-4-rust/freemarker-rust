@@ -205,6 +205,11 @@ pub fn apply_settings(
                 }
             }
             "api_builtin_enabled" => {}
+            "template_exception_handler" => {
+                // Java TemplateTestCase 可设置（Configuration.setTemplateExceptionHandler
+                // 的字符串形式：rethrow/debug/html_debug/ignore）
+                c.settings.template_exception_handler = v.clone();
+            }
             "new_builtin_class_resolver" => skipped.push("?new 类解析（Java 特有）".to_string()),
             other => skipped.push(format!("未识别设置 {other}")),
         }
@@ -911,6 +916,50 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             m.insert("s2".to_string(), TModel::from_scalar("world".to_string()));
             m.insert("s3".to_string(), TModel::from_scalar("hello".to_string()));
             m.insert("s4".to_string(), TModel::from_scalar("world".to_string()));
+        }
+        "xml-fragment" => {
+            // Java TemplateTestCase：node = NodeModel.parse(XML 字符串) 的 b 元素
+            // （模板 `${node?node_name} = b`；根为 <root>，node 是其孙元素 b）
+            let xml = "<root xmlns:n=\"http://x\"><a><b><n:c>C&lt;>&amp;\"']]&gt;</n:c></b></a></root>";
+            let root_node = freemarker::xml::parse_xml(xml)
+                .expect("xml-fragment XML parse");
+            // 取 b 元素（document → root → a → b）
+            let b = root_node
+                .node
+                .as_ref()
+                .expect("doc node")
+                .children()
+                .expect("doc children")[0]
+                .node
+                .as_ref()
+                .expect("root node")
+                .children()
+                .expect("root children")[0]
+                .node
+                .as_ref()
+                .expect("a node")
+                .children()
+                .expect("a children")[0]
+                .clone();
+            m.insert("node".to_string(), b);
+        }
+        "xmlns2" => {
+            // Java TemplateTestCase：doc = NodeModel.parse（xmlns1.ftl 的 <book> 文档）
+            let xml = "<book xmlns=\"http://example.com/eBook\">\n  <title>Test Book</title>\n  <chapter>\n    <title>Ch1</title>\n    <para>p1.1</para>\n    <para>p1.2</para>\n    <para>p1.3</para>\n  </chapter>\n  <chapter>\n    <title>Ch2</title>\n    <para>p2.1</para>\n    <para>p2.2</para>\n  </chapter>\n</book>";
+            let doc = freemarker::xml::parse_xml(xml).expect("xmlns2 XML parse");
+            m.insert("doc".to_string(), doc);
+        }
+        "xml-ns_prefix-scope" => {
+            // Java TemplateTestCase：doc = NodeModel.parse(XML 文档)；三个命名空间
+            // 各有一个 e 元素（namespace-test / foo / bar）
+            let xml = "<root xmlns=\"http://freemarker.org/test/namespace-test\" \
+                       xmlns:n=\"http://freemarker.org/test/foo\" \
+                       xmlns:bar=\"http://freemarker.org/test/bar\">\
+                       <e>e in NS namespace-test</e>\
+                       <n:e>e in NS foo</n:e>\
+                       <bar:e>e in NS bar</bar:e></root>";
+            let doc = freemarker::xml::parse_xml(xml).expect("xml-ns_prefix-scope XML parse");
+            m.insert("doc".to_string(), doc);
         }
         _ => {}
     }

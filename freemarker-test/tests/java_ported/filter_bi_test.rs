@@ -262,7 +262,7 @@ fn test_error_messages() {
         &c,
         &loader,
         "${[]?filter((i, j) -> true)}",
-        &["something that is a string-like value is required, but this has evaluated to a sequence"],
+        &["Expected a string or something automatically convertible to string (number, date or boolean), but this has evaluated to a sequence"],
     );
 }
 

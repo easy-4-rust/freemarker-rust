@@ -106,6 +106,11 @@ pub struct Settings {
     /// None = Java 默认 "UTF-8"（Configuration.DEFAULT_TEMPLATE_ENCODING）；
     /// 模板 `<#ftl encoding=...>` 头按 WrongEncodingException 重读，get_template_encoded）
     pub input_encoding: Option<String>,
+    /// 模板异常处理器 —— 对应 Configuration.setTemplateExceptionHandler（docs/09 §6.3）：
+    /// `"rethrow"`（生产默认）/`"debug"`/`"html_debug"`/`"ignore"`。
+    /// Java 的 DEBUG/HTML_DEBUG 在写出调试文本后仍抛出异常、IGNORE 保留已输出内容并
+    /// 继续渲染——v1 在 process() 边界处理（文档化偏差，见 environment.rs process()）。
+    pub template_exception_handler: String,
 }
 
 /// Java `TimeZone.getTimeZone(id).getID()` 的 v1 复刻（以 Java 实测为准）：
@@ -169,6 +174,10 @@ pub fn canonical_setting_key(name: &str) -> &str {
         "numberFormat" | "number_format" => "number_format",
         "outputEncoding" | "output_encoding" => "output_encoding",
         "sqlDateAndTimeTimeZone" | "sql_date_and_time_time_zone" => "sql_date_and_time_time_zone",
+        // Java 仅 Configurable 级（模板内 `<#setting>` 报 "recognized, but changing this
+        // setting from inside a template isn't supported"，jar 实测）——v1 允许模板内设置
+        // （文档化偏差，exec.rs exec_setting）
+        "templateExceptionHandler" | "template_exception_handler" => "template_exception_handler",
         "timeFormat" | "time_format" => "time_format",
         "timeZone" | "time_zone" => "time_zone",
         "urlEscapingCharset" | "url_escaping_charset" => "url_escaping_charset",
@@ -195,16 +204,18 @@ impl Default for Settings {
             classic_compatible: false,
             incompatible_improvements: Version::V2_3_34,
             output_encoding: "UTF-8".to_string(),
-            // Java 默认 null（Configurable.java:491 "outputEncoding and urlEscapingCharset defaults to null"）；
-            // 空串 = 未设置（?url 回退 UTF-8，`.url_escaping_charset` 缺失）
-            url_escaping_charset: String::new(),
-            fallback_on_null_loop_variable: true,
-            delay: 1,
-            localized_lookup: true,
-            lookup_strategy: LookupStrategyKind::Default020300,
-            input_encoding: None,
-        }
+        // Java 默认 null（Configurable.java:491 "outputEncoding and urlEscapingCharset defaults to null"）；
+        // 空串 = 未设置（?url 回退 UTF-8，`.url_escaping_charset` 缺失）
+        url_escaping_charset: String::new(),
+        fallback_on_null_loop_variable: true,
+        delay: 1,
+        localized_lookup: true,
+        lookup_strategy: LookupStrategyKind::Default020300,
+        input_encoding: None,
+        // Java 默认 RETHROW_HANDLER（_TemplateAPI.getDefaultTemplateExceptionHandler）
+        template_exception_handler: "rethrow".to_string(),
     }
+}
 }
 
 #[cfg(test)]
@@ -251,6 +262,17 @@ mod tests {
         }
         // locale 两种约定同名（Configurable.LOCALE_KEY，Configurable.java:95-97）
         assert_eq!(canonical_setting_key("locale"), "locale");
+        // template_exception_handler：Configurable 级设置（v1 允许模板内设置——
+        // Java PropertySetting 报 "recognized, but changing this setting from inside a
+        // template isn't supported"，见 exec.rs exec_setting 注释），两种约定均规范化
+        assert_eq!(
+            canonical_setting_key("template_exception_handler"),
+            "template_exception_handler"
+        );
+        assert_eq!(
+            canonical_setting_key("templateExceptionHandler"),
+            "template_exception_handler"
+        );
     }
 
     #[test]
@@ -264,14 +286,6 @@ mod tests {
         assert_eq!(
             canonical_setting_key("whitespace_stripping"),
             "whitespace_stripping"
-        );
-        assert_eq!(
-            canonical_setting_key("template_exception_handler"),
-            "template_exception_handler"
-        );
-        assert_eq!(
-            canonical_setting_key("templateExceptionHandler"),
-            "templateExceptionHandler"
         );
     }
 }

@@ -122,10 +122,18 @@ pub fn string(
     if let Some(s) = &m.scalar {
         return Ok(Some(TModel::from_scalar(s.as_string()?)));
     }
-    Err(TemplateError::misc(format!(
-        "?string is not applicable to a {} value",
-        m.type_name
-    )))
+    // Java stringBI（BuiltInsForMultipleTypes.java:540）：非数字/布尔/日期/字符串 →
+    // `For "?string" left-hand operand: Expected a number, date, boolean or string,
+    // but this has evaluated to a {type}: ==> {target}`（jar 实测 type_string_seq 基线）
+    Err(TemplateError::type_mismatch("string", m.type_name)
+        .with_expected_phrase("a number, date, boolean or string")
+        .with_blame_at(
+            "?string",
+            "left-hand operand",
+            &crate::core::environment::expr_desc(target),
+            &env.current_template_name,
+            target.span,
+        ))
 }
 
 /// Java _MessageUtil.newCantFormatUnknownTypeDateException（_MessageUtil.java:38-45/

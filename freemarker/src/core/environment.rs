@@ -17,8 +17,10 @@
 
 use crate::cache::{NameFormatDefault020300, TemplateNameFormat};
 use crate::core::eval;
-use crate::core::{Element, Expr, MacroDef, MacroParam, Settings, TzSetting};
-use crate::error::{Result, TemplateError};
+use crate::core::{
+    AssignOp, CallTarget, Element, ElementKind, Expr, MacroDef, MacroParam, Settings, TzSetting,
+};
+use crate::error::{ErrorCtx, Result, StackFrame, TemplateError};
 use crate::span::Span;
 use crate::template::{TModel, Template, TemplateHashModel, TemplateHashModelEx};
 use indexmap::IndexMap;
@@ -79,6 +81,9 @@ pub struct Environment<'a> {
     include_stack: Vec<String>,
     /// 宏调用帧栈（栈顶 = Java `currentMacroContext` :174；`<#local>`/`<#nested>`/`<#return>` 依赖）
     pub(crate) macro_frames: Vec<Rc<MacroFrame>>,
+    /// 访问节点栈（Java `visitorStack`，Environment.java:109；`<#visit>` 压入、
+    /// 宏体结束弹出；`.node` 读栈顶）
+    visit_stack: Vec<TModel>,
     /// `<#return>` 发起时的宏帧深度（Java `Return.INSTANCE` 携带发起 Macro.Context 的
     /// 等价物——Macro.invoke 的 catch(Return) 按 macroCtx 归属判定捕获；穿透的
     /// return（如 `<@b><#return></@>` 中 return 归调用者宏 m 而非被调宏 b）继续上传）
@@ -101,6 +106,9 @@ pub struct Environment<'a> {
     auto_escape: bool,
     /// 当前模板名（include/import 执行时切换；Java getCurrentTemplate :257-267；错误定位用）
     pub(crate) current_template_name: String,
+    /// 当前模板的 ns_prefixes（`<#ftl ns_prefixes=...>`；include 沿用主模板、
+    /// import 用库模板自己的——Java currentNamespace.getTemplate().getNamespaceForPrefix）
+    current_ns_prefixes: HashMap<String, String>,
     /// attempt/recover 错误栈（Java `recoveredErrorStack`，Environment.java:575-578：
     /// recover 期间压栈、结束弹出——嵌套 attempt 的内层 recover 结束后 `.error`
     /// 恢复为外层错误；BuiltinVariable.java:283-285 `.error` 读栈顶）
@@ -109,6 +117,20 @@ pub struct Environment<'a> {
     /// 此后直接复用——热路径（`${n}` 循环输出）避免每次重新解析模式串）。
     /// 键为 (number_format, locale)，`<#setting>` 改动任一后自然失效重解析。
     pub(crate) number_fmt_cache: RefCell<Option<(String, String, std::rc::Rc<crate::builtins::format::DecimalFmt>)>>,
+    /// FTL 指令栈 —— 对应 Java `Environment.instructionStack`（:3563+ pushElement/popElement）：
+    /// 每个可描述元素执行前压帧、执行后弹帧（docs/09 §6.4）。错误发生时
+    /// `stack_snapshot` 取其快照（栈顶帧 + 其余 isShownInStackTrace 帧），经
+    /// `TemplateError::with_stack` 附加到错误消息（`----\nFTL stack trace ...` 段）。
+    /// 平行栈 `stack_shown` 记录各帧是否属于 Java 的显示集合（Interpolation/UnifiedCall/
+    /// Include/LibraryLoad/BodyInstruction/Transform/Visit/Recurse/Fallback——
+    /// 对应各类的 isShownInStackTrace() 覆盖，jar 实测；栈顶失败帧不受此限制）。
+    pub(crate) instruction_stack: Vec<StackFrame>,
+    /// 平行栈：对应帧是否在 Java 快照过滤中显示（见 instruction_stack 注释）
+    stack_shown: Vec<bool>,
+    /// 当前词法包围宏名（帧位置 `in macro "m"` 段 —— Java `getEnclosingMacro`
+    /// 沿父元素链找最近 Macro 元素的等价物；宏体执行时置名、`<#nested>` 回插时
+    /// 恢复调用方值）
+    pub(crate) current_macro_name: Option<String>,
 }
 
 /// run 循环结束信号（`<#return>` 专用；Java ReturnInstruction.Return）。
@@ -350,6 +372,9 @@ pub struct MacroFrame {
     /// 调用方局部上下文栈快照（Java `prevLocalContextStack`；`<#nested>` 恢复用；
     /// 调用方宏帧链由 macro_frames 栈顶自然表达，等价 Java `prevMacroContext`）
     pub(crate) caller_local_stack: Vec<LocalEntry>,
+    /// 调用方词法宏名（`<#nested>` 回插调用方 body 时 current_macro_name 恢复用——
+    /// 调用方 body 元素的 `in macro "m"` 定位；Java 父元素链的宏归属）
+    pub(crate) caller_macro_name: Option<String>,
     /// `.args` 特殊变量值（Java Macro.Context.argsSpecialVariableValue——
     /// checkParamsSetAndApplyDefaults :344-397：macro → 参数哈希、function → 参数序列）
     ///
@@ -403,6 +428,9 @@ pub struct Namespace {
     /// 关联模板名（Java `Namespace.getTemplate()` :3470-3478；错误定位/相对 include 基名）
     /// Rc<str>：主/全局命名空间共享同一份（Environment::new 构造期 1 次分配）
     template_name: Rc<str>,
+    /// 所属模板的 ns_prefixes（`<#ftl ns_prefixes=...>`；宏体内 currentNamespace
+    /// 切换时随之切换——Java currentNamespace.getTemplate().getNamespaceForPrefix）
+    ns_prefixes: RefCell<HashMap<String, String>>,
 }
 
 impl Namespace {
@@ -411,6 +439,7 @@ impl Namespace {
             vars: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
             macros: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
             template_name: Rc::from(template_name),
+            ns_prefixes: RefCell::new(HashMap::new()),
         }
     }
 
@@ -420,6 +449,7 @@ impl Namespace {
             vars: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
             macros: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
             template_name,
+            ns_prefixes: RefCell::new(HashMap::new()),
         }
     }
 
@@ -507,6 +537,7 @@ impl<'a> Environment<'a> {
         let base_time_zone = base_settings.time_zone;
         let base_time_zone_id = base_settings.time_zone_id.clone();
         let main_ns = Rc::new(Namespace::new(template.name.clone()));
+        *main_ns.ns_prefixes.borrow_mut() = template.ns_prefixes.clone();
         for (name, def) in &template.macros {
             register_macro(&main_ns, name, def);
         }
@@ -531,6 +562,7 @@ impl<'a> Environment<'a> {
             loaded_libs: HashMap::new(),
             include_stack: vec![template.name.clone()],
             macro_frames: Vec::new(),
+            visit_stack: Vec::new(),
             return_depth: None,
             settings: std::borrow::Cow::Borrowed(base_settings),
             base_time_zone,
@@ -542,13 +574,26 @@ impl<'a> Environment<'a> {
             escapes: Vec::new(),
             auto_escape,
             current_template_name: template.name.clone(),
+            current_ns_prefixes: template.ns_prefixes.clone(),
             recovered_errors: Vec::new(),
             number_fmt_cache: RefCell::new(None),
+            instruction_stack: Vec::new(),
+            stack_shown: Vec::new(),
+            current_macro_name: None,
         }
     }
 
     /// 渲染入口 —— 对应 Java `Environment.process()`（:315-336）：
     /// 执行根元素，按 output_encoding 将内部 UTF-8 缓冲转码后写出，最后 flush。
+    /// 根层错误按 `template_exception_handler` 设置处理（docs/09 §6.3；Java 在
+    /// `handleTemplateException` :1199-1235 逐错误处理，v1 在 process() 边界统一处理）：
+    /// - `rethrow`：原样上传（生产默认）
+    /// - `ignore`：吞掉错误，不写任何输出（Java 保留已输出内容并继续渲染——
+    ///   v1 文档化偏差，等价 `<#attempt>` 语义）
+    /// - `debug`：把 `FreeMarker template error (DEBUG mode; use RETHROW in
+    ///   production!):` 前缀 + 完整消息 + `(Java stack trace omitted)` 段写入输出并
+    ///   视为成功（Java 写后仍抛出——v1 文档化偏差）
+    /// - `html_debug`：同上，消息 HTML 转义
     pub fn process(&mut self) -> Result<()> {
         if !self.root.is_hash() {
             return Err(TemplateError::misc("The data model must be a hash"));
@@ -556,23 +601,74 @@ impl<'a> Environment<'a> {
         // 引用拷贝技巧：先复制 &Template 引用再借 root，避免整棵根元素树深克隆
         // （run 零克隆执行，见 run_slice）
         let t = self.template;
-        let signal = self.run(&t.root)?;
-        match signal {
-            RunSignal::Completed => {
-                let output_encoding = &self.settings.output_encoding;
-                if output_encoding.eq_ignore_ascii_case("UTF-8") || output_encoding.is_empty() {
-                    // UTF-8 或未指定：缓冲中的 UTF-8 直接写出
-                    self.out.write_all(&self.output_buffer).map_err(TemplateError::Io)?;
-                } else {
-                    // 非 UTF-8：将 UTF-8 缓冲转码为输出编码
-                    let encoded = transcode_output(&self.output_buffer, output_encoding)?;
-                    self.out.write_all(&encoded).map_err(TemplateError::Io)?;
+        match self.run(&t.root) {
+            Ok(signal) => match signal {
+                RunSignal::Completed => {
+                    let output_encoding = &self.settings.output_encoding;
+                    if output_encoding.eq_ignore_ascii_case("UTF-8")
+                        || output_encoding.is_empty()
+                    {
+                        // UTF-8 或未指定：缓冲中的 UTF-8 直接写出
+                        self.out
+                            .write_all(&self.output_buffer)
+                            .map_err(TemplateError::Io)?;
+                    } else {
+                        // 非 UTF-8：将 UTF-8 缓冲转码为输出编码
+                        let encoded = transcode_output(&self.output_buffer, output_encoding)?;
+                        self.out.write_all(&encoded).map_err(TemplateError::Io)?;
+                    }
+                    self.out.flush().map_err(TemplateError::Io)
                 }
+                RunSignal::Returned(_) => Err(TemplateError::misc(
+                    "<#return> is illegal here (not inside a macro or function)",
+                )),
+            },
+            Err(e) => self.handle_root_error(e),
+        }
+    }
+
+    /// process() 根层错误 → template_exception_handler 分发（rethrow 原样上传；
+    /// debug/html_debug 写出调试文本后视为成功；ignore 吞掉不写输出）
+    fn handle_root_error(&mut self, e: TemplateError) -> Result<()> {
+        match self.settings.template_exception_handler.as_str() {
+            "rethrow" => Err(e),
+            "ignore" => Ok(()),
+            "debug" => {
+                // Java DebugTemplateExceptionHandler：写 "FreeMarker template error
+                // (DEBUG mode; use RETHROW in production!):\n" + printStackTrace
+                // （消息 + FTL 栈 + Java 栈）后仍抛出——v1 省略 Java 栈段（docs/09 §4
+                // 容忍清单）且视为成功（文档化偏差）
+                let msg = e.to_user_message();
+                let out = format!(
+                    "FreeMarker template error (DEBUG mode; use RETHROW in production!):\n\
+                     {msg}\n\
+                     ----\n(Java stack trace omitted)"
+                );
+                self.out
+                    .write_all(out.as_bytes())
+                    .map_err(TemplateError::Io)?;
                 self.out.flush().map_err(TemplateError::Io)
             }
-            RunSignal::Returned(_) => Err(TemplateError::misc(
-                "<#return> is illegal here (not inside a macro or function)",
-            )),
+            "html_debug" => {
+                // Java HtmlDebugTemplateExceptionHandler：HTML 转义 + 巨型装饰块——
+                // v1 与 debug 同形（消息转义），文档化偏差（docs/09 §6.3）
+                let msg = crate::utility::html_escape(&e.to_user_message());
+                let out = format!(
+                    "FreeMarker template error (DEBUG mode; use RETHROW in production!):\n\
+                     {msg}\n\
+                     ----\n(Java stack trace omitted)"
+                );
+                self.out
+                    .write_all(out.as_bytes())
+                    .map_err(TemplateError::Io)?;
+                self.out.flush().map_err(TemplateError::Io)
+            }
+            other => {
+                // 非法值在 exec_setting / apply_settings 已被拒——防御性兜底
+                Err(TemplateError::misc(format!(
+                    "Invalid template_exception_handler value: {other}"
+                )))
+            }
         }
     }
 
@@ -597,16 +693,38 @@ impl<'a> Environment<'a> {
         loop {
             if let Some(el) = mini.pop() {
                 let span = el.span;
+                // 指令帧：执行前压入（栈顶 = 失败帧；Java pushElement/visit）；
+                // 错误在弹帧前附加快照（Java TemplateException 构造时取快照）
+                self.push_instruction_frame(&el);
                 let outcome = crate::core::exec::exec_owned(self, el);
-                if let Some(sig) = self.consume_outcome(outcome, span, &mut mini)? {
+                let sig = match self.consume_outcome(outcome, span, &mut mini) {
+                    Ok(sig) => sig,
+                    Err(e) => {
+                        let e = self.attach_stack_to_error(e);
+                        self.pop_instruction_frame();
+                        return Err(e);
+                    }
+                };
+                self.pop_instruction_frame();
+                if let Some(sig) = sig {
                     return Ok(sig);
                 }
             } else if i < els.len() {
                 let el = &els[i];
                 i += 1;
                 let span = el.span;
+                self.push_instruction_frame(el);
                 let outcome = crate::core::exec::exec(self, el);
-                if let Some(sig) = self.consume_outcome(outcome, span, &mut mini)? {
+                let sig = match self.consume_outcome(outcome, span, &mut mini) {
+                    Ok(sig) => sig,
+                    Err(e) => {
+                        let e = self.attach_stack_to_error(e);
+                        self.pop_instruction_frame();
+                        return Err(e);
+                    }
+                };
+                self.pop_instruction_frame();
+                if let Some(sig) = sig {
                     return Ok(sig);
                 }
             } else {
@@ -614,6 +732,60 @@ impl<'a> Environment<'a> {
             }
         }
         Ok(RunSignal::Completed)
+    }
+
+    /// 压入指令帧 —— 对应 Java `pushElement`（Environment.java:3563+）。
+    /// 仅可描述元素压帧（Java 快照过滤含 "description 非空" 前提；Text/Comment/
+    /// 空白指令等无描述 → 不压，与 Java 的 getDescription()==null 跳过一致）。
+    /// 帧位置（模板名/行列/`in macro "m"`）取当前渲染上下文（include 时模板名
+    /// 已切换；宏体内 macro 名由 current_macro_name 提供）。
+    fn push_instruction_frame(&mut self, el: &Element) {
+        let Some(desc) = describe_element(self, el) else {
+            return;
+        };
+        let shown = element_shown_in_stack_trace(el);
+        // `<#nested>` 帧标记嵌套（Java BodyInstruction——打印 `~` 且紧随帧同标）
+        let nesting = matches!(el.kind, ElementKind::Nested { .. });
+        let frame = StackFrame {
+            description: desc,
+            template_name: self.current_template_name.clone(),
+            line: el.span.line,
+            col: el.span.col,
+            in_macro: self.current_macro_name.clone(),
+            nesting,
+        };
+        self.instruction_stack.push(frame);
+        self.stack_shown.push(shown);
+    }
+
+    /// 弹出指令帧（对应 Java `popElement`；执行成功或错误上传后均弹——错误已
+    /// 在 consume_outcome 阶段经 attach_stack_to_error 携带自己的快照拷贝）
+    fn pop_instruction_frame(&mut self) {
+        self.instruction_stack.pop();
+        self.stack_shown.pop();
+    }
+
+    /// 错误附加指令栈快照（Java `TemplateException` 构造时
+    /// `env.getInstructionStackSnapshot()` 的等价物；已带栈的错误为 no-op——
+    /// with_stack 幂等）——在弹帧前调用（快照须含当前失败帧）
+    pub(crate) fn attach_stack_to_error(&self, e: TemplateError) -> TemplateError {
+        e.with_stack(self.stack_snapshot())
+    }
+
+    /// 指令栈快照 —— 对应 Java `getInstructionStackSnapshot()`（Environment.java:2690+）：
+    /// 自栈顶向下（最新帧在前）取「栈顶帧（总是显示，Java 末帧无条件包含）+
+    /// 其余 isShownInStackTrace 帧」；空栈 → 空
+    pub(crate) fn stack_snapshot(&self) -> Vec<StackFrame> {
+        let mut out = Vec::new();
+        let mut first = true; // 栈顶（最新）帧总是显示
+        for (frame, shown) in self.instruction_stack.iter().zip(self.stack_shown.iter()).rev() {
+            let keep = first || *shown;
+            first = false;
+            if keep {
+                out.push(frame.clone());
+            }
+        }
+        out
     }
 
     /// exec 结果消费（Next/Replace → mini 栈；Returned → 信号；Flow/Stop/Err → 上传）
@@ -796,9 +968,10 @@ impl<'a> Environment<'a> {
     }
 
     /// 当前模板的命名空间前缀映射（`<#ftl ns_prefixes=...>`；XML 节点前缀解析——
-    /// Java `currentNamespace.getTemplate().getNamespaceForPrefix`。v1 取主模板映射）
+    /// Java `currentNamespace.getTemplate().getNamespaceForPrefix`；include/import
+    /// 切换时随之切换）
     pub(crate) fn current_ns_prefixes(&self) -> crate::xml::NsPrefixes {
-        crate::xml::NsPrefixes::new(self.template.ns_prefixes.clone())
+        crate::xml::NsPrefixes::new(self.current_ns_prefixes.clone())
     }
 
     /// TModel → 命名空间值（内部槽位下沉，Java Namespace 对象）
@@ -1045,6 +1218,7 @@ impl<'a> Environment<'a> {
             body_params,
             caller_ns: self.current_ns.clone(),
             caller_local_stack: self.local_stack.clone(),
+            caller_macro_name: self.current_macro_name.clone(),
             args_value: RefCell::new(None),
             def: mv.def.clone(),
             is_function,
@@ -1056,34 +1230,71 @@ impl<'a> Environment<'a> {
         // Java :880-894：压帧、切换命名空间、清空局部上下文
         self.macro_frames.push(frame.clone());
         let prev_ns = self.current_ns.clone();
+        let prev_ns_prefixes = self.current_ns_prefixes.clone();
         self.current_ns = mv.ns.upgrade().ok_or_else(|| {
             TemplateError::misc("The macro's namespace is no longer available.")
         })?;
+        // 宏体内 ns_prefixes 随宏所属命名空间切换（Java 宏的 currentNamespace）；
+        // 空映射跳过 clone（热路径优化：多数模板无 ns_prefixes；borrow 立即释放）
+        let ns_prefixes: HashMap<String, String> =
+            self.current_ns.ns_prefixes.borrow().clone();
+        if !ns_prefixes.is_empty() {
+            self.current_ns_prefixes = ns_prefixes;
+        }
         let prev_local = std::mem::take(&mut self.local_stack);
+        // Java ICI 2.3.28+：宏定义帧在参数绑定（setMacroContextLocalsFromArguments）
+        // **之后**、默认参数求值（checkParamsSetAndApplyDefaults）**之前**压入
+        // （invokeMacroOrFunctionCommonPart 的 pushElement(macro)，jar 实测）——
+        // "required parameter 未指定"/"默认值缺失"以 `#macro m a` 为失败帧；
+        // 参数过多/未声明在绑定期报错，失败帧为调用元素 `@m 1, 2`。宏体执行期间
+        // 该帧为"不可显示"帧（Macro 非 isShownInStackTrace），仅作失败帧候选
+        let prev_macro_name = self.current_macro_name.clone();
+        self.push_macro_frame(&mv.def);
+        self.current_macro_name = Some(mv.def.name.clone());
+        let r = self.run_macro_body(frame, is_function);
+        // 错误在弹宏帧前附加快照（Java 异常创建时取快照——默认参数/宏体错误含
+        // `#macro m` 帧；宏体错误已被最深层 run_slice 附加，with_stack 幂等）
+        let r = r.map_err(|e| self.attach_stack_to_error(e));
+        // Java finally :895-901：恢复（错误路径同样还原现场——错误已携带快照拷贝）
+        self.current_ns = prev_ns;
+        self.current_ns_prefixes = prev_ns_prefixes;
+        self.local_stack = prev_local;
+        self.macro_frames.pop();
+        self.pop_instruction_frame();
+        self.current_macro_name = prev_macro_name;
+        r
+    }
+
+    /// 宏/函数体执行（invoke_macro_common 已压宏帧并切换上下文后调用）：
+    /// 默认参数求值 + 宏体/函数体 run；`<#return>` 归属判定（Java Macro.invoke 的
+    /// catch(Return)——穿透的 return 继续上传）
+    fn run_macro_body(
+        &mut self,
+        frame: Rc<MacroFrame>,
+        is_function: bool,
+    ) -> Result<RunSignal> {
         // Java :893 checkParamsSetAndApplyDefaults（宏上下文内求值默认参数；
         // 必须在压帧/清空局部上下文之后——默认值表达式经宏帧局部变量解析）
-        if !mv.def.params.is_empty() {
-            apply_macro_defaults(self, &frame, &mv.def)?;
+        if !frame.def.params.is_empty() {
+            apply_macro_defaults(self, &frame, &frame.def)?;
         }
         // Java :344-397：`.args` 特殊变量值**惰性**构建——仅在模板访问 `.args` 时
         // 由 build_args_special 填充（Java BuiltinVariable.Args 访问时才构造，且
         // "位置 catch-all 非空 + .args" 限制只在访问时触发）；此处不再急切构建
-        let r = if is_function {
+        let sig = if is_function {
             let sig = self
-                .capture(|env| env.run(&mv.def.body))
+                .capture(|env| env.run(&frame.def.body))
                 .map(|(sig, _)| sig)?;
             // Java Macro.invoke 的 catch(Return) 归属判定：return 由本函数帧发起
             // （深度匹配）才作为返回值捕获；穿透的 return（更外层宏）继续上传
             if let RunSignal::Returned(_) = &sig {
                 if self.return_depth == Some(self.macro_frames.len()) {
                     self.return_depth = None;
-                } else {
-                    return self.restore_after_macro(prev_ns, prev_local, sig);
                 }
             }
             sig
         } else {
-            let sig = self.run(&mv.def.body)?;
+            let sig = self.run(&frame.def.body)?;
             // Java Macro.invoke：宏边界捕获归属本帧的 return（宏不能 return 值 →
             // 值恒 None，捕获即宏正常完成）；穿透的 return 继续上传
             if let RunSignal::Returned(_) = &sig {
@@ -1091,30 +1302,42 @@ impl<'a> Environment<'a> {
                     self.return_depth = None;
                     RunSignal::Completed
                 } else {
-                    return self.restore_after_macro(prev_ns, prev_local, sig);
+                    sig
                 }
             } else {
                 sig
             }
         };
-        // Java finally :895-901：恢复
-        self.current_ns = prev_ns;
-        self.local_stack = prev_local;
-        self.macro_frames.pop();
-        Ok(r)
+        Ok(sig)
     }
 
-    /// 宏调用结束恢复（Java finally :895-901；穿透的 return 上传前同样恢复现场）
-    fn restore_after_macro(
-        &mut self,
-        prev_ns: Rc<Namespace>,
-        prev_local: Vec<LocalEntry>,
-        r: RunSignal,
-    ) -> Result<RunSignal> {
-        self.current_ns = prev_ns;
-        self.local_stack = prev_local;
-        self.macro_frames.pop();
-        Ok(r)
+    /// 压入宏定义帧（`#macro m a` —— 对应 Java `pushElement(macro)`；
+    /// 位置 `in macro "m"` 取宏自身：getEnclosingMacro 沿父链首个 Macro 即自身）
+    fn push_macro_frame(&mut self, def: &MacroDef) {
+        self.instruction_stack.push(StackFrame {
+            description: macro_def_description(def),
+            template_name: self.current_template_name.clone(),
+            line: def.span.line,
+            col: def.span.col,
+            in_macro: Some(def.name.clone()),
+            nesting: false,
+        });
+        self.stack_shown.push(false);
+    }
+
+    /// 压入访问节点（Java `visitStack.push`；`<#visit>` 分派前）
+    pub(crate) fn push_visitor_node(&mut self, node: TModel) {
+        self.visit_stack.push(node);
+    }
+
+    /// 弹出访问节点（Java `visitStack.pop`；`<#visit>` 分派完成后）
+    pub(crate) fn pop_visitor_node(&mut self) {
+        self.visit_stack.pop();
+    }
+
+    /// 当前访问节点（Java `getCurrentVisitorNode` :2931-2933；非 visit 上下文 → None）
+    pub(crate) fn get_current_visitor_node(&self) -> Option<TModel> {
+        self.visit_stack.last().cloned()
     }
 
     pub(crate) fn get_current_macro_frame(&self) -> Option<Rc<MacroFrame>> {
@@ -1204,7 +1427,15 @@ impl<'a> Environment<'a> {
             if ignore_missing {
                 return Ok(());
             }
-            return Err(last_err.unwrap_or(TemplateError::NotFound { name: full }));
+            let err = last_err.unwrap_or(TemplateError::NotFound { name: full });
+            // Java Include.accept（Include.java:73-90）：加载失败（模板缺失/被包含
+            // 模板解析错误）→ "Template inclusion failed (for parameter value
+            // \"{name}\"):\n{原因}"（jar 实测 include_not_found / include_parse_error
+            // 基线；被包含模板体内部的渲染错误不加此包装——include_template 路径）
+            return Err(TemplateError::misc(format!(
+                "Template inclusion failed (for parameter value \"{name}\"):\n{}",
+                err.to_user_message()
+            )));
         };
         self.include_template(&t)
     }
@@ -1222,11 +1453,14 @@ impl<'a> Environment<'a> {
             register_macro(&cur_ns, name, def);
         }
         let prev_name = self.current_template_name.clone();
+        let prev_ns_prefixes = self.current_ns_prefixes.clone();
         self.current_template_name = included.name.clone();
+        // Java include：currentNamespace 不变 → ns_prefixes 沿用主模板（不切换）
         self.include_stack.push(included.name.clone());
         let r = self.run(&included.root);
         self.include_stack.pop();
         self.current_template_name = prev_name;
+        self.current_ns_prefixes = prev_ns_prefixes;
         match r {
             Ok(RunSignal::Completed) => Ok(()),
             Ok(RunSignal::Returned(_)) => Err(TemplateError::misc(
@@ -1255,6 +1489,7 @@ impl<'a> Environment<'a> {
                 .configuration
                 .get_template_localized(&full, Some(&locale))?;
             let ns = Rc::new(Namespace::new(t.name.clone()));
+            *ns.ns_prefixes.borrow_mut() = t.ns_prefixes.clone();
             self.loaded_libs.insert(full, ns.clone());
             // Java initializeImportLibNamespace :3290-3303：currentNamespace 切换 + 输出丢弃执行
             self.initialize_import_lib_namespace(&ns, &t)?;
@@ -1273,14 +1508,17 @@ impl<'a> Environment<'a> {
     fn initialize_import_lib_namespace(&mut self, ns: &Rc<Namespace>, t: &Template) -> Result<()> {
         let prev_ns = self.current_ns.clone();
         let prev_name = self.current_template_name.clone();
+        let prev_ns_prefixes = self.current_ns_prefixes.clone();
         self.current_ns = ns.clone();
         self.current_template_name = t.name.clone();
+        self.current_ns_prefixes = t.ns_prefixes.clone();
         for (name, def) in &t.macros {
             register_macro(ns, name, def);
         }
         let r = self.capture(|env| env.run(&t.root));
         self.current_ns = prev_ns;
         self.current_template_name = prev_name;
+        self.current_ns_prefixes = prev_ns_prefixes;
         match r {
             Ok((RunSignal::Completed, _)) => Ok(()),
             Ok((RunSignal::Returned(_), _)) => Err(TemplateError::misc(
@@ -1390,12 +1628,16 @@ fn bind_macro_args(
                 .borrow_mut()
                 .insert(cn.clone(), TModel::from_hash(hash.clone()));
         } else {
-            // Java newUndeclaredParamNameException（Environment.java:1105-1113）
+            // Java newUndeclaredParamNameException（Environment.java:1105-1113）：
+            // "Macro "m" has no parameter with name "b". Valid parameter names are: a"
+            // （jar 实测 macro_undeclared_param 基线——含合法参数名清单）
+            let valid: Vec<&str> = normal_params.iter().map(|p| p.name.as_str()).collect();
             return Err(TemplateError::misc(format!(
-                "{} {} has no parameter with name {}",
+                "{} {} has no parameter with name {}. Valid parameter names are: {}",
                 if def.is_function { "Function" } else { "Macro" },
                 quote_name(&def.name),
                 quote_name(arg_name),
+                valid.join(", "),
             )));
         }
     }
@@ -1443,7 +1685,10 @@ fn apply_macro_defaults(
                         resolved = true;
                     }
                     Ok(_) => {} // 默认值本身为 null：继续重试（Java hasUnresolvedDefaultValue）
-                    Err(TemplateError::InvalidReference { .. }) => {} // 未决：继续重试
+                    // Java Macro.java checkParamsSetAndApplyDefaults：默认值表达式求值
+                    // 抛 InvalidReferenceException 直接上传（jar 实测 macro_default_undefined
+                    // 基线 `==> a  [in template ... at line 1, column 13]`——blame 为默认值
+                    // 表达式，位置经 eval 包装附加）
                     Err(e) => return Err(e),
                 }
             }
@@ -1475,8 +1720,11 @@ fn apply_macro_defaults(
                 )));
             }
             // Java :301-322：When calling macro "m", required parameter "x" (parameter #N) was not specified.
+            // （jar 实测附 Tip 段："If the omission was deliberate, you may consider
+            // making the parameter optional in the macro by specifying a default value
+            // for it, like <#macro macroName paramName=defaultExpr>)"）
             return Err(TemplateError::misc(format!(
-                "When calling {} {}, required parameter {} (parameter #{}) was not specified.",
+                "When calling {} {}, required parameter {} (parameter #{}) was not specified.\n\n----\nTip: If the omission was deliberate, you may consider making the parameter optional in the macro by specifying a default value for it, like <#macro macroName paramName=defaultExpr>)\n----",
                 if def.is_function { "function" } else { "macro" },
                 quote_name(&def.name),
                 quote_name(&param.name),
@@ -1740,7 +1988,7 @@ pub(crate) fn boolean_format(env: &Environment, b: bool, fallback: bool) -> Resu
             });
         }
         return Err(TemplateError::misc(
-            "Can't convert boolean to string automatically, because the \"boolean_format\" setting was \"true,false\", which is the legacy deprecated default, and we treat it as if no format was set. This is the default configuration; you should provide the format explicitly for each place where you print a boolean.",
+            "Can't convert boolean to string automatically, because the \"boolean_format\" setting was \"true,false\", which is the legacy deprecated default, and we treat it as if no format was set. This is the default configuration; you should provide the format explicitly for each place where you print a boolean.\n\n----\nTip: Write something like myBool?string('yes', 'no') to specify boolean formatting in place.\n----\nTip: If you want \"true\"/\"false\" result as you are generating computer-language output (not for direct human consumption), then use \"?c\", like ${myBool?c}. (If you always generate computer-language output, then it's might be reasonable to set the \"boolean_format\" setting to \"c\" instead.)\n----\nTip: If you need the same two values on most places, the programmers can set the \"boolean_format\" setting to something like \"yes,no\". However, then it will be easy to unwillingly format booleans like that.\n----",
         ));
     }
     if format == "c" {
@@ -1910,7 +2158,6 @@ pub(crate) fn expr_desc(e: &Expr) -> String {
             expr_desc(callee),
             args.iter().map(expr_desc).collect::<Vec<_>>().join(", ")
         ),
-        K::BuiltIn { target, name, .. } => format!("{}?{}", expr_desc(target), name),
         K::Paren(i) => format!("({})", expr_desc(i)),
         K::Not(i) => format!("!{}", expr_desc(i)),
         K::UnaryMinus(i) => format!("-{}", expr_desc(i)),
@@ -1929,8 +2176,236 @@ pub(crate) fn expr_desc(e: &Expr) -> String {
         K::Or(a, b) => format!("{} || {}", expr_desc(a), expr_desc(b)),
         K::Default { target, .. } => format!("{}!", expr_desc(target)),
         K::Exists(t) => format!("{}??", expr_desc(t)),
+        K::ListLit(items) => format!(
+            "[{}]",
+            items.iter().map(expr_desc).collect::<Vec<_>>().join(", ")
+        ),
+        K::BuiltIn {
+            target,
+            name,
+            args,
+        } => match args {
+            Some(args) => format!(
+                "{}?{}({})",
+                expr_desc(target),
+                name,
+                args.iter().map(expr_desc).collect::<Vec<_>>().join(", ")
+            ),
+            None => format!("{}?{}", expr_desc(target), name),
+        },
         _ => "...".to_string(),
     }
+}
+
+/// 元素是否在 Java 指令栈快照中显示 —— 对应各类 `isShownInStackTrace()` 覆盖
+/// （jar 实测：BodyInstruction/Include/Interpolation/LibraryLoad/UnifiedCall/
+/// TransformBlock/VisitNode/RecurseNode/FallbackInstruction 返回 true，其余 false；
+/// 栈顶失败帧不受限——getInstructionStackSnapshot 对末帧无条件包含）
+fn element_shown_in_stack_trace(el: &Element) -> bool {
+    matches!(
+        el.kind,
+        ElementKind::Interpolation { .. }
+            | ElementKind::Call { .. }
+            | ElementKind::Include { .. }
+            | ElementKind::Import { .. }
+            | ElementKind::Nested { .. }
+            | ElementKind::Transform { .. }
+            | ElementKind::Visit { .. }
+            | ElementKind::Recurse { .. }
+            | ElementKind::Fallback
+    )
+}
+
+/// 元素描述 —— 对应 Java `TemplateElement.getDescription()`（= `dump(false)`，元素
+/// 源码形式的规范化文本；`_MessageUtil.shorten(desc, 40)` 截断，Environment.java:2622）。
+/// 返回 None = 无描述（Java 快照过滤跳过 description==null 的帧；Text/Comment 等
+/// 不可能失败的元素不压帧）。
+fn describe_element(env: &Environment, el: &Element) -> Option<String> {
+    use ElementKind as E;
+    let d = match &el.kind {
+        E::Text { .. } | E::NoParse { .. } | E::Comment { .. } | E::FtlHeader { .. }
+        | E::TrimLineStart | E::NoTrimLineStart | E::TrimLineEnd | E::LeftTrimLine
+        | E::RawText(_) => return None,
+        E::Interpolation {
+            expr,
+            legacy_min_frac,
+            ..
+        } => {
+            // Java DollarVariable.dump：`${expr}` / `#{expr}`；自动转义/`<#escape>` 内
+            // 追加 " auto-escaped"（escapedExpression != expression）
+            let s = if legacy_min_frac.is_some() {
+                format!("#{{{}}}", expr_desc(expr))
+            } else {
+                format!("${{{}}}", expr_desc(expr))
+            };
+            if legacy_min_frac.is_none() && (!env.escapes.is_empty() || env.auto_escape) {
+                format!("{s} auto-escaped")
+            } else {
+                s
+            }
+        }
+        E::If { cond, .. } => format!("#if {}", expr_desc(cond)),
+        E::List {
+            seq,
+            var,
+            var2,
+            ..
+        } => {
+            let mut s = format!("#list {}", expr_desc(seq));
+            if !var.is_empty() {
+                s.push_str(&format!(" as {var}"));
+                if let Some(v2) = var2 {
+                    s.push_str(&format!(", {v2}"));
+                }
+            }
+            s
+        }
+        E::Items { var, var2, .. } => {
+            let mut s = format!("#items as {var}");
+            if let Some(v2) = var2 {
+                s.push_str(&format!(", {v2}"));
+            }
+            s
+        }
+        E::Assign {
+            target,
+            expr,
+            op,
+            ..
+        } => format!(
+            "#assign {target} {} {}",
+            assign_op_symbol(*op),
+            expr_desc(expr)
+        ),
+        E::Global {
+            target,
+            expr: Some(e),
+            ..
+        } => format!("#global {target} = {}", expr_desc(e)),
+        E::Local {
+            target,
+            expr: Some(e),
+            ..
+        } => format!("#local {target} = {}", expr_desc(e)),
+        E::Macro { def } => macro_def_description(def),
+        E::Call {
+            callee,
+            args,
+            body_params,
+            ..
+        } => {
+            // Java UnifiedCall.getDescription（dump）：`@name` + 位置参数 `1, 2`
+            // （逗号空格）与命名参数 `b=1` 混合（位置在前）
+            let mut s = String::from("@");
+            match callee {
+                CallTarget::Name(n) => s.push_str(n),
+                CallTarget::Namespaced { ns, name } => {
+                    s.push_str(ns);
+                    s.push('.');
+                    s.push_str(name);
+                }
+                CallTarget::Expr(e) => s.push_str(&expr_desc(e)),
+            }
+            let mut parts: Vec<String> = Vec::new();
+            for (k, e) in args {
+                if k.is_empty() {
+                    parts.push(expr_desc(e));
+                } else {
+                    parts.push(format!("{k}={}", expr_desc(e)));
+                }
+            }
+            if !parts.is_empty() {
+                s.push(' ');
+                s.push_str(&parts.join(", "));
+            }
+            // `; a, b` 体参数（Java `@m 1; a, b` 描述含体参数——场景未覆盖，按
+            // 源码形式附加）
+            if !body_params.is_empty() {
+                s.push_str("; ");
+                s.push_str(&body_params.join(", "));
+            }
+            s
+        }
+        E::Nested { .. } => "#nested".to_string(),
+        E::Switch { expr, .. } => format!("#switch {}", expr_desc(expr)),
+        E::Break => "#break".to_string(),
+        E::Continue => "#continue".to_string(),
+        E::Return { expr } => match expr {
+            Some(e) => format!("#return {}", expr_desc(e)),
+            None => "#return".to_string(),
+        },
+        E::Stop { msg } => match msg {
+            Some(e) => format!("#stop {}", expr_desc(e)),
+            None => "#stop".to_string(),
+        },
+        E::Flush => "#flush".to_string(),
+        E::Include { path, .. } => format!("#include {}", expr_desc(path)),
+        E::Import { path, ns } => format!("#import {} as {ns}", expr_desc(path)),
+        E::Setting { key, value } => format!("#setting {key}={}", expr_desc(value)),
+        E::Transform { expr, .. } => format!("#transform {}", expr_desc(expr)),
+        E::Visit { expr, .. } => match expr {
+            Some(e) => format!("#visit {}", expr_desc(e)),
+            None => "#visit".to_string(),
+        },
+        E::Recurse { expr, .. } => match expr {
+            Some(e) => format!("#recurse {}", expr_desc(e)),
+            None => "#recurse".to_string(),
+        },
+        E::On { expr, .. } => format!("#on {}", expr_desc(expr)),
+        E::Fallback => "#fallback".to_string(),
+        // 容器类指令（Escape/NoEscape/AutoEsc/NoAutoEsc/OutputFormat/Compress/
+        // Attempt/Trim/Assignments/BlockAssign/Sep）：Java 无描述或失败帧为内部
+        // 元素——不压帧
+        _ => return None,
+    };
+    Some(shorten_java(&d, 40))
+}
+
+/// 赋值操作符符号（Java Assignment.dump 的标签文本）
+fn assign_op_symbol(op: AssignOp) -> &'static str {
+    match op {
+        AssignOp::Equals => "=",
+        AssignOp::PlusEq => "+=",
+        AssignOp::MinusEq => "-=",
+        AssignOp::TimesEq => "*=",
+        AssignOp::DivideEq => "/=",
+        AssignOp::ModuloEq => "%=",
+        AssignOp::PlusPlus => "++",
+        AssignOp::MinusMinus => "--",
+    }
+}
+
+/// 宏/函数定义描述 —— 对应 Java `Macro.getDescription()`（dump）：
+/// `#macro {name} {param}[={default}]...` / `#function ...`（参数空格分隔，
+/// 默认值按表达式描述）
+fn macro_def_description(def: &MacroDef) -> String {
+    let mut s = format!(
+        "{} {name}",
+        if def.is_function { "#function" } else { "#macro" },
+        name = def.name
+    );
+    for p in &def.params {
+        if p.catch_all {
+            s.push_str(&format!(" {}{}", p.name, if p.default.is_some() { "..." } else { "" }));
+            continue;
+        }
+        match &p.default {
+            Some(e) => s.push_str(&format!(" {}={}", p.name, expr_desc(e))),
+            None => s.push_str(&format!(" {}", p.name)),
+        }
+    }
+    s
+}
+
+/// Java `_MessageUtil.shorten(s, maxLen)`：超长截断为 `前 maxLen-3 字符 + "..."`
+fn shorten_java(s: &str, max_len: usize) -> String {
+    let count = s.chars().count();
+    if count <= max_len {
+        return s.to_string();
+    }
+    let cut = max_len.saturating_sub(3);
+    let head: String = s.chars().take(cut).collect();
+    format!("{head}...")
 }
 
 /// 收集表达式中的标识符名（`<#escape x as x?html>` 的占位符识别；v1 近似
@@ -2023,18 +2498,22 @@ fn collect_ident_names_into(e: &Expr, out: &mut Vec<String>) {
 /// 只附加一次（消息已含 "[in template" 则跳过）；Flow/Stop/Parse/Io 不附加
 /// （Flow 是流控信号；Stop 是 Java StopException 语义，自带消息）。
 pub(crate) fn attach_location(err: TemplateError, template_name: &str, span: Span) -> TemplateError {
-    let loc = format!(
-        "[in template \"{template_name}\" at line {}, column {}]",
-        span.line, span.col
-    );
+    // 错误已带位置（eval 包装按失败表达式位置附加）或消息已含位置 → 不重复附加
+    if err.has_location() {
+        return err;
+    }
     match err {
         TemplateError::InvalidReference { name, ctx } => {
             if name.contains("[in template") {
                 TemplateError::InvalidReference { name, ctx }
             } else {
                 TemplateError::InvalidReference {
-                    name: format!("{name}  {loc}"),
-                    ctx,
+                    name,
+                    ctx: ErrorCtx {
+                        span,
+                        template_name: Some(template_name.to_string()),
+                        ..ctx
+                    },
                 }
             }
         }
@@ -2043,7 +2522,9 @@ pub(crate) fn attach_location(err: TemplateError, template_name: &str, span: Spa
             actual,
             ctx,
         } => {
-            if actual.contains("[in template") {
+            if actual.contains("[in template") || ctx.assignment_target.is_some() {
+                // 赋值目标错误（Java UnexpectedTypeException(blamedAssignmentTargetVarName)）
+                // 无 blame 表达式 → 消息不含位置（位置仅出现在 FTL stack 段）
                 TemplateError::TypeMismatch {
                     expected,
                     actual,
@@ -2052,29 +2533,17 @@ pub(crate) fn attach_location(err: TemplateError, template_name: &str, span: Spa
             } else {
                 TemplateError::TypeMismatch {
                     expected,
-                    actual: format!("{actual}  {loc}"),
-                    ctx,
+                    actual,
+                    ctx: ErrorCtx {
+                        span,
+                        template_name: Some(template_name.to_string()),
+                        ..ctx
+                    },
                 }
             }
         }
-        TemplateError::Misc { message } => {
-            if message.contains("[in template") {
-                TemplateError::Misc { message }
-            } else {
-                TemplateError::Misc {
-                    message: format!("{message}  {loc}"),
-                }
-            }
-        }
-        TemplateError::Model { message } => {
-            if message.contains("[in template") {
-                TemplateError::Model { message }
-            } else {
-                TemplateError::Model {
-                    message: format!("{message}  {loc}"),
-                }
-            }
-        }
+        // Java _MiscTemplateException / TemplateModelException 消息不含位置
+        // （位置仅由 FTL stack trace 段承载，jar 实测 div_by_zero/宏参数错误等）
         other => other,
     }
 }
@@ -2194,9 +2663,13 @@ mod tests {
         let err =
             render_src(&c, &loader, "err.ftl", "${missing}", DynValue::Map(vec![])).unwrap_err();
         match err {
-            TemplateError::InvalidReference { name, .. } => {
+            TemplateError::InvalidReference { name, ctx } => {
                 assert!(name.contains("missing"), "{name}");
-                assert!(name.contains("[in template"), "{name}");
+                // 位置段由 ctx（失败表达式位置）渲染：`==> missing  [in template ...]`
+                assert!(
+                    ctx.template_name.as_deref() == Some("err.ftl") && ctx.span.line == 1,
+                    "{name} / ctx: {ctx:?}"
+                );
             }
             other => panic!("expected InvalidReference, got {other:?}"),
         }

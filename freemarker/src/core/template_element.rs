@@ -205,16 +205,16 @@ pub enum ElementKind {
         expr: Expr,
         body: Vec<Element>,
     },
-    /// <#visit expr>（对应 Java `VisitNode.java`：XML 节点访问）
+    /// <#visit expr>（对应 Java `VisitNode.java`：XML 节点访问；无参 = 当前节点）
     Visit {
-        expr: Expr,
+        expr: Option<Expr>,
         /// `<#visit node using target>` 的 using 目标（Java VisitNode 的
         /// recurseTarget 参数；XML 场景才有意义，v1 仅解析保留）
         using: Option<Expr>,
     },
-    /// <#recurse expr>（对应 Java `RecurseNode.java`：递归访问子节点）
+    /// <#recurse expr>（对应 Java `RecurseNode.java`：递归访问子节点；无参 = 当前节点）
     Recurse {
-        expr: Expr,
+        expr: Option<Expr>,
         /// `<#recurse node using target>`（Java RecurseNode 的 recurseTarget）
         using: Option<Expr>,
     },

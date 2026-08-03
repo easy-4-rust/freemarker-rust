@@ -70,7 +70,7 @@ fn blank_to_null_type_error() {
         &c,
         &loader,
         "${[]?blank_to_null!'-'}",
-        &["something that is a string-like value is required, but this has evaluated to a sequence"],
+        &["Expected a string or something automatically convertible to string (number, date or boolean), but this has evaluated to a sequence"],
     );
     // 引擎差异：v1 `<#assign html></#assign>` 产出普通字符串（无 markup 模型），
     // `""?blank_to_null` → null → `!'-'` → "-"（Java 因 HTMLOutputFormat 产生
@@ -123,7 +123,7 @@ fn trim_to_null_type_error() {
         &c,
         &loader,
         "${[]?trim_to_null!'-'}",
-        &["something that is a string-like value is required, but this has evaluated to a sequence"],
+        &["Expected a string or something automatically convertible to string (number, date or boolean), but this has evaluated to a sequence"],
     );
     // 引擎差异：同 blankToNullTypeError——v1 无 markup 模型，`""?trim_to_null` → null
     // → "-"（Java 报 "TemplateHTMLOutputModel" 类型错）→ 断言按引擎实测调整
@@ -167,7 +167,7 @@ fn empty_to_null_type_error() {
         &c,
         &loader,
         "${[]?empty_to_null!'-'}",
-        &["something that is a string-like value is required, but this has evaluated to a sequence"],
+        &["Expected a string or something automatically convertible to string (number, date or boolean), but this has evaluated to a sequence"],
     );
     // 引擎差异：同 blankToNullTypeError——v1 无 markup 模型，`""?empty_to_null` → null
     // → "-"（Java 报 "TemplateHTMLOutputModel" 类型错）→ 断言按引擎实测调整

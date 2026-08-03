@@ -251,11 +251,15 @@ impl Lexer {
         (self.line, self.col)
     }
 
-    /// 解析错误：`Parsing error in template "{name}" at line L, column C. {details}`
+    /// 解析错误：`Syntax error in template "{name}" in line L, column C:
+{details}`
+    /// （Java ParseException.getMessage 格式，jar 实测）
     pub(crate) fn err(&self, line: u32, col: u32, details: impl Into<String>) -> TemplateError {
         TemplateError::Parse {
             template: self.name.clone(),
-            message: format!("at line {}, column {}. {}", line, col, details.into()),
+            line,
+            col,
+            message: details.into(),
         }
     }
 

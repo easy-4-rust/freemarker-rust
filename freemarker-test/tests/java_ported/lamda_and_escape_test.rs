@@ -19,7 +19,7 @@ fn test_substitution_in_lambda_lho() {
         &c,
         &loader,
         "<#escape myPlaceholder as ['a', 'b', 'c']?map(myPlaceholder -> 'x')>${'X'}</#escape>",
-        &["string-like value is required"],
+        &["Expected a string or something automatically convertible to string (number, date or boolean)"],
     );
 }
 

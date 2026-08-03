@@ -16,6 +16,7 @@ use crate::core::{
     ArithmeticEngine, BigDecimalEngine, BuiltinVar, Expr, ExprKind, RangeKind, StrPart,
 };
 use crate::error::{Result, TemplateError};
+use crate::span::Span;
 use crate::template::{
     TModel, TemplateCollectionModel, TemplateHashModel, TemplateHashModelEx, TemplateSequenceModel,
 };
@@ -30,7 +31,26 @@ use unicode_normalization::UnicodeNormalization;
 /// 表达式求值 —— 对应 Java `Expression.eval(Environment)`（docs/04 §5）。
 /// 求值失败一律 Err（Java 抛 TemplateException 族）；缺失变量为
 /// `TemplateError::InvalidReference`（`??`/`!`/`?default`/`?exists` 等显式抑制）。
+/// 错误位置：失败表达式（Java blamed Expression）的起始位置 + 当前模板名
+/// （Java `InvalidReferenceException.getInstance(blamed, env)` 的 blamed.getStartLocation）；
+/// 内层表达式失败时位置已带（如 `user.name` 中 `user` 的列），外层不再覆盖。
 pub fn eval(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel> {
+    let r = eval_inner(env, expr);
+    match r {
+        Err(e) => Err(attach_eval_location(e, env, expr.span)),
+        ok => ok,
+    }
+}
+
+/// eval 包装的位置附加（仅未带位置的错误；Java 异常构造时即取 blamed 位置）
+fn attach_eval_location(e: TemplateError, env: &crate::core::Environment, span: Span) -> TemplateError {
+    if e.has_location() {
+        return e;
+    }
+    e.with_location(&env.current_template_name, span)
+}
+
+fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel> {
     match &expr.kind {
         ExprKind::Str(s) => Ok(TModel::from_scalar(s.clone())),
         ExprKind::InterpStr(parts) => eval_interp_str(env, parts),
@@ -225,7 +245,9 @@ fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result
         )),
         // Java :209-211：CURRENT_NODE/NODE → env.getCurrentVisitorNode()（Environment.java:2931-2933；
         // 非节点上下文返回 null —— nothing 而非抛错，`!`/`??` 继续抑制）
-        BuiltinVar::Node => Ok(TModel::nothing()),
+        BuiltinVar::Node => Ok(env
+            .get_current_visitor_node()
+            .unwrap_or_else(TModel::nothing)),
         // Java :212-217：TEMPLATE_NAME → 主模板名（getTemplate230().getName()）
         BuiltinVar::TemplateName | BuiltinVar::MainTemplateName => Ok(TModel::from_scalar(
             env.template.name.clone(),
@@ -431,12 +453,26 @@ fn eval_dot(env: &mut crate::core::Environment, target: &Expr, name: &str) -> Re
     if let Some(ns) = env.as_namespace(&t) {
         return Ok(ns.get_member(name).unwrap_or_else(TModel::nothing));
     }
+    // 节点哈希角色（Java NodeModel 实现 TemplateHashModel：键 = 子元素名/@attr/@@key/
+    // XPath；NodeHashModel.get 需 env —— ns_prefixes 解析）
+    if let Some(nh) = &t.node_hash {
+        return Ok(nh.get(env, name)?.unwrap_or_else(TModel::nothing));
+    }
     if t.is_hash() {
         let h = t.get_hash()?;
         // 键缺失 → Java SimpleHash.get 返回 null 不抛（Dot._eval 仅 target null 时抛）
         return Ok(h.get(name)?.unwrap_or_else(TModel::nothing));
     }
-    Err(TemplateError::type_mismatch("hash", t.type_name))
+    // Java NonHashException（blamed = target 表达式；位置 = target 起始）：
+    // `For "." left-hand operand: Expected a hash, but this has evaluated to a {type}:`
+    // `==> {target}`
+    Err(TemplateError::type_mismatch("hash", t.type_name).with_blame_at(
+        ".",
+        "left-hand operand",
+        &crate::core::environment::expr_desc(target),
+        &env.current_template_name,
+        target.span,
+    ))
 }
 
 /// 收集 `?builtin.a.b` 点链（Java 同样生成 Dot(BuiltIn) 嵌套——格式化器哈希访问；
@@ -530,27 +566,21 @@ fn eval_dyn_key(env: &mut crate::core::Environment, target: &Expr, key: &Expr) -
             // "Range item index ... is out of bounds." 仅负下标路径，见上）
             return Ok(TModel::nothing());
         }
-        if let Some(s) = &t.scalar {
-            // 字符串数字索引 → 单字符（Java :137-160 fallback）
-            let text = s.as_string()?;
-            return match text.chars().nth(i) {
-                Some(c) => Ok(TModel::from_scalar(c.to_string())),
-                None => Err(TemplateError::misc(format!(
-                    "String index out of range: The index was {} (0-based), but the length of the string is only {}.",
-                    i,
-                    text.chars().count()
-                ))),
-            };
-        }
-        // Java DynamicKeyName（ICI 2.3.0 jar 实测）：数字键 + 非序列/字符串目标 →
-        // "For \"...[...]\" left-hand operand: Expected a sequence or string or something
-        // automatically convertible to string (number, date or boolean), but this has
-        // evaluated to a {type}:" + Tip 段（数值键提示 ?api）
-        return Err(TemplateError::misc(format!(
-            "For \"...[...]\" left-hand operand: Expected a sequence or string or something automatically convertible to string (number, date or boolean), but this has evaluated to a {}: ==> {}\n\n----\nTip: You had a numerical value inside the []. Currently that's only supported for sequences (lists) and strings. To get a Map item with a non-string key, use myMap?api.get(myKey).\n----",
-            t.type_name,
-            crate::core::environment::expr_desc(target)
-        )));
+        // Java 2.3.34 dealWithNumericalKey :121-147 回退：目标经
+        // evalAndCoerceToPlainText 强制转字符串后按下标取单字符——数字/布尔/日期等
+        // 非序列目标均走此路径（`${true[0]}` → 布尔强制转字符串按 boolean_format
+        // 报错，jar 实测 type_index_boolean 基线；`${1[0]}` → "1" 首字符）；
+        // 越界 → "String index out of range: ..."（Java 捕获 StringIndexOutOfBounds
+        // 后改报 FTL 消息）
+        let text = model_to_string(env, &t)?;
+        return match text.chars().nth(i) {
+            Some(c) => Ok(TModel::from_scalar(c.to_string())),
+            None => Err(TemplateError::misc(format!(
+                "String index out of range: The index was {} (0-based), but the length of the string is only {}.",
+                i,
+                text.chars().count()
+            ))),
+        };
     }
     if let Some(r) = &k.range {
         // 范围键（Java DynamicKeyName 的 RangeModel 分支：SequenceOrStringSlicer，
@@ -565,6 +595,10 @@ fn eval_dyn_key(env: &mut crate::core::Environment, target: &Expr, key: &Expr) -
     if let Ok(s) = k.get_scalar() {
         // 字符串键（Java dealWithStringKey :162-167）；键缺失 → Java
         // SimpleHash.get 返回 null 不抛 → Ok(nothing)
+        // 节点哈希角色（Java NodeModel 的 DynamicKeyName：子元素名/@attr/@@key/XPath）
+        if let Some(nh) = &t.node_hash {
+            return Ok(nh.get(env, &s)?.unwrap_or_else(TModel::nothing));
+        }
         if let Some(h) = &t.hash {
             return Ok(h.get(&s)?.unwrap_or_else(TModel::nothing));
         }
@@ -831,6 +865,17 @@ enum NumOp {
     Mod,
 }
 
+impl NumOp {
+    fn symbol(&self) -> &'static str {
+        match self {
+            NumOp::Sub => "-",
+            NumOp::Mul => "*",
+            NumOp::Div => "/",
+            NumOp::Mod => "%",
+        }
+    }
+}
+
 fn eval_binary_number(
     env: &mut crate::core::Environment,
     a: &Expr,
@@ -852,8 +897,15 @@ fn eval_binary_number(
             crate::core::environment::expr_desc(b),
         ));
     }
-    let l = l.get_number()?;
-    let r = r.get_number()?;
+    // Java ArithmeticExpression._eval：操作数类型失败时 blame 对应操作数——
+    // `For "-" left-hand operand: Expected a number, ... ==> lho` /
+    // `For "-" right-hand operand: ... ==> rho`（位置 = 操作数表达式起始）
+    let l = l.get_number().map_err(|e| {
+        blame_number_operand(e, env, op.symbol(), "left-hand operand", a)
+    })?;
+    let r = r.get_number().map_err(|e| {
+        blame_number_operand(e, env, op.symbol(), "right-hand operand", b)
+    })?;
     let engine = BigDecimalEngine::default();
     let out = match op {
         NumOp::Sub => engine.sub(&l, &r)?,
@@ -862,6 +914,35 @@ fn eval_binary_number(
         NumOp::Mod => engine.mod_op(&l, &r)?,
     };
     Ok(TModel::from_number(out))
+}
+
+/// 数字操作数类型错误 → Java `For "{op}" {side}: ... ==> {expr}` 形式
+/// （NonNumericalException 的 blamer/blame 表达式/位置）
+fn blame_number_operand(
+    e: TemplateError,
+    env: &crate::core::Environment,
+    op: &str,
+    side: &str,
+    blamed: &Expr,
+) -> TemplateError {
+    match e {
+        TemplateError::TypeMismatch {
+            expected,
+            actual,
+            ctx,
+        } => TemplateError::TypeMismatch {
+            expected,
+            actual,
+            ctx: crate::error::ErrorCtx {
+                blamer: Some(format!("For \"{op}\" {side}: ")),
+                blamed_expr: Some(crate::core::environment::expr_desc(blamed)),
+                span: blamed.span,
+                template_name: Some(env.current_template_name.clone()),
+                ..ctx
+            },
+        },
+        other => other,
+    }
 }
 
 /// 比较运算（Java ComparisonExpression.java:92-97 → EvalUtil.compare :183-317）
@@ -1411,8 +1492,12 @@ fn eval_builtin(
     }
     // ② 注册表（契约：先 lookup；参数以表达式原样传入——惰性内建 ?then/?switch 需要）
     if let Some(f) = crate::builtins::lookup(name) {
-        let r = f(env, target, args.as_deref())?;
-        if let Some(m) = r {
+        let r = f(env, target, args.as_deref());
+        // 目标类型错误 → Java `For "?{name}" left-hand operand: ... ==> {target}`
+        // （BuiltInForString.calculateResult 的 coerceModelToStringOrMarkup blame；
+        // 已带 blamer 的错误（?string 等自有措辞）跳过）
+        let r = r.map_err(|e| blame_builtin_operand(e, env, target, name));
+        if let Some(m) = r? {
             return Ok(m);
         }
         // 注册表返回 None → 落入本文件内建集（保持分派顺序兼容）
@@ -1422,10 +1507,38 @@ fn eval_builtin(
     let ba = BuiltinArgs {
         exprs: args.as_deref(),
     };
-    let result = builtin_impl(env, target, name, &ba)?;
+    let result = builtin_impl(env, target, name, &ba);
+    let result = result.map_err(|e| blame_builtin_operand(e, env, target, name));
     match result {
-        Some(m) => Ok(m),
-        None => Err(TemplateError::misc(format!("Unknown built-in: ?{name}"))),
+        Ok(Some(m)) => Ok(m),
+        Ok(None) => Err(TemplateError::misc(format!("Unknown built-in: ?{name}"))),
+        Err(e) => Err(e),
+    }
+}
+
+/// 内建左操作数类型错误 → Java `For "?{name}" left-hand operand: ... ==> {target}`
+/// 形式（Java BuiltInForString / 各 BuiltIn 的 left-hand operand blame；
+/// 仅未带 blamer 的 TypeMismatch——?string 等已在实现处设置自有措辞）
+fn blame_builtin_operand(
+    e: TemplateError,
+    env: &crate::core::Environment,
+    target: &Expr,
+    name: &str,
+) -> TemplateError {
+    let lacks_blamer = matches!(
+        &e,
+        TemplateError::TypeMismatch { ctx, .. } if ctx.blamer.is_none()
+    );
+    if lacks_blamer {
+        e.with_blame_at(
+            &format!("?{name}"),
+            "left-hand operand",
+            &crate::core::environment::expr_desc(target),
+            &env.current_template_name,
+            target.span,
+        )
+    } else {
+        e
     }
 }
 

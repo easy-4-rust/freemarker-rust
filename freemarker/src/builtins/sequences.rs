@@ -1006,10 +1006,14 @@ mod tests {
         Ok(String::from_utf8(out).unwrap())
     }
 
-    /// 错误消息去位置后缀（渲染层 attach_location 追加 "  [in template ...]"）
+    /// 错误消息去位置/指令栈后缀（渲染层附加 "  [in template ...]" 位置段与
+    /// "\n\n----\nFTL stack trace ..." 段——断言 Java 消息主体用）
     fn err_msg(e: &TemplateError) -> String {
         e.to_string()
             .split("  [in template")
+            .next()
+            .unwrap_or_default()
+            .split("\n\n----\nFTL stack trace")
             .next()
             .unwrap_or_default()
             .to_string()

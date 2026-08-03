@@ -62,14 +62,14 @@ fn test_numerical_binary_operator() {
         &loader,
         &dm,
         "${n - s}",
-        &["something that is a number is required, but this has evaluated to a string"],
+        &["Expected a number, but this has evaluated to a string"],
     );
     assert_error_contains_dm(
         &c,
         &loader,
         &dm,
         "${s - n}",
-        &["something that is a number is required, but this has evaluated to a string"],
+        &["Expected a number, but this has evaluated to a string"],
     );
 }
 

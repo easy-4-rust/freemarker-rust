@@ -352,7 +352,7 @@ fn test_error_messages() {
         &c,
         &loader,
         "${[]?map((i, j) -> 1)}",
-        &["string-like value is required"],
+        &["Expected a string or something automatically convertible to string (number, date or boolean)"],
     );
 }
 

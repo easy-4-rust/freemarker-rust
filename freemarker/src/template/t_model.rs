@@ -227,7 +227,10 @@ impl TModel {
         TModel {
             hash: Some(h),
             hash_ex: Some(ex),
-            type_name: "hash",
+            // Java DefaultObjectWrapper 对 Map 的包装（DefaultMapAdapter）→
+            // toFTLTypeName "extended_hash"（jar 实测 type_interp_hash 基线
+            // "an extended_hash (LinkedHashMap wrapped into f.t.DefaultMapAdapter)"）
+            type_name: "extended_hash",
             kind: ModelKind::Hash,
             ..Self::nothing()
         }
@@ -472,7 +475,12 @@ mod tests {
         );
         assert_eq!(TModel::from_sequence(vec![]).type_name, "sequence");
         assert_eq!(TModel::from_collection(vec![]).type_name, "collection");
-        assert_eq!(TModel::from_hash(IndexMap::new()).type_name, "hash");
+        // Java DefaultObjectWrapper 对 Map 的包装 → "extended_hash"
+        // （toFTLTypeName；与 Java FTL 类型名一致，docs/09 §2）
+        assert_eq!(
+            TModel::from_hash(IndexMap::new()).type_name,
+            "extended_hash"
+        );
         assert_eq!(TModel::from_method(MethodStub).type_name, "method");
         assert_eq!(TModel::from_directive(DirectiveStub).type_name, "directive");
     }

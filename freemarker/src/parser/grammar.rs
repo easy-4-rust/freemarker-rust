@@ -110,14 +110,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// 解析错误：`Parsing error in template "{name}" at line L, column C. {details}`
+    /// 解析错误：`Syntax error in template "{name}" in line L, column C:
+{details}`
+    /// （Java ParseException.getMessage 格式，jar 实测）
     fn err(&self, line: u32, col: u32, details: impl Into<String>) -> TemplateError {
         TemplateError::Parse {
             template: self.name.clone(),
-            message: format!(
-                "at line {}, column {}. {}",
-                line, col, details.into()
-            ),
+            line,
+            col,
+            message: details.into(),
         }
     }
 
@@ -385,8 +386,12 @@ impl<'a> Parser<'a> {
                             match &value.kind {
                                 ExprKind::HashLit(entries) => {
                                     for (k, v) in entries {
-                                        let ExprKind::Str(prefix) = &k.kind else {
-                                            continue;
+                                        // 键可为字符串字面量或标识符（Java hash literal
+                                        // 两种写法等价：{"n": ...} / {n: ...}）
+                                        let prefix = match &k.kind {
+                                            ExprKind::Str(s) => s.clone(),
+                                            ExprKind::Ident(i) => i.clone(),
+                                            _ => continue,
                                         };
                                         let ExprKind::Str(uri) = &v.kind else {
                                             return Err(self.err(
@@ -914,9 +919,13 @@ impl<'a> Parser<'a> {
                 Element::new(ElementKind::Transform { expr, body }, span)
             }
             "visit" => {
-                // Java VisitNode（FTL.jj）：`<#visit node [using target]>`（visit 的
-                // recurseTarget；XML 命名空间场景，v1 仅解析保留）
-                let expr = self.expression()?;
+                // Java VisitNode（FTL.jj）：`<#visit [node] [using target]>`
+                // （无参 = 当前节点；XML 命名空间场景）
+                let expr = if self.at_expr_start(false)? {
+                    Some(self.expression()?)
+                } else {
+                    None
+                };
                 let using = if self.peek_tok()?.0 == Tok::Using {
                     self.next_tok()?;
                     Some(self.expression()?)
@@ -927,8 +936,13 @@ impl<'a> Parser<'a> {
                 Element::new(ElementKind::Visit { expr, using }, span)
             }
             "recurse" => {
-                // Java RecurseNode（FTL.jj）：`<#recurse node [using target]>`
-                let expr = self.expression()?;
+                // Java RecurseNode（FTL.jj）：`<#recurse [node] [using target]>`
+                // （无参 = 当前节点）
+                let expr = if self.at_expr_start(false)? {
+                    Some(self.expression()?)
+                } else {
+                    None
+                };
                 let using = if self.peek_tok()?.0 == Tok::Using {
                     self.next_tok()?;
                     Some(self.expression()?)
@@ -5920,3 +5934,17 @@ mod tests {
         assert!(!t.root.is_empty());
     }
 }
+
+    #[test]
+    fn probe_atat_markup_parse() {
+        let cfg = Rc::new(Configuration::default());
+        let t = parse(&cfg, "t.ftl", "${doc.@@markup}");
+        assert!(t.is_ok(), "doc.@@markup should parse: {:?}", t.err());
+    }
+
+    #[test]
+    fn probe_recurse_parse() {
+        let cfg = Rc::new(Configuration::default());
+        let t = parse(&cfg, "t.ftl", "<#recurse doc >\n<#recurse .node.title>\n<#recurse>");
+        assert!(t.is_ok(), "recurse should parse: {:?}", t.err());
+    }

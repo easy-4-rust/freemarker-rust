@@ -49,11 +49,15 @@ enum Outcome {
 
 /// 执行单个用例（Java runTest 的等价物）
 fn run_case(case: &Case) -> Outcome {
+    // XML 用例（xml-fragment/xml-ns_prefix-scope）：Java 用 BeansWrapper 包装
+    // XML 节点模型，本引擎用内置 XmlNode 模型等价物——object_wrapper 设置
+    // 视为 SimpleObjectWrapper（数据模型由 build_data_model 注入节点）
+    let xml_case = matches!(case.base.as_str(), "xml-fragment" | "xml-ns_prefix-scope");
     // Java 特有能力设置 → SKIP（记录原因）
     for (k, v) in &case.settings {
         match k.as_str() {
             "object_wrapper" => {
-                if !v.contains("SimpleObjectWrapper") {
+                if !v.contains("SimpleObjectWrapper") && !xml_case {
                     return Outcome::Skipped {
                         reason: format!("object_wrapper={v}（Java 特有 wrapper，无法复刻）"),
                     };
@@ -135,7 +139,20 @@ fn run_case(case: &Case) -> Outcome {
     }
 
     let (mut c, loader) = base_config();
-    let skipped_settings = apply_settings(&mut c, &case.settings);
+    // XML 用例（xml-fragment/xml-ns_prefix-scope）：Java 用 BeansWrapper 包装
+    // XML 节点模型，本引擎用内置 XmlNode 模型等价物——替换 object_wrapper 设置
+    // 以走 SimpleObjectWrapper 路径（数据模型由 build_data_model 注入节点）
+    let settings = if matches!(case.base.as_str(), "xml-fragment" | "xml-ns_prefix-scope") {
+        let mut s = case.settings.clone();
+        s.insert(
+            "object_wrapper".to_string(),
+            "freemarker.template.SimpleObjectWrapper".to_string(),
+        );
+        s
+    } else {
+        case.settings.clone()
+    };
+    let skipped_settings = apply_settings(&mut c, &settings);
     if !skipped_settings.is_empty() {
         return Outcome::Skipped {
             reason: skipped_settings.join("; "),
@@ -682,3 +699,5 @@ fn golden_case_string_builtins_ici_2_3_20() {
         );
     }
 }
+
+

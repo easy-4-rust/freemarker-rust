@@ -94,15 +94,40 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             _ => {
                 let m = eval::eval(env, expr)?;
                 if m.is_nothing() {
-                    // Java DollarVariable.accept → EvalUtil.coerceModelToStringOrMarkup →
-                    // coerceModelToTextualCommon：tm == null 时 classic 兼容模式回退空串
-                    // （EvalUtil.java:486-489），否则 InvalidReferenceException
+                    // Java DollarVariable.accept → EvalUtil.coerceModelToTextualCommon →
+                    // coerceModelToTextualCommon（EvalUtil.java:486-489）：classic 兼容
+                    // 模式回退空串；strict → InvalidReferenceException.getInstance(blamed,
+                    // env)——blamed = 整个插值表达式（位置 = 表达式起始），且 blamed 为
+                    // Dot/DynamicKeyName 时附 "It's the step after the last dot..." Tip
+                    // （InvalidReferenceException.java:110-158，jar 实测 missing_var_nested）
                     if env.settings.classic_compatible {
                         return Ok(ExecOutcome::Done);
                     }
-                    return Err(TemplateError::invalid_reference(expr_desc(expr)));
+                    let mut e = TemplateError::invalid_reference_at(
+                        crate::core::environment::expr_desc(expr),
+                        expr.span,
+                    );
+                    if let TemplateError::InvalidReference { ctx, .. } = &mut e {
+                        if ctx.template_name.is_none() {
+                            ctx.template_name = Some(env.current_template_name.clone());
+                        }
+                    }
+                    if matches!(
+                        expr.kind,
+                        crate::core::ExprKind::Dot { .. } | crate::core::ExprKind::DynKey { .. }
+                    ) {
+                        e = e.with_dot_tip();
+                    }
+                    return Err(e);
                 }
-                let s = env.apply_escape(&m)?;
+                // Java DollarVariable.calculateInterpolatedStringOrMarkup：
+                // 内容类型错误 blame 插值表达式——`For "${...}" content: Expected a
+                // string or something automatically convertible to string (number, date
+                // or boolean), or "template output" , but this has evaluated to a {type}:
+                // ==> {expr}`（位置 = 表达式起始）
+                let s = env.apply_escape(&m).map_err(|e| {
+                    blame_interpolation_content(e, env, expr)
+                })?;
                 env.emit(&s)?;
                 Ok(ExecOutcome::Done)
             }
@@ -224,7 +249,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             args,
             body,
             body_params,
-        } => exec_call_impl(env, callee, args, body.clone(), body_params.clone()),
+        } => exec_call_impl(env, callee, args, body.clone(), body_params.clone(), el.span),
         ElementKind::Nested { args, body: _ } => exec_nested(env, args),
         ElementKind::Switch {
             expr,
@@ -411,28 +436,48 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             }
         }
         ElementKind::Visit { expr, .. } => {
-            // Java VisitNode.accept：XML 节点访问（v1 无 node 模型 → 明确报错）
-            let m = eval::eval(env, expr)?;
-            Err(TemplateError::misc(format!(
-                "The #visit directive needs a node model, but the expression has evaluated to a {} (XML node support is a Java-specific feature).",
-                m.type_name
-            )))
+            // Java VisitNode.accept → Environment.visit（:2885-2940）：
+            // 求值节点（无参 = 当前访问节点），压入访问栈，按节点名分派宏
+            let node = match expr {
+                Some(e) => eval::eval(env, e)?,
+                None => env.get_current_visitor_node().ok_or_else(|| {
+                    TemplateError::misc("#visit must be given a node, or be called while visiting a node")
+                })?,
+            };
+            env.push_visitor_node(node.clone());
+            let r = visit_node(env, &node);
+            env.pop_visitor_node();
+            r
         }
         ElementKind::Recurse { expr, .. } => {
-            // Java RecurseNode.accept：递归访问子节点（v1 无 node 模型）
-            let m = eval::eval(env, expr)?;
-            Err(TemplateError::misc(format!(
-                "The #recurse directive needs a node model, but the expression has evaluated to a {} (XML node support is a Java-specific feature).",
-                m.type_name
-            )))
+            // Java RecurseNode.accept：对节点的子节点逐个 visit
+            // （无参 = 当前访问节点的子节点）
+            let node = match expr {
+                Some(e) => eval::eval(env, e)?,
+                None => env.get_current_visitor_node().ok_or_else(|| {
+                    TemplateError::misc("#recurse must be given a node, or be called while visiting a node")
+                })?,
+            };
+            let children = match &node.node {
+                Some(n) => n.children()?,
+                None => Vec::new(),
+            };
+            for c in children {
+                env.push_visitor_node(c.clone());
+                let r = visit_node(env, &c);
+                env.pop_visitor_node();
+                r?;
+            }
+            Ok(ExecOutcome::Done)
         }
-        ElementKind::On { expr, body: _ } => {
-            // Java On.accept：按节点名分派模板（v1 无 node 模型）
-            let m = eval::eval(env, expr)?;
-            Err(TemplateError::misc(format!(
-                "The #on directive needs a node model, but the expression has evaluated to a {} (XML node support is a Java-specific feature).",
-                m.type_name
-            )))
+        ElementKind::On { expr, body } => {
+            // Java On.accept（2.3.28+）：visit 块内的节点类型处理器注册。
+            // 语义：`<#on name>body</#on>` 与 `<#macro name>body</#macro>`
+            // 等价（On.java 内部注册为命名宏）；body 内 `.node` 为当前节点。
+            let name = eval_to_string(env, &expr)?;
+            let mv = macro_from_body(name.clone(), body.clone());
+            env.get_current_namespace().put_macro(name, mv);
+            Ok(ExecOutcome::Done)
         }
         ElementKind::Fallback => Err(TemplateError::misc(
             "#fallback needs XML node support (a Java-specific feature).",
@@ -449,6 +494,27 @@ enum AssignScope {
 
 /// `<#if>` 执行（elseif 链扁平化下钻；借用版：命中分支克隆返回）
 /// `span`：当前 case 的源码位置（`<#elseif>` 下钻时更新为各 case 自身 span）
+/// `<#if>` 条件类型错误 → Java `For "#if" condition: ... ==> {cond}` 形式
+/// （NonBooleanException 的 blamer/blame/位置）
+fn blame_if_condition(
+    e: TemplateError,
+    env: &mut crate::core::Environment,
+    cond: &crate::core::Expr,
+) -> TemplateError {
+    if let TemplateError::TypeMismatch { ctx, .. } = &e {
+        if ctx.blamer.is_none() {
+            return e.with_blame_at(
+                "#if",
+                "condition",
+                &crate::core::environment::expr_desc(cond),
+                &env.current_template_name,
+                cond.span,
+            );
+        }
+    }
+    crate::core::environment::attach_location(e, &env.current_template_name, cond.span)
+}
+
 fn exec_if(
     env: &mut crate::core::Environment,
     span: Span,
@@ -463,8 +529,12 @@ fn exec_if(
     loop {
         let cm = eval::eval(env, cond)
             .map_err(|e| crate::core::environment::attach_location(e, &env.current_template_name, cur_span))?;
-        let b = eval::model_to_boolean(env, &cm)
-            .map_err(|e| crate::core::environment::attach_location(e, &env.current_template_name, cur_span))?;
+        // Java IfBlock.accept → condition.evalToBoolean：条件类型错误 blame 条件表达式
+        // —— `For "#if" condition: Expected a boolean, but this has evaluated to a
+        // {type}: ==> {cond}`（位置 = 条件表达式起始）
+        let b = eval::model_to_boolean(env, &cm).map_err(|e| {
+            blame_if_condition(e, env, cond)
+        })?;
         if b {
             return Ok(ExecOutcome::Next(then.to_vec()));
         }
@@ -553,7 +623,7 @@ pub(crate) fn exec_owned(
             args,
             body,
             body_params,
-        } => exec_call_impl(env, &callee, &args, body, body_params),
+        } => exec_call_impl(env, &callee, &args, body, body_params, span),
         other => exec(env, &Element { kind: other, span }),
     }
 }
@@ -1264,6 +1334,79 @@ fn call_macro(
     }
 }
 
+/// `<#visit>` 节点分派 —— 对应 Java `Environment.visit(TemplateNodeModel)`
+/// （Environment.java:2885-2940）：按节点名查找同名宏（如 `<#macro book>` 处理
+/// 元素 book），无 → `@default` 宏，再无可 → 默认行为（text/comment/PI/attr
+/// 输出标量；element/document 递归 visit 子节点）。
+fn visit_node(env: &mut crate::core::Environment, node: &TModel) -> Result<ExecOutcome> {
+    // 节点名（Java getNodeName：元素 = 标签名；text = "@text" 等，与 ?node_name 一致）
+    let node_name = match &node.node {
+        Some(n) => n.name()?.unwrap_or_default(),
+        None => String::new(),
+    };
+    let ns = env.get_current_namespace();
+    // 1. `@<node_name>` 宏（Java :2899-2902 macroToNamespaceLookup.get(nodeName)）
+    if !node_name.is_empty() {
+        if let Some(m) = ns.get_member(&node_name) {
+            if let Some(mv) = env.as_macro(&m) {
+                return call_macro(env, &mv, &[], None, Vec::new());
+            }
+        }
+    }
+    // 2. `@default` 宏（Java :2903-2906）
+    if let Some(m) = ns.get_member("@default") {
+        if let Some(mv) = env.as_macro(&m) {
+            return call_macro(env, &mv, &[], None, Vec::new());
+        }
+    }
+    // 3. 默认行为（Java :2907-2924）
+    let node_type = match &node.node {
+        Some(n) => n.node_type()?,
+        None => String::new(),
+    };
+    match node_type.as_str() {
+        // 文本类节点：标量值写出（Java visitText 语义：text/comment/PI/attr）
+        "text" | "comment" | "pi" | "attribute" => {
+            if let Some(s) = &node.scalar {
+                let text = s.as_string()?;
+                env.emit(&text)?;
+            }
+            Ok(ExecOutcome::Done)
+        }
+        // element/document：递归 visit 子节点（Java visitNode 默认）
+        _ => {
+            let children = match &node.node {
+                Some(n) => n.children()?,
+                None => Vec::new(),
+            };
+            for c in children {
+                env.push_visitor_node(c.clone());
+                let r = visit_node(env, &c);
+                env.pop_visitor_node();
+                r?;
+            }
+            Ok(ExecOutcome::Done)
+        }
+    }
+}
+
+/// `<#on name>body</#on>` 的 body → 宏值（Java On.java：内部按命名宏注册，
+/// 与 `<#macro name>...</#macro>` 等价；无参宏，body 内 `.node` = 当前节点）
+fn macro_from_body(name: String, body: Vec<Element>) -> Rc<crate::core::environment::MacroValue> {
+    let def = Rc::new(crate::core::MacroDef {
+        name,
+        is_function: false,
+        params: Vec::new(),
+        body,
+        namespace: None,
+        span: crate::span::Span::new(0, 0),
+    });
+    Rc::new(crate::core::environment::MacroValue {
+        def,
+        ns: std::rc::Weak::new(),
+    })
+}
+
 /// `<@...>` 调用 —— 对应 Java `UnifiedCall.accept`（UnifiedCall.java:66-100）：
 /// 宏（Macro 对象）→ invokeMacro；TemplateDirectiveModel → execute；其余报错。
 /// body/body_params 所有权传入：owned 路径（exec_owned）直接移动，
@@ -1274,6 +1417,7 @@ fn exec_call_impl(
     args: &[(String, crate::core::Expr)],
     body: Option<Vec<Element>>,
     body_params: Vec<String>,
+    call_span: crate::span::Span,
 ) -> Result<ExecOutcome> {
     // call_name 仅在报错时构造（热路径 `@m/` 调用避免每次 String 克隆）
     let tm = match callee {
@@ -1283,7 +1427,23 @@ fn exec_call_impl(
             if let Some(mv) = env.get_macro(name) {
                 return call_macro(env, &mv, args, body, body_params);
             }
-            env.get_variable(name)?
+            match env.get_variable(name) {
+                Ok(tm) => tm,
+                // Java UnifiedCall.accept：callee 表达式（Ident）的起始位置——
+                // `@notdefmacro` 的 blame `==> notdefmacro  [in template ... at line 1,
+                // column 3]`（jar 实测 missing_macro 基线；名称始于 `@` 之后，即
+                // 元素起始列 + 2）
+                Err(e) => {
+                    return Err(crate::core::environment::attach_location(
+                        e,
+                        &env.current_template_name,
+                        crate::span::Span::new(
+                            call_span.line,
+                            call_span.col.saturating_add(2),
+                        ),
+                    ))
+                }
+            }
         }
         CallTarget::Namespaced { ns, name } => {
             let nsm = env.get_variable(ns)?;
@@ -1411,6 +1571,12 @@ fn exec_nested(
     let prev_macro = env.macro_frames.pop();
     let prev_ns = std::mem::replace(&mut env.current_ns, frame.caller_ns.clone());
     let prev_local = std::mem::take(&mut env.local_stack);
+    // 词法宏名随调用方上下文恢复（调用方 body 元素的帧 `in macro "m"` 定位；
+    // Java getEnclosingMacro 沿父元素链）
+    let prev_macro_name = std::mem::replace(
+        &mut env.current_macro_name,
+        frame.caller_macro_name.clone(),
+    );
     env.local_stack = frame.caller_local_stack.clone();
     if !frame.body_params.is_empty() {
         env.push_local(LocalEntry::Body(Rc::new(
@@ -1419,6 +1585,7 @@ fn exec_nested(
     }
     let r = env.run(&call_body);
     // 恢复
+    env.current_macro_name = prev_macro_name;
     env.local_stack = prev_local;
     env.current_ns = prev_ns;
     if let Some(f) = prev_macro {
@@ -1551,6 +1718,32 @@ fn exec_attempt(
 
 /// `<#setting>` —— 对应 Java `PropertySetting.accept`（PropertySetting.java:136-155）+
 /// `Configurable.setSetting`（未知键 → IllegalArgumentException → v1 报错）
+/// 插值内容类型错误 → Java `For "${...}" content: ... ==> {expr}` 形式
+/// （DollarVariable 的 coerceModelToStringOrMarkup blame；期望措辞含
+/// `or "template output" ` 段——Java 消息中该段后紧跟逗号，jar 实测逐字）
+fn blame_interpolation_content(
+    e: TemplateError,
+    env: &mut crate::core::Environment,
+    expr: &crate::core::Expr,
+) -> TemplateError {
+    if let TemplateError::TypeMismatch { ctx, .. } = &e {
+        if ctx.blamer.is_none() {
+            return e
+                .with_expected_phrase(
+                    "a string or something automatically convertible to string (number, date or boolean), or \"template output\" ",
+                )
+                .with_blame_at(
+                    "${...}",
+                    "content",
+                    &crate::core::environment::expr_desc(expr),
+                    &env.current_template_name,
+                    expr.span,
+                );
+        }
+    }
+    crate::core::environment::attach_location(e, &env.current_template_name, expr.span)
+}
+
 fn exec_setting(
     env: &mut crate::core::Environment,
     key: &str,
@@ -1630,6 +1823,19 @@ fn exec_setting(
                 other => {
                     return Err(TemplateError::misc(format!(
                         "Invalid auto_escaping value: {other}"
+                    )))
+                }
+            };
+        }
+        "template_exception_handler" => {
+            // Java 允许的 4 种处理器名（TemplateExceptionHandler.getDefault / setSetting 的
+            // 字符串形式；jar 实测 PropertySetting 解析期即拒绝该键——v1 文档化偏差：允许
+            // 模板内设置，取值受限为 Java 的 4 个内置处理器）
+            env.settings.to_mut().template_exception_handler = match v.as_str() {
+                "rethrow" | "debug" | "html_debug" | "ignore" => v,
+                other => {
+                    return Err(TemplateError::misc(format!(
+                        "Invalid template_exception_handler value: {other}. It must be one of: rethrow, debug, html_debug, ignore"
                     )))
                 }
             };
@@ -2137,7 +2343,14 @@ ${double(21)}"#;
         let err = render(&c, &l, "a<#stop \"boom\">b", no_root()).unwrap_err();
         match err {
             TemplateError::Stop { message } => {
-                assert_eq!(message.as_deref(), Some("boom"));
+                // Java StopException.getMessage() = "boom" + FTL stack trace 段
+                // （jar 实测 stop 基线）——消息主体断言去栈段
+                assert!(
+                    message
+                        .as_deref()
+                        .is_some_and(|m| m.starts_with("boom")),
+                    "{message:?}"
+                );
             }
             other => panic!("expected Stop, got {other:?}"),
         }

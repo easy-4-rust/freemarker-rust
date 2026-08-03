@@ -23,8 +23,14 @@ pub enum TemplateError {
     },
     /// 通用运行时错误（_MiscTemplateException）
     Misc { message: String },
-    /// 解析错误（ParseException）：`Parsing error in template "{name}" at line L, column C. {details}`
-    Parse { template: String, message: String },
+    /// 解析错误（ParseException）：`Syntax error in template "{name}" in line L,
+    /// column C:\n{details}`（Java 2.3.34 ParseException.getMessage 格式，jar 实测）
+    Parse {
+        template: String,
+        line: u32,
+        col: u32,
+        message: String,
+    },
     /// stop 指令（StopException；消息即 `<#stop "msg">` 的 msg，无位置）
     Stop { message: Option<String> },
     /// break/continue 流控信号（内部传播，不面向用户）
@@ -62,6 +68,11 @@ impl TemplateError {
             TemplateError::Stop { message } => {
                 let msg = message.get_or_insert_with(String::new);
                 if !msg.contains("FTL stack trace") {
+                    // Java StopException 无消息 → 消息体 "[No error description was
+                    // available.]"（含栈时同样前置该文本，jar 实测 stop_plain）
+                    if msg.is_empty() {
+                        msg.push_str("[No error description was available.]");
+                    }
                     msg.push_str(&section);
                 }
             }
@@ -126,12 +137,31 @@ impl TemplateError {
         }
     }
 
-    /// 附加 blamer 前缀与 blame 表达式（Java `_ErrorDescriptionBuilder.blame(blamed)`
+    /// 附加 blamer 前缀与 blame 表达式（Java `_ErrorDescriptionBuilder.blame(blamed)` 
     /// + `showBlamer(true)` 的 `For "{nodeTypeSymbol}" {role}: ` 段与 `==> {expr}` 行）
     pub fn with_blame(mut self, node_type_symbol: &str, role: &str, blamed_expr: &str) -> Self {
         if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
             ctx.blamer = Some(format!("For \"{node_type_symbol}\" {role}: "));
             ctx.blamed_expr = Some(blamed_expr.to_string());
+        }
+        self
+    }
+
+    /// 附加 blamer + blame 表达式 + 位置（Java blame(blamed) 的 blamed.getStartLocation；
+    /// eval 各操作数/内建错误构造用——`==> {blamed}  [in template ... at line L, column C]`）
+    pub fn with_blame_at(
+        mut self,
+        node_type_symbol: &str,
+        role: &str,
+        blamed_expr: &str,
+        template_name: &str,
+        span: Span,
+    ) -> Self {
+        if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
+            ctx.blamer = Some(format!("For \"{node_type_symbol}\" {role}: "));
+            ctx.blamed_expr = Some(blamed_expr.to_string());
+            ctx.span = span;
+            ctx.template_name = Some(template_name.to_string());
         }
         self
     }
@@ -144,6 +174,38 @@ impl TemplateError {
             ctx.assignment_target = Some(format!("\"{target}\""));
         }
         self
+    }
+
+    /// 附加 blame 位置（模板名 + 表达式起始行列；Java `Expression.getStartLocation` +
+    /// `_MessageUtil.formatLocationForEvaluationError`。渲染层 eval 包装/元素级
+    /// attach_location 调用；已带位置（行 > 0）或模板名时不覆盖——内层失败表达式
+    /// 的位置优先（如 `user.name` 中 `user` 的位置））
+    pub fn with_location(mut self, template_name: &str, span: Span) -> Self {
+        match &mut self {
+            TemplateError::InvalidReference { ctx, .. }
+            | TemplateError::TypeMismatch { ctx, .. } => {
+                if ctx.span.line == 0 {
+                    ctx.span = span;
+                }
+                if ctx.template_name.is_none() {
+                    ctx.template_name = Some(template_name.to_string());
+                }
+            }
+            _ => {}
+        }
+        self
+    }
+
+    /// 是否已带 blame 位置（Java 异常构造时 blamed 表达式的开始位置；渲染层
+    /// attach_location 检测到后不再重复附加）
+    pub fn has_location(&self) -> bool {
+        match self {
+            TemplateError::InvalidReference { ctx, .. }
+            | TemplateError::TypeMismatch { ctx, .. } => {
+                ctx.span.line > 0 || ctx.template_name.is_some()
+            }
+            _ => false,
+        }
     }
 
     /// 覆盖期望类型描述（Java `unexpectedTypeErrorDescription` 的 expectedTypesDesc 的
@@ -216,9 +278,16 @@ impl TemplateError {
                 s
             }
             TemplateError::Misc { message } => message.clone(),
-            TemplateError::Parse { template, message } => {
-                format!("Parsing error in template \"{template}\" {message}")
-            }
+            // Java ParseException.getMessage()：`Syntax error in template "{t}" in line
+            // L, column C:\n{details}`（jar 实测全部 parse_* 基线）
+            TemplateError::Parse {
+                template,
+                line,
+                col,
+                message,
+            } => format!(
+                "Syntax error in template \"{template}\" in line {line}, column {col}:\n{message}"
+            ),
             TemplateError::Stop { message } => match message {
                 Some(m) => m.clone(),
                 // Java StopException 无消息 → "[No error description was available.]"
