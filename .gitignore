@@ -12,6 +12,9 @@
 .settings
 .springBeans
 bin/
+# L3 双引擎对比 harness 的 probe 二进制（compare_outputs.py 调用）——bin/ 例外
+!freemarker-test/src/bin/
+!freemarker-test/src/bin/probe.rs
 codes/
 
 ### IntelliJ IDEA ###

@@ -684,12 +684,15 @@ mod tests {
     }
 
     /// 身份还原：wrap 的 Python 对象 unwrap 后是同一对象（对应 Java
-    /// AdapterTemplateModel.getAdaptedObject）
+    /// AdapterTemplateModel.getAdaptedObject）。
+    /// 注意：仅对象型（dict/list/lambda 等经适配器引用的模型）保身份——
+    /// 标量（str/int/bool 等）是值复制（wrap 转 Rust 标量、unwrap 新建 Python
+    /// 对象；与 Java AdapterTemplateModel 对标量同样复制一致），不在断言范围
     #[test]
     fn unwrap_identity_restores_original_object() {
         Python::attach(|py| {
             let w = wrapper();
-            for code in ["{'k': 1}", "[1, 2]", "42", "'s'", "lambda: 1"] {
+            for code in ["{'k': 1}", "[1, 2]", "lambda: 1"] {
                 let obj = eval(py, code).unwrap();
                 let m = w.wrap(py, obj.bind(py), None).unwrap().unwrap();
                 let out = w.unwrap(py, &m).unwrap();
