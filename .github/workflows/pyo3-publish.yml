@@ -2,14 +2,17 @@ name: Publish pyo3 (PyPI)
 
 # Python 绑定发布（用户决策：准备到可发布，实际上传由仓库维护者手动触发）。
 # 流程：tag 触发 → 构建 sdist + 各平台 wheel → 上传 PyPI。
-# 需要先在 PyPI 配置 Trusted Publishing（https://docs.pypi.org/trusted-publishers/）
-# 或在仓库 Secrets 配置 PYPI_API_TOKEN / TESTPYPI_API_TOKEN。
+# 认证双路径：
+#   1. 优先仓库 Secrets 的 PYPI_API_TOKEN（PyPI Account settings → API tokens 生成）
+#   2. 无 token 时走 Trusted Publishing（需在 PyPI 配置发布者：
+#      https://docs.pypi.org/trusted-publishers/ —— GitHub 用户 easy-4-rust、
+#      仓库 freemarker-rust、Environment 留空或填 pypi、项目 freemarker-pyo3）
 
 on:
   push:
     tags:
-      - 'pyo3-v*'        # 示例：pyo3-v0.1.0-alpha.0
-  workflow_dispatch: {}  # 手动触发（带 inputs 选择仓库）
+      - 'pyo3-v*'        # 示例：pyo3-v0.1.0-alpha.1
+  workflow_dispatch: {}  # 手动触发（重跑发布无需新 tag）
 
 permissions:
   contents: read
@@ -38,11 +41,19 @@ jobs:
         working-directory: freemarker-pyo3
         run: maturin build --release --sdist --out ../dist
 
-      - name: Publish to PyPI
-        # Trusted Publishing 或 PYPI_API_TOKEN secret 二选一
+      - name: Publish to PyPI (API token)
+        # PYPI_API_TOKEN secret 已配置 → token 认证
+        if: ${{ secrets.PYPI_API_TOKEN != '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
-          # 默认发布到 PyPI；TestPyPI 演练用：
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Publish to PyPI (Trusted Publishing)
+        # 无 token → OIDC Trusted Publishing（需 PyPI 发布者配置）
+        if: ${{ secrets.PYPI_API_TOKEN == '' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          # TestPyPI 演练用：
           # repository-url: https://test.pypi.org/legacy/
-          # password: ${{ secrets.TESTPYPI_API_TOKEN }}
