@@ -135,24 +135,22 @@ jobs:
       - name: Enforce core crate public API baseline (docs/release/api-baseline.txt)
         # 任何未登记的公开 API 变更（增/删/改签名）都会使 diff 非空而失败；
         # 有意的 API 变更须显式更新基线并在 PR 说明。
-        # 注意：cargo-public-api 输出随 rustc 版本漂移（实测 1.97.1 缺 builtins
-        # 模块）——固定到 api-baseline.txt 的生成版本（1.93）；升级工具链须重新
-        # 生成基线。cargo-audit（audit-check）需较新 rustc，故本 job 用 stable，
-        # 仅此步骤用 rustup override 切 1.93（不能只用 cargo +1.93.0：
-        # cargo-public-api 二进制 spawn 的 rustc 走 PATH 仍是 stable）。
-        # 基线用 `rustup run 1.93.0 cargo public-api` 生成（与 CI 同环境）。
+        # 环境约束（逐项踩坑确认）：
+        #  - cargo-public-api 输出随 rustc 版本漂移（1.97.1 缺 builtins 模块）
+        #    → 固定 1.93（api-baseline.txt 生成版本；升级工具链须重新生成基线）
+        #  - dtolnay/rust-toolchain 注入 RUSTUP_TOOLCHAIN=stable（env 优先于
+        #    override）→ export RUSTUP_TOOLCHAIN=1.93.0 覆盖
+        #  - 全局 RUSTFLAGS=-D warnings 使 1.93 rustdoc 的 doc 警告变 error →
+        #    本步骤清空 RUSTFLAGS
+        #  - taiki-e 装的 cargo-public-api 由 stable(1.97) 编译，spawn 1.93
+        #    rustc 时静默失败（空输出）→ 用 1.93 重新编译安装
+        # 基线生成环境：`rustup run 1.93.0 cargo public-api`（3707 行）
         run: |
           rustup toolchain install 1.93.0 --profile minimal
-          # dtolnay/rust-toolchain 设置 RUSTUP_TOOLCHAIN=stable（env 优先级高于
-          # rustup override）——显式覆盖环境变量，使 cargo 与 cargo-public-api
-          # spawn 的 rustc 都解析到 1.93（基线生成版本）
           export RUSTUP_TOOLCHAIN=1.93.0
-          # 全局 RUSTFLAGS=-D warnings 会把 rustdoc 的 doc 警告（如 unclosed HTML
-          # tag）变 error 导致 public-api 空输出——本步骤清空 RUSTFLAGS
-          RUSTFLAGS= cargo public-api -p freemarker > /tmp/api.txt 2>/tmp/api.err \
-            || echo "public-api FAILED"
+          RUSTFLAGS= cargo +1.93.0 install cargo-public-api --locked --force 2>&1 | tail -1
+          RUSTFLAGS= cargo public-api -p freemarker > /tmp/api.txt 2>/tmp/api.err
           echo "lines=$(wc -l < /tmp/api.txt)"
-          cat /tmp/api.err
           diff /tmp/api.txt docs/release/api-baseline.txt
 
   coverage:
