@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-core:
+    name: cargo publish --dry-run (freemarker core)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo publish --dry-run (freemarker core)
+        # 完整发布演练：打 .crate 包 + 自检 + 包内 README/LICENSE/依赖校验
+        # freemarker-pyo3 publish=true 但本轮不实际发布（PyPI 通路独立），见 docs/release/publishing.md
+        run: cargo publish --dry-run -p freemarker --allow-dirty
+
+      - name: Extract changelog section for tag
+        id: changelog
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          awk -v v="$VERSION" '
+            /^## \[/ { if (found) exit; if (index($0, "[" v "]") > 0) { found=1; print; next } }
+            found { print }
+          ' CHANGELOG.md > changelog-section.md || true
+          cat changelog-section.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          generate_release_notes: false
+          body_path: changelog-section.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
