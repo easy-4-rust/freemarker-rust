@@ -47,17 +47,48 @@ enum Outcome {
     },
 }
 
+/// Java object_wrapper 设置能否由 harness 复刻（数据模型直接构造等价物，wrapper
+/// 设置本身对渲染结果无影响）。判定规则：
+/// - SimpleObjectWrapper：模型逐槽位构造，天然等价
+/// - XML 用例（xml-fragment/xmlns1/xmlns3/xmlns4/xml-ns_prefix-scope）：Java 用
+///   BeansWrapper 包装 XML 节点模型，本引擎用内置 XmlNode 模型等价物
+/// - B6 collectionAdapter 变体：DefaultObjectWrapper(2.3.22,
+///   forceLegacyNonListCollections=false)——非 List 集合 wrap 成 collection 角色，
+///   由 build_data_model 按用例名构造对应模型
+/// - B6 sequence-builtins 变体：BeansWrapper/DefaultObjectWrapper 对 Set/List 的
+///   包装角色（sequence/collection）由 build_data_model 按用例名构造等价物
+fn object_wrapper_emulatable(case: &Case, v: &str) -> bool {
+    if v.contains("SimpleObjectWrapper") {
+        return true;
+    }
+    if matches!(
+        case.base.as_str(),
+        "xml-fragment" | "xml-ns_prefix-scope" | "xmlns1" | "xmlns3" | "xmlns4"
+    ) {
+        return true;
+    }
+    if case.name.contains("collectionAdapter")
+        && v == "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)"
+    {
+        return true;
+    }
+    if case.base == "sequence-builtins"
+        && (v == "freemarker.ext.beans.BeansWrapper"
+            || v == "freemarker.template.DefaultObjectWrapper"
+            || v == "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)")
+    {
+        return true;
+    }
+    false
+}
+
 /// 执行单个用例（Java runTest 的等价物）
 fn run_case(case: &Case) -> Outcome {
-    // XML 用例（xml-fragment/xml-ns_prefix-scope）：Java 用 BeansWrapper 包装
-    // XML 节点模型，本引擎用内置 XmlNode 模型等价物——object_wrapper 设置
-    // 视为 SimpleObjectWrapper（数据模型由 build_data_model 注入节点）
-    let xml_case = matches!(case.base.as_str(), "xml-fragment" | "xml-ns_prefix-scope");
     // Java 特有能力设置 → SKIP（记录原因）
     for (k, v) in &case.settings {
         match k.as_str() {
             "object_wrapper" => {
-                if !v.contains("SimpleObjectWrapper") && !xml_case {
+                if !object_wrapper_emulatable(case, v) {
                     return Outcome::Skipped {
                         reason: format!("object_wrapper={v}（Java 特有 wrapper，无法复刻）"),
                     };
@@ -138,19 +169,36 @@ fn run_case(case: &Case) -> Outcome {
         };
     }
 
+    // xmlns3/xmlns4：模板用 `<#macro "x:title">` 等带前缀宏名配合 `<#recurse>` 分派
+    // （xmlns3.xml 的 x:/y: 命名空间元素）。Java 按节点命名空间 URI + ns_prefixes
+    // 解析前缀后查 "x:title" 宏；本引擎 visit_node 仅按节点本地名查宏（引擎缺口）
+    // → 未命中的元素回落到 @text 输出文本，与 expected 不一致（实测 FAIL）。
+    // 数据模型无法影响宏分派，harness 内不可复刻 → 保持 SKIP（B6 批内引擎能力
+    // 未就绪项；xmlns1 同批已 PASS——其模板用无前缀宏名，走本地名分派路径）
+    if matches!(case.base.as_str(), "xmlns3" | "xmlns4") {
+        return Outcome::Skipped {
+            reason:
+                "引擎缺口：<#recurse> 的带前缀宏分派（x:title/y:title 按命名空间 URI + ns_prefixes 解析）未实现，visit_node 仅按本地名查宏"
+                    .to_string(),
+        };
+    }
+
     let (mut c, loader) = base_config();
-    // XML 用例（xml-fragment/xml-ns_prefix-scope）：Java 用 BeansWrapper 包装
-    // XML 节点模型，本引擎用内置 XmlNode 模型等价物——替换 object_wrapper 设置
-    // 以走 SimpleObjectWrapper 路径（数据模型由 build_data_model 注入节点）
-    let settings = if matches!(case.base.as_str(), "xml-fragment" | "xml-ns_prefix-scope") {
+    // 可复刻的 Java wrapper 设置（XML 用例 / collectionAdapter / sequence-builtins
+    // 变体）：数据模型已由 build_data_model 按用例名构造等价物，wrapper 设置对
+    // 渲染无影响——统一改写为 SimpleObjectWrapper 走常规路径（apply_settings 接受）
+    let settings = {
         let mut s = case.settings.clone();
-        s.insert(
-            "object_wrapper".to_string(),
-            "freemarker.template.SimpleObjectWrapper".to_string(),
-        );
+        if let Some(v) = s.get_mut("object_wrapper") {
+            if !v.contains("SimpleObjectWrapper") {
+                // 可复刻的 Java wrapper（XML 用例 / collectionAdapter /
+                // sequence-builtins 变体）：数据模型已由 build_data_model 按
+                // 用例名构造等价物，wrapper 设置对渲染无影响——改写为
+                // SimpleObjectWrapper 走常规路径（apply_settings 接受）
+                *v = "freemarker.template.SimpleObjectWrapper".to_string();
+            }
+        }
         s
-    } else {
-        case.settings.clone()
     };
     let skipped_settings = apply_settings(&mut c, &settings);
     if !skipped_settings.is_empty() {
@@ -173,7 +221,7 @@ fn run_case(case: &Case) -> Outcome {
         &remove_ftl_copyright_comment_bytes(&case_bytes),
     );
 
-    let root = build_data_model(&case.base);
+    let root = build_data_model(&case.base, &case.name);
     let rendered = render_case(&c, &template_name, root);
 
     match rendered {

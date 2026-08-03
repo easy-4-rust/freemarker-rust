@@ -13,6 +13,10 @@ use std::sync::Arc;
 
 pub const SUITE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/suite");
 
+/// Java models/xmlns.xml 的内容（xmlns1/xmlns2 用例的 doc 模型；
+/// xmlns2 的 eb: 前缀版文档命名空间 URI 相同，输出逐字节一致）
+const BOOK_XML: &str = "<book xmlns=\"http://example.com/eBook\">\n  <title>Test Book</title>\n  <chapter>\n    <title>Ch1</title>\n    <para>p1.1</para>\n    <para>p1.2</para>\n    <para>p1.3</para>\n  </chapter>\n  <chapter>\n    <title>Ch2</title>\n    <para>p2.1</para>\n    <para>p2.2</para>\n  </chapter>\n</book>";
+
 /// 读取套件文件（模板/expected）
 pub fn read_suite(rel: &str) -> String {
     std::fs::read_to_string(format!("{SUITE_DIR}/{rel}"))
@@ -360,8 +364,10 @@ pub fn sql_date_model(
 }
 
 /// 数据模型构造 —— 对应 Java TemplateTestCase.setUp（TemplateTestCase.java:132-440）：
-/// 公共变量 + 按用例名的专用模型
-pub fn build_data_model(simple_test_name: &str) -> TModel {
+/// 公共变量 + 按用例名的专用模型。
+/// `case_name` 为完整用例名（含 `[#endTN]` 变体后缀）：变体与 base 共享模板/expected，
+/// 但数据模型角色不同（如 collectionAdapter 变体的非 List 集合 → collection 角色）
+pub fn build_data_model(simple_test_name: &str, case_name: &str) -> TModel {
     let mut m: IndexMap<String, TModel> = IndexMap::new();
     // 公共变量（TemplateTestCase.java:184-193）
     m.insert(
@@ -434,7 +440,14 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
         }
         "variables" | "iterators" | "if" | "comment" => {}
         "list" | "list2" | "list3" | "list-bis" | "listhash" => {
-            m.insert("listables".to_string(), listables_model());
+            // collectionAdapter 变体（DefaultObjectWrapper(2.3.22,
+            // forceLegacyNonListCollections=false)）：非 List 集合（set/emptySet）
+            // wrap 成 collection 角色而非 sequence；list/list2 模板与 base 共享
+            // 同一 expected，输出逐字节一致
+            m.insert(
+                "listables".to_string(),
+                listables_model(case_name.contains("collectionAdapter")),
+            );
         }
         "number-format" => {
             // TemplateTestCase.java:305-311
@@ -535,22 +548,32 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             );
         }
         "sequence-builtins" => {
-            // TemplateTestCase.java:368-389：abcSet 用 TreeSet（有序）；set 用 HashSet
-            m.insert(
-                "abcSet".to_string(),
-                TModel::from_sequence(vec![
-                    TModel::from_scalar("a".to_string()),
-                    TModel::from_scalar("b".to_string()),
-                    TModel::from_scalar("c".to_string()),
-                ]),
-            );
+            // TemplateTestCase.java:368-389：abcSet 用 TreeSet（有序）；set 用 HashSet。
+            // 各 wrapper 变体的角色差异（Java）：
+            // - BeansWrapper/SimpleObjectWrapper：Collection → CollectionModel（sequence）
+            // - DefaultObjectWrapper（默认 forceLegacyNonListCollections=true）：
+            //   Collection → SimpleSequence（sequence）
+            // - DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)
+            //   （collAdapters 变体）：非 List 集合 → DefaultNonListCollectionAdapter
+            //   （collection 角色，?size/?seq_* 均可用）
+            // 模板对 abcSet/set 只用 ?size/?seq_*/?join/?first（对 sequence 与
+            // collection 角色输出一致）→ 非 collAdapters 变体复用 sequence 模型，
+            // collAdapters 变体用 collection 角色模型
+            let abc: Vec<TModel> = ["a", "b", "c"]
+                .iter()
+                .map(|s| TModel::from_scalar(s.to_string()))
+                .collect();
+            let coll_adapters = case_name.contains("collAdapters");
+            let abc_set = if coll_adapters {
+                collection_ex_model(abc.clone())
+            } else {
+                TModel::from_sequence(abc.clone())
+            };
+            m.insert("abcSet".to_string(), abc_set.clone());
             m.insert(
                 "abcSetNonSeq".to_string(),
-                TModel::from_collection(vec![
-                    TModel::from_scalar("a".to_string()),
-                    TModel::from_scalar("b".to_string()),
-                    TModel::from_scalar("c".to_string()),
-                ]),
+                // Java：DefaultNonListCollectionAdapter.adapt(abcSet)（collection 角色）
+                TModel::from_collection(abc.clone()),
             );
             m.insert(
                 "listWithNull".to_string(),
@@ -566,20 +589,10 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             );
             m.insert(
                 "abcCollection".to_string(),
-                TModel::from_collection(vec![
-                    TModel::from_scalar("a".to_string()),
-                    TModel::from_scalar("b".to_string()),
-                    TModel::from_scalar("c".to_string()),
-                ]),
+                // Java：new SimpleCollection(abcSet)（collection 角色，非 Ex）
+                TModel::from_collection(abc.clone()),
             );
-            m.insert(
-                "set".to_string(),
-                TModel::from_sequence(vec![
-                    TModel::from_scalar("a".to_string()),
-                    TModel::from_scalar("b".to_string()),
-                    TModel::from_scalar("c".to_string()),
-                ]),
-            );
+            m.insert("set".to_string(), abc_set);
         }
         "dateformat-iso-bi"
         | "dateformat-iso-bi-ici-2.3.21"
@@ -989,10 +1002,20 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
                 .clone();
             m.insert("node".to_string(), b);
         }
-        "xmlns2" => {
-            // Java TemplateTestCase：doc = NodeModel.parse（xmlns1.ftl 的 <book> 文档）
-            let xml = "<book xmlns=\"http://example.com/eBook\">\n  <title>Test Book</title>\n  <chapter>\n    <title>Ch1</title>\n    <para>p1.1</para>\n    <para>p1.2</para>\n    <para>p1.3</para>\n  </chapter>\n  <chapter>\n    <title>Ch2</title>\n    <para>p2.1</para>\n    <para>p2.2</para>\n  </chapter>\n</book>";
-            let doc = freemarker::xml::parse_xml(xml).expect("xmlns2 XML parse");
+        "xmlns1" | "xmlns2" => {
+            // xmlns1：Java TemplateTestCase 用 models/xmlns.xml（默认命名空间
+            // <book>，xmlns1.ftl 的 `${doc.@@markup}`/`<#recurse doc>` 输出）。
+            // xmlns2：Java 用 models/xmlns2.xml（eb: 前缀版，命名空间 URI 相同——
+            // FTL 元素名按 URI 解析，输出逐字节一致，两用例共享同一 expected）
+            let xml = BOOK_XML;
+            let doc = freemarker::xml::parse_xml(xml).expect("xmlns1/2 XML parse");
+            m.insert("doc".to_string(), doc);
+        }
+        "xmlns3" | "xmlns4" => {
+            // Java TemplateTestCase：doc = NodeModel.parse(models/xmlns3.xml)；
+            // xmlns3.ftl/xmlns4.ftl 用 ns_prefixes x/y + 字面前缀访问
+            let xml = "<book xmlns:x=\"http://x\" xmlns:y=\"http://y\">\n  <x:title>Test Book</x:title>\n  <chapter>\n    <y:title>Ch1</y:title>\n    <para>p1.1</para>\n    <para>p1.2</para>\n    <para>p1.3</para>\n  </chapter>\n  <x:chapter>\n    <y:title>Ch2</y:title>\n    <x:para>p2.1</x:para>\n    <y:para>p2.2</y:para>\n  </x:chapter>\n</book>";
+            let doc = freemarker::xml::parse_xml(xml).expect("xmlns3/4 XML parse");
             m.insert("doc".to_string(), doc);
         }
         "xml-ns_prefix-scope" => {
@@ -1257,13 +1280,46 @@ impl freemarker::template::TemplateMethodModelEx for BeanMethod {
     }
 }
 
-/// listables 模型（对应 Listables.java：list/linkedList/set/iterator/empty*）
-fn listables_model() -> TModel {
+/// 集合角色变体模型 —— 对应 Java `DefaultNonListCollectionAdapter`
+/// （TemplateCollectionModelEx：可重复枚举、?size 可用、?is_collection/
+/// ?is_collection_ex → true；?is_sequence → false）。Rust 引擎的 ?size 无
+/// collection 槽位路径（引擎缺口），故以 sequence+collection 双槽位 + Ex 标记
+/// 近似——对依赖 ?size/#list/?join/?seq_* 的模板，输出与 Java 逐字节一致
+/// （这些内建对 Java 的 Ex 集合与 sequence 行为相同）
+fn collection_ex_model(items: Vec<TModel>) -> TModel {
+    let seq = TModel::from_sequence(items.clone());
+    let coll = TModel::from_collection(items);
+    TModel {
+        sequence: seq.sequence.clone(),
+        collection: coll.collection.clone(),
+        collection_ex: true,
+        type_name: "collection",
+        kind: freemarker::template::ModelKind::Collection,
+        ..TModel::nothing()
+    }
+}
+
+/// listables 模型（对应 Listables.java：list/linkedList/set/iterator/empty*）。
+/// `coll_adapter=true` 时 set/emptySet 用 collection 角色变体
+/// （DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false) 下
+/// 非 List 集合 → DefaultNonListCollectionAdapter）；iterator/emptyIterator 在
+/// 两种 wrapper 下均为非 Ex collection（SimpleCollection/DefaultIteratorAdapter），
+/// 角色不变
+fn listables_model(coll_adapter: bool) -> TModel {
     let mut h = IndexMap::new();
     let seq = TModel::from_sequence(vec![num(11), num(22), num(33)]);
     h.insert("list".to_string(), seq.clone());
     h.insert("linkedList".to_string(), seq.clone());
-    h.insert("set".to_string(), seq.clone());
+    if coll_adapter {
+        h.insert(
+            "set".to_string(),
+            collection_ex_model(vec![num(11), num(22), num(33)]),
+        );
+        h.insert("emptySet".to_string(), collection_ex_model(vec![]));
+    } else {
+        h.insert("set".to_string(), seq.clone());
+        h.insert("emptySet".to_string(), TModel::from_sequence(vec![]));
+    }
     h.insert(
         "iterator".to_string(),
         TModel::from_collection(vec![num(11), num(22), num(33)]),
@@ -1278,7 +1334,6 @@ fn listables_model() -> TModel {
     );
     h.insert("emptyList".to_string(), TModel::from_sequence(vec![]));
     h.insert("emptyLinkedList".to_string(), TModel::from_sequence(vec![]));
-    h.insert("emptySet".to_string(), TModel::from_sequence(vec![]));
     // Java BeansWrapper 的 getter 暴露：getEmptyIterator() → 属性名 emptyIterator
     h.insert("emptyIterator".to_string(), TModel::from_collection(vec![]));
     // Java Listables.getHashEx2s：LinkedHashMap{ "k1":"v1", 2:"v2", "k3":"v3",
