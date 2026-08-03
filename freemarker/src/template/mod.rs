@@ -32,9 +32,9 @@ pub use simple_sequence::SimpleSequence;
 pub use t_model::{ModelKind, ModelNumber, TModel};
 pub use template::Template;
 pub use template_model::{
-    NodeHashModel, RangeSpec, TemplateBooleanModel, TemplateCollectionModel, TemplateDateModel,
-    TemplateDirectiveBody, TemplateDirectiveModel, TemplateHashModel, TemplateHashModelEx,
-    TemplateMethodModelEx, TemplateNodeModel, TemplateNumberModel, TemplateScalarModel,
-    TemplateSequenceModel, TemplateTransformModel,
+    NodeHashModel, RangeSpec, TemplateApiSupport, TemplateBooleanModel, TemplateCollectionModel,
+    TemplateDateModel, TemplateDirectiveBody, TemplateDirectiveModel, TemplateHashModel,
+    TemplateHashModelEx, TemplateMethodModelEx, TemplateNodeModel, TemplateNumberModel,
+    TemplateScalarModel, TemplateSequenceModel, TemplateTransformModel,
 };
 pub use version::Version;

@@ -1790,7 +1790,7 @@ fn builtin_impl(
         }),
         "is_markup_output" => is_type_test(env, target, |m| m.is_markup_output()),
         "is_transform" => is_type_test(env, target, |m| m.is_transform()),
-        "has_api" => is_type_test(env, target, |_| false),
+        "has_api" => is_type_test(env, target, |m| m.api.is_some()),
         // v1 扩展：lambda 槽位测试（Java 侧为 ?is_callable 家族，P4 对齐）
         "is_lambda" => is_type_test(env, target, |m| m.is_lambda()),
         // ---- 字符串（Java BuiltInsForStringsBasic / Misc / Encoding / Regexp）----

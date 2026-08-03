@@ -10,10 +10,10 @@ use crate::template::SimpleHash;
 use crate::template::SimpleScalar;
 use crate::template::SimpleSequence;
 use crate::template::{
-    NodeHashModel, TemplateBooleanModel, TemplateCollectionModel, TemplateDateModel,
-    TemplateDirectiveModel, TemplateHashModel, TemplateHashModelEx, TemplateMethodModelEx,
-    TemplateNodeModel, TemplateNumberModel, TemplateScalarModel, TemplateSequenceModel,
-    TemplateTransformModel,
+    NodeHashModel, TemplateApiSupport, TemplateBooleanModel, TemplateCollectionModel,
+    TemplateDateModel, TemplateDirectiveModel, TemplateHashModel, TemplateHashModelEx,
+    TemplateMethodModelEx, TemplateNodeModel, TemplateNumberModel, TemplateScalarModel,
+    TemplateSequenceModel, TemplateTransformModel,
 };
 use crate::value::{DateValue, TNumber};
 use indexmap::IndexMap;
@@ -92,6 +92,9 @@ pub struct TModel {
     /// 与 `hash` 槽位分开：get 需要 Environment 解析 ns_prefixes（Java 线程局部
     /// Environment；Rust 显式传参，见 template_model.rs NodeHashModel 注释）。
     pub node_hash: Option<Rc<dyn NodeHashModel>>,
+    /// API 支持槽位（对应 Java `TemplateModelWithAPISupport`；`?api`/`?has_api`）。
+    /// 引擎自身不支持反射，由包装方（对象包装器）提供 API 视图。
+    pub api: Option<Rc<dyn TemplateApiSupport>>,
     /// 内部扩展槽位（渲染引擎专用，docs/04 §1）：承载宏/函数值、lambda、命名空间等
     /// Rust 特有设计（Java 中这些是 `TemplateModel` 实现类，Rust 侧统一用 `Any` 下沉）。
     pub internal: Option<Rc<dyn std::any::Any>>,
@@ -127,6 +130,7 @@ impl TModel {
             range: None,
             node: None,
             node_hash: None,
+            api: None,
             internal: None,
             type_name: "nothing",
             kind: ModelKind::Nothing,

@@ -409,7 +409,9 @@ pub fn build_data_model(simple_test_name: &str, case_name: &str, ici_int: i64) -
     );
     m.insert(
         "testName".to_string(),
-        TModel::from_scalar(simple_test_name.to_string()),
+        // Java simpleTestName = XML caseName（含 `[#endTN]` 变体后缀，如
+        // "api-builtins[#endTN]-bw"；模板按 testName?ends_with("-bw") 分支）
+        TModel::from_scalar(case_name.to_string()),
     );
     m.insert("iciIntValue".to_string(), num(ici_int)); // 用例 ICI 的 intValue()
     m.insert(
@@ -460,6 +462,26 @@ pub fn build_data_model(simple_test_name: &str, case_name: &str, ici_int: i64) -
             m.insert("hash2".to_string(), TModel::from_hash(IndexMap::new()));
         }
         "variables" | "iterators" | "if" | "comment" => {}
+        // TemplateTestCase.java:205-209：map/list/set/s 为 Guava Immutable 集合。
+        // DefaultObjectWrapper(2.3.22) 将 ImmutableMap 包装为 DefaultMapAdapter
+        // （实现 TemplateModelWithAPISupport → ?has_api true）；String 无 API
+        // 支持（s?has_api → false）。-bw 变体（BeansWrapper(2.3.0)）：String 也
+        // 有 API（s?api.toUpperCase() → "TEST"，模板按 testName?ends_with("-bw")
+        // 分支）。API 视图由 harness 直接构造（引擎无反射能力）。
+        "api-builtins" => {
+            let bw = case_name.ends_with("-bw");
+            m.insert("map".to_string(), api_map_model());
+            m.insert("list".to_string(), api_list_model());
+            m.insert("set".to_string(), api_set_model());
+            m.insert(
+                "s".to_string(),
+                if bw {
+                    api_string_model()
+                } else {
+                    TModel::from_scalar("test".to_string())
+                },
+            );
+        }
         "list" | "list2" | "list3" | "list-bis" | "listhash" => {
             // collectionAdapter 变体（DefaultObjectWrapper(2.3.22,
             // forceLegacyNonListCollections=false)）：非 List 集合（set/emptySet）
@@ -1658,5 +1680,142 @@ impl TemplateDirectiveModel for NoOutputDirective {
             let _ = captured.1;
         }
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ?api 支持（api-builtins 用例）：Java 反射 API 表面的 harness 等价物。
+// 引擎无反射能力（security.md 决策 1），API 视图由包装方直接构造：
+// - map?api.get(2?int)/entrySet()（DefaultMapAdapter API：ImmutableMap）
+// - list?api.indexOf(3?int)（List API）
+// - set?api.contains("b")（Set API）
+// - s?api.toUpperCase()（String API，仅 -bw 变体）
+// ---------------------------------------------------------------------------
+
+/// 静态 API 视图载体 —— `?api` 求值命中 `TModel.api` 槽位后返回预构造视图
+struct HarnessApiView(TModel);
+impl freemarker::template::TemplateApiSupport for HarnessApiView {
+    fn api_view(&self) -> Result<TModel> {
+        Ok(self.0.clone())
+    }
+}
+
+/// 给模型挂上 API 支持槽位（?api → view、?has_api → true）
+fn with_api(mut m: TModel, view: TModel) -> TModel {
+    m.api = Some(std::rc::Rc::new(HarnessApiView(view)));
+    m
+}
+
+/// map —— ImmutableMap.of(1,"a",2,"b",3,"c")（DefaultMapAdapter：
+/// TemplateHashModel + TemplateModelWithAPISupport 双角色）
+fn api_map_model() -> TModel {
+    let mut hash = IndexMap::new();
+    hash.insert("1".to_string(), TModel::from_scalar("a".to_string()));
+    hash.insert("2".to_string(), TModel::from_scalar("b".to_string()));
+    hash.insert("3".to_string(), TModel::from_scalar("c".to_string()));
+    let mut view = IndexMap::new();
+    view.insert("get".to_string(), TModel::from_method(MapApiGet));
+    view.insert("entrySet".to_string(), TModel::from_method(MapApiEntrySet));
+    with_api(TModel::from_hash(hash), TModel::from_hash(view))
+}
+
+/// list —— ImmutableList.of(1,2,3)
+fn api_list_model() -> TModel {
+    let mut view = IndexMap::new();
+    view.insert("indexOf".to_string(), TModel::from_method(ListApiIndexOf));
+    with_api(
+        TModel::from_sequence(vec![num(1), num(2), num(3)]),
+        TModel::from_hash(view),
+    )
+}
+
+/// set —— ImmutableSet.of("a","b","c")
+fn api_set_model() -> TModel {
+    let mut view = IndexMap::new();
+    view.insert("contains".to_string(), TModel::from_method(SetApiContains));
+    with_api(
+        TModel::from_sequence(vec![
+            TModel::from_scalar("a".to_string()),
+            TModel::from_scalar("b".to_string()),
+            TModel::from_scalar("c".to_string()),
+        ]),
+        TModel::from_hash(view),
+    )
+}
+
+/// s —— "test"（BeansWrapper 变体：String 也有 API 支持）
+fn api_string_model() -> TModel {
+    let mut view = IndexMap::new();
+    view.insert(
+        "toUpperCase".to_string(),
+        TModel::from_method(StringApiToUpperCase),
+    );
+    with_api(
+        TModel::from_scalar("test".to_string()),
+        TModel::from_hash(view),
+    )
+}
+
+/// Map.get(key)：Integer 键 → 值；键不存在 → null
+struct MapApiGet;
+impl freemarker::template::TemplateMethodModelEx for MapApiGet {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        Ok(match args.first().and_then(vararg_int) {
+            Some(1) => TModel::from_scalar("a".to_string()),
+            Some(2) => TModel::from_scalar("b".to_string()),
+            Some(3) => TModel::from_scalar("c".to_string()),
+            _ => TModel::nothing(),
+        })
+    }
+}
+
+/// Map.entrySet()：ImmutableMap 保持插入序 → {key, value} 哈希序列
+struct MapApiEntrySet;
+impl freemarker::template::TemplateMethodModelEx for MapApiEntrySet {
+    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+        let mut out = Vec::new();
+        for (k, v) in [("1", "a"), ("2", "b"), ("3", "c")] {
+            let mut e = IndexMap::new();
+            e.insert("key".to_string(), TModel::from_scalar(k.to_string()));
+            e.insert("value".to_string(), TModel::from_scalar(v.to_string()));
+            out.push(TModel::from_hash(e));
+        }
+        Ok(TModel::from_sequence(out))
+    }
+}
+
+/// List.indexOf(Object)：未找到 → -1
+struct ListApiIndexOf;
+impl freemarker::template::TemplateMethodModelEx for ListApiIndexOf {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        Ok(num(match args.first().and_then(vararg_int) {
+            Some(1) => 0,
+            Some(2) => 1,
+            Some(3) => 2,
+            _ => -1,
+        }))
+    }
+}
+
+/// Set.contains(Object)：成员测试
+struct SetApiContains;
+impl freemarker::template::TemplateMethodModelEx for SetApiContains {
+    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        let s = args
+            .first()
+            .and_then(|m| m.get_scalar().ok())
+            .map(|s| s.to_string());
+        Ok(TModel::from_boolean(matches!(
+            s.as_deref(),
+            Some("a" | "b" | "c")
+        )))
+    }
+}
+
+/// String.toUpperCase()：locale 无关大写
+struct StringApiToUpperCase;
+impl freemarker::template::TemplateMethodModelEx for StringApiToUpperCase {
+    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+        Ok(TModel::from_scalar("test".to_uppercase()))
     }
 }

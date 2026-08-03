@@ -56,6 +56,13 @@ pub trait TemplateMethodModelEx {
     fn exec(&self, args: Vec<TModel>) -> Result<TModel>;
 }
 
+/// 对应 Java `TemplateModelWithAPISupport`（DefaultMapAdapter/MapModel 等实现）：
+/// `?api` 返回该值的 API 视图（Java 侧为反射 API 表面；Rust 引擎自身不支持
+/// 反射，由包装方提供视图模型）。
+pub trait TemplateApiSupport {
+    fn api_view(&self) -> Result<TModel>;
+}
+
 pub trait TemplateNodeModel {
     fn parent(&self) -> Result<Option<TModel>>;
     fn children(&self) -> Result<Vec<TModel>>;

@@ -73,6 +73,12 @@ fn object_wrapper_emulatable(case: &Case, v: &str) -> bool {
     ) {
         return true;
     }
+    // B4 api-builtins：DefaultObjectWrapper(2.3.22)（DefaultMapAdapter 有 API
+    // 支持）与 BeansWrapper(2.3.0)（-bw 变体，String 也有 API）均由 harness
+    // 数据模型直接构造等价物（common/mod.rs api_map_model 等）
+    if case.base == "api-builtins" {
+        return true;
+    }
     if case.name.contains("collectionAdapter")
         && v == "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)"
     {
@@ -90,24 +96,16 @@ fn object_wrapper_emulatable(case: &Case, v: &str) -> bool {
 
 /// 执行单个用例（Java runTest 的等价物）
 fn run_case(case: &Case) -> Outcome {
-    // Java 特有能力设置 → SKIP（记录原因）
-    for (k, v) in &case.settings {
-        match k.as_str() {
-            "object_wrapper" => {
-                if !object_wrapper_emulatable(case, v) {
-                    return Outcome::Skipped {
-                        reason: format!("object_wrapper={v}（Java 特有 wrapper，无法复刻）"),
-                    };
-                }
-            }
-            // new_builtin_class_resolver：已由引擎实现（core::template_class_resolver
-            // 四策略 + 分段列表解析），apply_settings 解析失败时自然落入 SKIP
-            "api_builtin_enabled" => {
-                return Outcome::Skipped {
-                    reason: "?api 内建（Java BeanWrapper 特有）".to_string(),
-                };
-            }
-            _ => {}
+    // Java 特有能力设置 → SKIP（记录原因）。
+    // new_builtin_class_resolver：已由引擎实现（core::template_class_resolver
+    // 四策略 + 分段列表解析），apply_settings 解析失败时自然落入 SKIP。
+    // api_builtin_enabled：B4 已由引擎 ?api/?has_api + harness API 视图支持
+    // （apply_settings 接受为 no-op；API 支持由 TModel.api 槽位判定）。
+    if let Some(v) = case.settings.get("object_wrapper") {
+        if !object_wrapper_emulatable(case, v) {
+            return Outcome::Skipped {
+                reason: format!("object_wrapper={v}（Java 特有 wrapper，无法复刻）"),
+            };
         }
     }
     // 旧 ICI 行为（?html <2.3.20 / HashLiteral 重复键 <2.3.21 / is_sequence&is_enumerable

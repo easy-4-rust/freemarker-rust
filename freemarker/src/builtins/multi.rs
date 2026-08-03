@@ -308,14 +308,16 @@ pub fn absolute_template_name(
     Ok(Some(TModel::from_scalar(format!("{dir}{name}"))))
 }
 
-/// ?api —— Java BuiltInsForMultipleTypes.apiBI：BeanWrapper API 访问。
-/// Rust 侧不支持反射 API，始终返回错误（与 Java SimpleObjectWrapper 行为一致）。
-pub fn api(
-    _env: &mut Environment,
-    _target: &Expr,
-    args: Option<&[Expr]>,
-) -> Result<Option<TModel>> {
+/// ?api —— Java BuiltInsForMultipleTypes.apiBI：对象包装器 API 访问。
+/// Java 侧为反射 API 表面（TemplateModelWithAPISupport.getAPI）；Rust 引擎自身
+/// 不支持反射——目标模型带 `api` 槽位（由包装方提供视图）时返回 API 视图，
+/// 否则与 Java SimpleObjectWrapper（无 API 支持）行为一致报错。
+pub fn api(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<Option<TModel>> {
     check_arg_count("api", args, 0, 0)?;
+    let m = crate::core::eval::eval(env, target)?;
+    if let Some(api) = &m.api {
+        return Ok(Some(api.api_view()?));
+    }
     Err(TemplateError::misc(
         "The \"?api\" built-in is only available when the object wrapper supports it, but the current object wrapper (SimpleObjectWrapper) doesn't."
     ))
@@ -347,6 +349,7 @@ mod tests {
     use crate::template::ObjectWrapper;
     use crate::template::{Configuration, DynValue, SimpleObjectWrapper};
     use crate::value::TNumber;
+    use indexmap::IndexMap;
     use std::sync::Arc;
 
     /// 渲染 `${src}` 返回输出字符串
@@ -381,6 +384,43 @@ mod tests {
         let err = eval_out(no_root(), "'hello'?api", "t.ftl").unwrap_err();
         assert!(err.to_string().contains("?api"), "{err}");
         assert!(err.to_string().contains("SimpleObjectWrapper"), "{err}");
+    }
+
+    #[test]
+    fn api_returns_view_and_has_api() {
+        // 带 api 槽位的模型：?api 返回视图（Map API 的 get 方法），?has_api true
+        use crate::template::TemplateApiSupport;
+        struct View;
+        impl TemplateApiSupport for View {
+            fn api_view(&self) -> Result<TModel> {
+                Ok(TModel::from_scalar("view".to_string()))
+            }
+        }
+        // api 槽位挂在目标值上（?api 求值 x 后返回 api_view；?has_api 按槽位判定）
+        let mut x = TModel::from_scalar("val".to_string());
+        x.api = Some(std::rc::Rc::new(View));
+        let mut h = IndexMap::new();
+        h.insert("x".to_string(), x);
+        let m = TModel::from_hash(h);
+        // ?api 求值 x 后返回 api_view；?has_api 按 api 槽位判定
+        let mut c = Configuration::new();
+        c.settings.boolean_format = "c".to_string();
+        let loader = Arc::new(StringLoader::default());
+        c.template_loader = loader.clone();
+        loader.put("t.ftl", "${x?api} ${x?has_api}");
+        let t = c.get_template("t.ftl").unwrap();
+        let mut out = Vec::new();
+        t.process(m, &mut out).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "view true");
+    }
+
+    #[test]
+    fn has_api_false_without_slot() {
+        assert_eq!(
+            eval_out(no_root(), "'s'?has_api", "t.ftl").unwrap(),
+            "false"
+        );
+        assert_eq!(eval_out(no_root(), "1?has_api", "t.ftl").unwrap(), "false");
     }
 
     #[test]
