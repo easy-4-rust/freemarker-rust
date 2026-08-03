@@ -1,0 +1,14 @@
+Can't convert boolean to string automatically, because the "boolean_format" setting was "true,false", which is the legacy deprecated default, and we treat it as if no format was set. This is the default configuration; you should provide the format explicitly for each place where you print a boolean.
+
+----
+Tip: Write something like myBool?string('yes', 'no') to specify boolean formatting in place.
+----
+Tip: If you want "true"/"false" result as you are generating computer-language output (not for direct human consumption), then use "?c", like ${myBool?c}. (If you always generate computer-language output, then it's might be reasonable to set the "boolean_format" setting to "c" instead.)
+----
+Tip: If you need the same two values on most places, the programmers can set the "boolean_format" setting to something like "yes,no". However, then it will be easy to unwillingly format booleans like that.
+----
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${true}  [in template "boolean_format_legacy.ftl" at line 1, column 1]
+----

@@ -1,0 +1,7 @@
+For "?upper_case" left-hand operand: Expected a string or something automatically convertible to string (number, date or boolean), but this has evaluated to a sequence (ArrayList wrapped into f.t.DefaultListAdapter):
+==> x  [in template "type_upper_case_seq.ftl" at line 1, column 3]
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${x?upper_case}  [in template "type_upper_case_seq.ftl" at line 1, column 1]
+----

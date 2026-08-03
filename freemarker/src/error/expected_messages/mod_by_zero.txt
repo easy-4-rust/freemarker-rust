@@ -1,0 +1,6 @@
+Arithmetic operation failed: / by zero
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${1 % 0}  [in template "mod_by_zero.ftl" at line 1, column 1]
+----

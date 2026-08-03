@@ -1,0 +1,2 @@
+Syntax error in template "parse_items_outside.ftl" in line 1, column 1:
+#items must be inside a #list block.

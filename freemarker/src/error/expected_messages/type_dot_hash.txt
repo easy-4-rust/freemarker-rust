@@ -1,0 +1,7 @@
+For "." left-hand operand: Expected a hash, but this has evaluated to a string (wrapper: f.t.SimpleScalar):
+==> x  [in template "type_dot_hash.ftl" at line 1, column 3]
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${x.y}  [in template "type_dot_hash.ftl" at line 1, column 1]
+----

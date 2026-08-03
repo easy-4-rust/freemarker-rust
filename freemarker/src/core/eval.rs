@@ -284,7 +284,7 @@ fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result
         // 访问 .args → 报错；不访问 .args 的宏不受该限制（jar 实测 2.3.34）
         BuiltinVar::Args => match env.get_current_macro_frame() {
             Some(frame) => {
-                if let Some(v) = frame.args_value.borrow().clone() {
+                if let Some(v) = frame.args_value.borrow().as_ref().map(|b| b.as_ref().clone()) {
                     return Ok(v);
                 }
                 let v = crate::core::environment::build_args_special(
@@ -292,7 +292,7 @@ fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result
                     &frame.def,
                     frame.is_function,
                 )?;
-                *frame.args_value.borrow_mut() = Some(v.clone());
+                *frame.args_value.borrow_mut() = Some(Box::new(v.clone()));
                 Ok(v)
             }
             None => Err(TemplateError::misc(

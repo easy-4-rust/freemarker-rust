@@ -29,10 +29,10 @@ pub use simple_number::SimpleNumber;
 pub use simple_object_wrapper::{SimpleObjectWrapper, SIMPLE_WRAPPER};
 pub use simple_scalar::SimpleScalar;
 pub use simple_sequence::SimpleSequence;
-pub use t_model::{ModelKind, TModel};
+pub use t_model::{ModelKind, ModelNumber, TModel};
 pub use template::Template;
 pub use template_model::{
-    RangeSpec, TemplateBooleanModel, TemplateCollectionModel, TemplateDateModel,
+    NodeHashModel, RangeSpec, TemplateBooleanModel, TemplateCollectionModel, TemplateDateModel,
     TemplateDirectiveBody, TemplateDirectiveModel, TemplateHashModel, TemplateHashModelEx,
     TemplateMethodModelEx, TemplateNodeModel, TemplateNumberModel, TemplateScalarModel,
     TemplateSequenceModel, TemplateTransformModel,

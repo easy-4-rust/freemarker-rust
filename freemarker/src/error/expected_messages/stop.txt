@@ -1,0 +1,6 @@
+bye
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: #stop "bye"  [in template "stop.ftl" at line 1, column 1]
+----

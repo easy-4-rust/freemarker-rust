@@ -1,0 +1,7 @@
+For "#if" condition: Expected a boolean, but this has evaluated to a number (wrapper: f.t.SimpleNumber):
+==> 1  [in template "type_if_boolean.ftl" at line 1, column 6]
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: #if 1  [in template "type_if_boolean.ftl" at line 1, column 1]
+----

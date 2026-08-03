@@ -22,7 +22,7 @@ use crate::errors;
 use crate::wrapper::PyObjectWrapperInner;
 use freemarker::core::TzSetting;
 use freemarker::error::Result;
-use freemarker::template::TModel;
+use freemarker::template::{ModelNumber, TModel};
 use freemarker::template::{
     TemplateBooleanModel, TemplateCollectionModel, TemplateHashModel, TemplateHashModelEx,
     TemplateMethodModelEx, TemplateNumberModel, TemplateScalarModel, TemplateSequenceModel,
@@ -96,7 +96,7 @@ impl PyObjectModel {
         };
         match kind {
             PyModelKind::Number => {
-                tm.number = Some(rc);
+                tm.number = Some(ModelNumber::Dyn(rc));
                 tm.kind = freemarker::template::ModelKind::Number;
             }
             PyModelKind::Hash => {

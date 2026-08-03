@@ -15,6 +15,7 @@ pub mod span;
 pub mod template;
 pub mod utility;
 pub mod value;
+pub mod xml;
 
 pub use core::{eval, exec, Environment};
 pub use error::{Result, TemplateError};

@@ -1,0 +1,8 @@
+Template inclusion failed (for parameter value "broken.ftl"):
+Syntax error in template "broken.ftl" in line 1, column 7:
+Unexpected end of file reached. You have an unclosed #if. Check if the FreeMarker end-tags are present, and aren't malformed. (Note that FreeMarker end-tags must have # or @ after the / character.)
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: #include "broken.ftl"  [in template "include_parse_error.ftl" at line 1, column 1]
+----

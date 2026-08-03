@@ -10,9 +10,10 @@ use crate::template::SimpleHash;
 use crate::template::SimpleScalar;
 use crate::template::SimpleSequence;
 use crate::template::{
-    TemplateBooleanModel, TemplateCollectionModel, TemplateDateModel, TemplateDirectiveModel,
-    TemplateHashModel, TemplateHashModelEx, TemplateMethodModelEx, TemplateNodeModel,
-    TemplateNumberModel, TemplateScalarModel, TemplateSequenceModel, TemplateTransformModel,
+    NodeHashModel, TemplateBooleanModel, TemplateCollectionModel, TemplateDateModel,
+    TemplateDirectiveModel, TemplateHashModel, TemplateHashModelEx, TemplateMethodModelEx,
+    TemplateNodeModel, TemplateNumberModel, TemplateScalarModel, TemplateSequenceModel,
+    TemplateTransformModel,
 };
 use crate::value::{DateValue, TNumber};
 use indexmap::IndexMap;
@@ -87,6 +88,10 @@ pub struct TModel {
     /// 范围模型标记（对应 Java `RangeModel`；`seq[range]` 切片键类型判定）
     pub range: Option<Rc<crate::template::RangeSpec>>,
     pub node: Option<Rc<dyn TemplateNodeModel>>,
+    /// 节点哈希角色（对应 Java NodeModel 的 TemplateHashModel；`doc.foo`/`doc['//x']` 访问）。
+    /// 与 `hash` 槽位分开：get 需要 Environment 解析 ns_prefixes（Java 线程局部
+    /// Environment；Rust 显式传参，见 template_model.rs NodeHashModel 注释）。
+    pub node_hash: Option<Rc<dyn NodeHashModel>>,
     /// 内部扩展槽位（渲染引擎专用，docs/04 §1）：承载宏/函数值、lambda、命名空间等
     /// Rust 特有设计（Java 中这些是 `TemplateModel` 实现类，Rust 侧统一用 `Any` 下沉）。
     pub internal: Option<Rc<dyn std::any::Any>>,
@@ -121,6 +126,7 @@ impl TModel {
             transform: None,
             range: None,
             node: None,
+            node_hash: None,
             internal: None,
             type_name: "nothing",
             kind: ModelKind::Nothing,
@@ -134,7 +140,9 @@ impl TModel {
     /// 序列/哈希 → 空），不触发 InvalidReference。
     pub fn gpn() -> TModel {
         let empty_seq = Rc::new(SimpleSequence(Vec::new()));
-        let empty_hash = Rc::new(SimpleHash(IndexMap::new()));
+        let empty_hash = Rc::new(SimpleHash(IndexMap::with_hasher(
+            crate::utility::FnvBuildHasher::default(),
+        )));
         TModel {
             scalar: Some(Rc::new(SimpleScalar(String::new()))),
             boolean: Some(Rc::new(SimpleBoolean(false))),
@@ -211,6 +219,9 @@ impl TModel {
     }
 
     pub fn from_hash(v: IndexMap<String, TModel>) -> TModel {
+        // 转换到 FNV 哈希（构造期 O(n) 一次性成本；成员访问热路径受益；
+        // 插入序保持——indexmap 序由内部向量维持，与哈希器无关）
+        let v: IndexMap<String, TModel, crate::utility::FnvBuildHasher> = v.into_iter().collect();
         let h = Rc::new(SimpleHash(v));
         let ex = h.clone();
         TModel {
@@ -248,6 +259,13 @@ impl TModel {
             kind: ModelKind::Directive,
             ..Self::nothing()
         }
+    }
+
+    /// 从 XML 文本构造文档节点模型 —— 对应 Java `NodeModel.parse(InputSource)`
+    /// （freemarker.ext.dom：SAX 解析 → simplify —— 移除注释/PI、合并相邻文本）。
+    /// 返回"document"节点；子节点经 `?children` / 哈希键访问导航。
+    pub fn from_xml_str(s: &str) -> Result<TModel> {
+        crate::xml::parse_xml(s)
     }
 
     // ---- 角色判定（?is_* 内建）----

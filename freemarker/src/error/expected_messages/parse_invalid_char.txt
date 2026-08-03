@@ -1,0 +1,16 @@
+Syntax error in template "parse_invalid_char.ftl" in line 1, column 7:
+Encountered "}", but was expecting one of these patterns:
+    <STRING_LITERAL>
+    <RAW_STRING>
+    "false"
+    "true"
+    <INTEGER>
+    <DECIMAL>
+    "."
+    "+"
+    "-"
+    "!"
+    "["
+    "("
+    "{"
+    <ID>

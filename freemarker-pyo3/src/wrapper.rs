@@ -714,7 +714,9 @@ mod tests {
             // 仅 hash 角色（无 hash_ex）→ 适配器（不可枚举键）
             let mut tm = TModel::nothing();
             tm.kind = freemarker::template::ModelKind::Hash;
-            tm.hash = Some(Rc::new(SimpleHash(IndexMap::new())));
+            tm.hash = Some(Rc::new(SimpleHash(IndexMap::with_hasher(
+                freemarker::utility::FnvBuildHasher::default(),
+            ))));
             tm.type_name = "hash";
             let out = w.unwrap(py, &tm).unwrap();
             assert!(out.bind(py).is_instance_of::<TemplateModelAdapter>());

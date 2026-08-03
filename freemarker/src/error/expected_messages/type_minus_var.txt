@@ -1,0 +1,7 @@
+For "-" right-hand operand: Expected a number, but this has evaluated to a string (wrapper: f.t.SimpleScalar):
+==> s  [in template "type_minus_var.ftl" at line 1, column 7]
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${n - s}  [in template "type_minus_var.ftl" at line 1, column 1]
+----

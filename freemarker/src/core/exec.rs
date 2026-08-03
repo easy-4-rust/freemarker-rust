@@ -1163,15 +1163,21 @@ fn run_loop_iterations(
     block: &[Element],
 ) -> Result<ExecOutcome> {
     loop {
-        let item = match lc.borrow_mut().pending.pop()? {
-            Some(i) => i,
-            None => break,
-        };
-        {
+        // 单次借用完成 pop + 循环变量绑定 + has_next 前视（热路径减少 RefCell 借用）
+        let item_pending = {
             let mut c = lc.borrow_mut();
-            c.key = item.key.clone();
-            c.value = item.value;
-            c.has_next = c.pending.has_next()?;
+            match c.pending.pop()? {
+                Some(i) => {
+                    c.key = i.key.clone();
+                    c.value = i.value;
+                    c.has_next = c.pending.has_next()?;
+                    true
+                }
+                None => false,
+            }
+        };
+        if !item_pending {
+            break;
         }
         match env.run(block) {
             Ok(RunSignal::Completed) => {}

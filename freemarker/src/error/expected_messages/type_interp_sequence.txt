@@ -1,0 +1,7 @@
+For "${...}" content: Expected a string or something automatically convertible to string (number, date or boolean), or "template output" , but this has evaluated to a sequence (ArrayList wrapped into f.t.DefaultListAdapter):
+==> list  [in template "type_interp_sequence.ftl" at line 1, column 3]
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${list}  [in template "type_interp_sequence.ftl" at line 1, column 1]
+----

@@ -1,0 +1,8 @@
+Template inclusion failed (for parameter value "nope.ftl"):
+Template not found for name "nope.ftl".
+The name was interpreted by this TemplateLoader: FileTemplateLoader(baseDir="/private/var/folders/_s/9_xnnkz141920t1yv5zhvd1r0000gn/T/fm_errors_include_not_found", canonicalBasePath="/private/var/folders/_s/9_xnnkz141920t1yv5zhvd1r0000gn/T/fm_errors_include_not_found/").
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: #include "nope.ftl"  [in template "include_not_found.ftl" at line 1, column 1]
+----

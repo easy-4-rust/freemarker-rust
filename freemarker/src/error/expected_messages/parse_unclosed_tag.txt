@@ -1,0 +1,2 @@
+Syntax error in template "parse_unclosed_tag.ftl" in line 1, column 7:
+Unexpected end of file reached. You have an unclosed #if. Check if the FreeMarker end-tags are present, and aren't malformed. (Note that FreeMarker end-tags must have # or @ after the / character.)

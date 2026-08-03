@@ -1,0 +1,2 @@
+Syntax error in template "parse_expected_close.ftl" in line 1, column 9:
+#if is an existing directive, but the tag is malformed.  (See FreeMarker Manual / Directive Reference.)

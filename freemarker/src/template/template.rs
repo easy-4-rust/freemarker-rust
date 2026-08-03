@@ -16,6 +16,8 @@ pub struct Template {
     pub macros: HashMap<String, MacroDef>,
     pub configuration: Rc<Configuration>,
     pub encoding: Option<String>,
+    /// `<#ftl ns_prefixes=...>` 命名空间前缀映射（prefix → URI；XML 节点查询用）
+    pub ns_prefixes: HashMap<String, String>,
 }
 
 impl Template {
@@ -31,6 +33,7 @@ impl Template {
             macros,
             configuration,
             encoding: None,
+            ns_prefixes: HashMap::new(),
         }
     }
 

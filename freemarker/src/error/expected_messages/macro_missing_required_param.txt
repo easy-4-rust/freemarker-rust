@@ -1,0 +1,11 @@
+When calling macro "m", required parameter "a" (parameter #1) was not specified.
+
+----
+Tip: If the omission was deliberate, you may consider making the parameter optional in the macro by specifying a default value for it, like <#macro macroName paramName=defaultExpr>)
+----
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: #macro m a  [in template "macro_missing_required_param.ftl" in macro "m" at line 1, column 1]
+	- Reached through: @m  [in template "macro_missing_required_param.ftl" at line 1, column 26]
+----

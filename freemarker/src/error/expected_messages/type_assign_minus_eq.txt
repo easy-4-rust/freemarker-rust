@@ -1,0 +1,6 @@
+Expected a number, but assignment target variable "x" has evaluated to a string (wrapper: f.t.SimpleScalar).
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: #assign x -= 1  [in template "type_assign_minus_eq.ftl" at line 1, column 18]
+----

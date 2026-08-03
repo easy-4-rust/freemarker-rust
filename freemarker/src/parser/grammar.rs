@@ -54,6 +54,8 @@ struct Parser<'a> {
     macros: HashMap<String, MacroDef>,
     /// `[#ftl encoding=...]` 设置的编码（写入 Template.encoding）
     encoding: Option<String>,
+    /// `[#ftl ns_prefixes=...]` 的命名空间前缀映射（prefix → URI；写入 Template）
+    ns_prefixes: HashMap<String, String>,
     /// whitespace_stripping（`[#ftl strip_whitespace=false]` 可覆盖；docs/08 §5.2）
     strip_ws: bool,
     /// inMacro / inFunction 嵌套计数（Macro 语义校验；互斥）
@@ -92,6 +94,7 @@ impl<'a> Parser<'a> {
             name: name.to_string(),
             macros: HashMap::new(),
             encoding: None,
+            ns_prefixes: HashMap::new(),
             strip_ws: cfg.settings.whitespace_stripping,
             in_macro: 0,
             in_function: 0,
@@ -112,11 +115,8 @@ impl<'a> Parser<'a> {
         TemplateError::Parse {
             template: self.name.clone(),
             message: format!(
-                "\"{}\" at line {}, column {}. {}",
-                self.name,
-                line,
-                col,
-                details.into()
+                "at line {}, column {}. {}",
+                line, col, details.into()
             ),
         }
     }
@@ -289,6 +289,7 @@ impl<'a> Parser<'a> {
             self.cfg.clone(),
         );
         template.encoding = self.encoding.take();
+        template.ns_prefixes = std::mem::take(&mut self.ns_prefixes);
         Ok(template)
     }
 
@@ -374,10 +375,38 @@ impl<'a> Parser<'a> {
                                 ))
                             }
                         },
-                        // 渲染期设置（auto_esc / output_format / ns_prefixes / attributes）：
+                        // 渲染期设置（auto_esc / output_format / attributes）：
                         // 本实现解析并忽略（渲染引擎尚未实现；文档化偏差）
                         "auto_esc" | "autoesc" | "output_format" | "outputformat"
-                        | "ns_prefixes" | "nsprefixes" | "attributes" => {}
+                        | "attributes" => {}
+                        // ns_prefixes：hash literal `{"D": "...", "N": "..."}` → 前缀映射
+                        // （Java Template.addNsPrefix；供 XML 节点查询解析前缀）
+                        "ns_prefixes" | "nsprefixes" => {
+                            match &value.kind {
+                                ExprKind::HashLit(entries) => {
+                                    for (k, v) in entries {
+                                        let ExprKind::Str(prefix) = &k.kind else {
+                                            continue;
+                                        };
+                                        let ExprKind::Str(uri) = &v.kind else {
+                                            return Err(self.err(
+                                                l,
+                                                c,
+                                                "Expected a string constant for the namespace URI in \"ns_prefixes\".",
+                                            ));
+                                        };
+                                        self.ns_prefixes.insert(prefix.clone(), uri.clone());
+                                    }
+                                }
+                                _ => {
+                                    return Err(self.err(
+                                        l,
+                                        c,
+                                        "Expected a hash literal for \"ns_prefixes\".",
+                                    ))
+                                }
+                            }
+                        }
                         other => {
                             return Err(self.err(
                                 l,
@@ -5675,10 +5704,7 @@ mod tests {
     fn error_positions() {
         // 未闭合标签
         let msg = parse_err("<#if x>");
-        assert!(
-            msg.contains("Parsing error in template t: \"t\" at line 1, column"),
-            "{msg}"
-        );
+        assert!(msg.contains("Parsing error in template \"t\" at line 1, column"), "{msg}");
         assert!(msg.contains("</#if>"), "{msg}");
 
         // 多行模板的行号

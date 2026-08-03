@@ -1,0 +1,2 @@
+Syntax error in template "return_outside.ftl" in line 1, column 1:
+A return instruction can only occur inside a macro or function

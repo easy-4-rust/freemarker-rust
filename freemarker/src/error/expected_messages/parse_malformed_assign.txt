@@ -1,0 +1,2 @@
+Syntax error in template "parse_malformed_assign.ftl" in line 1, column 2:
+#assign is an existing directive, but the tag is malformed.  (See FreeMarker Manual / Directive Reference.)

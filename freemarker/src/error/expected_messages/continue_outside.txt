@@ -1,0 +1,2 @@
+Syntax error in template "continue_outside.ftl" in line 1, column 1:
+<#continue> must be nested inside a directive that supports it:  #list with "as", #items (or the deprecated #foreach)

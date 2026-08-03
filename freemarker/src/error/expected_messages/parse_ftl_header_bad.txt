@@ -1,0 +1,2 @@
+Syntax error in template "parse_ftl_header_bad.ftl" in line 1, column 21:
+Expecting boolean (true/false) parameter

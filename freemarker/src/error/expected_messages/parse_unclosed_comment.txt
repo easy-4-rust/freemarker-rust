@@ -1,0 +1,2 @@
+Syntax error in template "parse_unclosed_comment.ftl" in line 1, column 1:
+Unclosed "<#--"

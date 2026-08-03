@@ -1,0 +1,7 @@
+For "?string" left-hand operand: Expected a number, date, boolean or string, but this has evaluated to a sequence (ArrayList wrapped into f.t.DefaultListAdapter):
+==> x  [in template "type_string_seq.ftl" at line 1, column 3]
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${x?string}  [in template "type_string_seq.ftl" at line 1, column 1]
+----

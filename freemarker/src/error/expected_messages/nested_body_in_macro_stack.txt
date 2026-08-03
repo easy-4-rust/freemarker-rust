@@ -1,0 +1,13 @@
+The following has evaluated to null or missing:
+==> missing  [in template "nested_body_in_macro_stack.ftl" at line 1, column 51]
+
+----
+Tip: If the failing expression is known to legally refer to something that's sometimes null or missing, either specify a default value like myOptionalVar!myDefault, or use <#if myOptionalVar??>when-present<#else>when-missing</#if>. (These only cover the last step of the expression; to cover the whole expression, use parenthesis: (myOptionalVar.foo)!myDefault, (myOptionalVar.foo)??
+----
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${missing}  [in template "nested_body_in_macro_stack.ftl" at line 1, column 49]
+	~ Reached through: #nested  [in template "nested_body_in_macro_stack.ftl" in macro "m" at line 1, column 11]
+	~ Reached through: @m  [in template "nested_body_in_macro_stack.ftl" at line 1, column 29]
+----

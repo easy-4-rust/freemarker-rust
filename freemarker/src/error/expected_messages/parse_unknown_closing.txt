@@ -1,0 +1,2 @@
+Syntax error in template "parse_unknown_closing.ftl" in line 1, column 2:
+Unknown directive: #foo. Help (latest version): http://freemarker.org/docs/ref_directive_alphaidx.html; you're using FreeMarker 2.3.34.

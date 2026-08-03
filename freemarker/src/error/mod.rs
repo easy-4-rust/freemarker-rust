@@ -4,6 +4,6 @@ mod error_ctx;
 mod flow_kind;
 mod template_error;
 
-pub use error_ctx::ErrorCtx;
+pub use error_ctx::{ErrorCtx, StackFrame};
 pub use flow_kind::FlowKind;
 pub use template_error::{Result, TemplateError};

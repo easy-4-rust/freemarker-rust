@@ -1,0 +1,6 @@
+Function "f" only accepts 1 parameters, but got 2.
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${f(1, 2)}  [in template "function_too_many_args.ftl" at line 1, column 32]
+----

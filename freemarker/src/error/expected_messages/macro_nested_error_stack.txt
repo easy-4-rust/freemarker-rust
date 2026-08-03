@@ -1,0 +1,2 @@
+Syntax error in template "macro_nested_error_stack.ftl" in line 1, column 11:
+Macro or function definitions can't be nested into each other.

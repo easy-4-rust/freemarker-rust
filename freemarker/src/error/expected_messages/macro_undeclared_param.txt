@@ -1,0 +1,6 @@
+Macro "m" has no parameter with name "b". Valid parameter names are: a
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: @m b=1  [in template "macro_undeclared_param.ftl" at line 1, column 26]
+----

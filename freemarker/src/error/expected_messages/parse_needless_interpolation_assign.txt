@@ -1,0 +1,2 @@
+Syntax error in template "parse_needless_interpolation_assign.ftl" in line 1, column 14:
+You can't use ${...} (an interpolation) here as you are already in FreeMarker-expression-mode. Thus, instead of ${myExpression}, just write myExpression. (${...} is only used where otherwise static text is expected, i.e., outside FreeMarker tags and interpolations, or inside string literals.)

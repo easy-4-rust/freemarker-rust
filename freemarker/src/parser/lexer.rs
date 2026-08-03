@@ -255,13 +255,7 @@ impl Lexer {
     pub(crate) fn err(&self, line: u32, col: u32, details: impl Into<String>) -> TemplateError {
         TemplateError::Parse {
             template: self.name.clone(),
-            message: format!(
-                "\"{}\" at line {}, column {}. {}",
-                self.name,
-                line,
-                col,
-                details.into()
-            ),
+            message: format!("at line {}, column {}. {}", line, col, details.into()),
         }
     }
 

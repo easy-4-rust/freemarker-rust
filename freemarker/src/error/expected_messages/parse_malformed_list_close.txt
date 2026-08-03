@@ -1,0 +1,2 @@
+Syntax error in template "parse_malformed_list_close.ftl" in line 1, column 22:
+#list is an existing directive, but the tag is malformed.  (See FreeMarker Manual / Directive Reference.)

@@ -1,0 +1,7 @@
+For "#if" condition: Expected a boolean, but this has evaluated to a sequence (ArrayList wrapped into f.t.DefaultListAdapter):
+==> list  [in template "type_if_sequence.ftl" at line 1, column 6]
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: #if list  [in template "type_if_sequence.ftl" at line 1, column 1]
+----

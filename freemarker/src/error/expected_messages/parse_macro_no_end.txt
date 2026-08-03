@@ -1,0 +1,2 @@
+Syntax error in template "parse_macro_no_end.ftl" in line 1, column 14:
+Unexpected end of file reached. You have an unclosed #macro or #function. Check if the FreeMarker end-tags are present, and aren't malformed. (Note that FreeMarker end-tags must have # or @ after the / character.)

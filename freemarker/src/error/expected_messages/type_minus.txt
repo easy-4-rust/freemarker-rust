@@ -1,0 +1,2 @@
+Syntax error in template "type_minus.ftl" in line 1, column 7:
+Found string literal: "a". Expecting: number

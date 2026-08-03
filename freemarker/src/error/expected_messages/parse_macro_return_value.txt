@@ -1,0 +1,2 @@
+Syntax error in template "parse_macro_return_value.ftl" in line 1, column 11:
+A macro cannot return a value

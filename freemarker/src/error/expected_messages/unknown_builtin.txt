@@ -1,0 +1,25 @@
+Syntax error in template "unknown_builtin.ftl" in line 1, column 5:
+Unknown built-in: "nonexistent_builtin". Help (latest version): https://freemarker.apache.org/docs/ref_builtins.html; you're using FreeMarker 2.3.34.
+The alphabetical list of built-ins:
+abs, absolute_template_name, ancestors, api,
+blank_to_null, boolean, byte,
+c, c_lower_case, c_upper_case, cap_first, capitalize, ceiling, children, chop_linebreak, chunk, cn, contains, counter,
+date, date_if_unknown, datetime, datetime_if_unknown, default, double, drop_while,
+empty_to_null, ends_with, ensure_ends_with, ensure_starts_with, esc, eval, eval_json, exists,
+filter, first, float, floor,
+groups,
+has_api, has_content, has_next, html,
+if_exists, index, index_of, int, interpret, is_boolean, is_collection, is_collection_ex, is_date, is_date_like, is_date_only, is_datetime, is_directive, is_enumerable, is_even_item, is_first, is_hash, is_hash_ex, is_indexable, is_infinite, is_last, is_macro, is_markup_output, is_method, is_nan, is_node, is_number, is_odd_item, is_sequence, is_string, is_time, is_transform, is_unknown_date_like, iso, iso_h, iso_h_nz, iso_local, iso_local_h, iso_local_h_nz, iso_local_m, iso_local_m_nz, iso_local_ms, iso_local_ms_nz, iso_local_nz, iso_m, iso_m_nz, iso_ms, iso_ms_nz, iso_nz, iso_utc, iso_utc_fz, iso_utc_h, iso_utc_h_nz, iso_utc_m, iso_utc_m_nz, iso_utc_ms, iso_utc_ms_nz, iso_utc_nz, item_cycle, item_parity, item_parity_cap,
+j_string, join, js_string, json_string,
+keep_after, keep_after_last, keep_before, keep_before_last, keys,
+last, last_index_of, left_pad, length, long, lower_abc, lower_case,
+map, markup_string, matches, max, min,
+namespace, new, next_sibling, no_esc, node_name, node_namespace, node_type, number, number_to_date, number_to_datetime, number_to_time,
+parent, previous_sibling,
+remove_beginning, remove_ending, replace, reverse, right_pad, root, round, rtf,
+seq_contains, seq_index_of, seq_last_index_of, sequence, short, size, sort, sort_by, split, starts_with, string, substring, switch,
+take_while, then, time, time_if_unknown, trim, trim_to_null, truncate, truncate_c, truncate_c_m, truncate_m, truncate_w, truncate_w_m,
+uncap_first, upper_abc, upper_case, url, url_path,
+values,
+web_safe, with_args, with_args_last, word_list,
+xhtml, xml

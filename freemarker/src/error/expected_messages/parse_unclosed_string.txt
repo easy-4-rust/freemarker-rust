@@ -1,0 +1,2 @@
+Syntax error in template "parse_unclosed_string.ftl" in line 1, column 9:
+Lexical error: encountered <EOF> after "\"abc}".

@@ -1,0 +1,16 @@
+Syntax error in template "parse_bad_escape.ftl" in line 1, column 14:
+Encountered ">", but was expecting one of these patterns:
+    <STRING_LITERAL>
+    <RAW_STRING>
+    "false"
+    "true"
+    <INTEGER>
+    <DECIMAL>
+    "."
+    "+"
+    "-"
+    "!"
+    "["
+    "("
+    "{"
+    <ID>

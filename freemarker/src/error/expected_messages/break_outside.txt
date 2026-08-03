@@ -1,0 +1,2 @@
+Syntax error in template "break_outside.ftl" in line 1, column 1:
+<#break> must be nested inside a directive that supports it:  #list with "as", #items, #switch (or the deprecated #foreach)

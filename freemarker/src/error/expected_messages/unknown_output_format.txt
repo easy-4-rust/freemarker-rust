@@ -1,0 +1,2 @@
+Syntax error in template "unknown_output_format.ftl" in line 1, column 1:
+Unregistered output format name, "nope". The output formats registered in the Configuration are: "CSS", "HTML", "JSON", "JavaScript", "RTF", "XHTML", "XML", "plainText", "undefined"

@@ -1,0 +1,6 @@
+String index out of range: The index was 1 (0-based), but the length of the string is only 1.
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: ${x[1]}  [in template "type_string_index_oob.ftl" at line 1, column 1]
+----

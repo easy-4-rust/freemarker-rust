@@ -25,7 +25,22 @@ use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
+
+/// 单次渲染允许的最大模板包含层数。
+///
+/// 防止 `<#include>` 自包含或 A → B → A 环路耗尽调用栈。该限制只约束当前
+/// 包含链；同一模板在前一次包含返回后可再次包含。
+const MAX_INCLUDE_DEPTH: usize = 16;
+
+/// 单次渲染允许的最大宏/函数调用深度，防止无终止递归耗尽调用栈。
+const MAX_MACRO_CALL_DEPTH: usize = 16;
+
+/// 单次输出或捕获缓冲允许的最大字节数。
+///
+/// 引擎在成功结束时才写出 `output_buffer`，因此必须在写入时限制其大小，避免
+/// 无界循环或异常输入把宿主进程的内存耗尽。
+const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 
 /// 渲染入口（对应 `Template.process(rootMap, out)` → `Environment.process()`）
 pub fn render(template: &Template, root: TModel, out: &mut dyn Write) -> Result<()> {
@@ -59,6 +74,9 @@ pub struct Environment<'a> {
     global_ns: Rc<Namespace>,
     /// import 库表：模板路径 → 命名空间（Java `loadedLibs`；importLib :3232-3290）
     loaded_libs: HashMap<String, Rc<Namespace>>,
+    /// 当前包含链（含主模板）。用于限制包含嵌套深度；同名递归可由模板状态主动终止，
+    /// 因此不能仅凭名称判为环。
+    include_stack: Vec<String>,
     /// 宏调用帧栈（栈顶 = Java `currentMacroContext` :174；`<#local>`/`<#nested>`/`<#return>` 依赖）
     pub(crate) macro_frames: Vec<Rc<MacroFrame>>,
     /// `<#return>` 发起时的宏帧深度（Java `Return.INSTANCE` 携带发起 Macro.Context 的
@@ -339,7 +357,8 @@ pub struct MacroFrame {
     /// 因此位置 catch-all 非空的"仅 .args 才报错"限制只在访问时触发；不访问 `.args`
     /// 的宏（如 `<@m 1 2 3/>` 纯位置调用）不受影响。构建依赖宏定义与函数/宏标志，
     /// 故帧保存快照，首次访问时经 `build_args_special` 填充。
-    pub(crate) args_value: RefCell<Option<TModel>>,
+    /// Box 内嵌：绝大多数宏不访问 `.args`（None 常驻），避免 TModel 内联撑大帧分配。
+    pub(crate) args_value: RefCell<Option<Box<TModel>>>,
     /// 宏定义快照（供惰性构建 `.args`）。
     pub(crate) def: Rc<MacroDef>,
     /// 是否为函数（供惰性构建 `.args`：函数 → 序列、宏 → 哈希）。
@@ -357,8 +376,11 @@ impl MacroFrame {
 /// 经 TModel.internal 槽位承载，`?is_macro` 依据 kind 判定）
 pub struct MacroValue {
     pub def: Rc<MacroDef>,
-    /// 宏所属命名空间（Java `macroToNamespaceLookup` :185；宏体内 currentNamespace 切换）
-    pub ns: Rc<Namespace>,
+    /// 宏所属命名空间（Java `macroToNamespaceLookup` :185；宏体内 currentNamespace 切换）。
+    ///
+    /// 必须为 `Weak`：`Namespace.macros` 已强持有 `MacroValue`，若此处再强持有
+    /// `Namespace`，每个含宏的渲染环境都会形成不可释放的 `Rc` 环。
+    pub ns: Weak<Namespace>,
 }
 
 /// lambda 值 —— 对应 Java `LocalLambdaExpression` 求值结果（v1 仅存槽位；
@@ -379,11 +401,21 @@ pub struct Namespace {
     vars: RefCell<HashMap<String, TModel, crate::utility::FnvBuildHasher>>,
     macros: RefCell<HashMap<String, Rc<MacroValue>, crate::utility::FnvBuildHasher>>,
     /// 关联模板名（Java `Namespace.getTemplate()` :3470-3478；错误定位/相对 include 基名）
-    template_name: String,
+    /// Rc<str>：主/全局命名空间共享同一份（Environment::new 构造期 1 次分配）
+    template_name: Rc<str>,
 }
 
 impl Namespace {
     fn new(template_name: String) -> Self {
+        Namespace {
+            vars: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
+            macros: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
+            template_name: Rc::from(template_name),
+        }
+    }
+
+    /// 共享模板名构造（主/全局命名空间复用同一 Rc<str>）
+    fn new_shared(template_name: Rc<str>) -> Self {
         Namespace {
             vars: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
             macros: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
@@ -424,7 +456,6 @@ impl Namespace {
     pub fn template_name(&self) -> &str {
         &self.template_name
     }
-
     /// 变量表只读视图（调试/测试辅助）
     pub fn var_names(&self) -> Vec<String> {
         self.vars.borrow().keys().cloned().collect()
@@ -480,7 +511,9 @@ impl<'a> Environment<'a> {
             register_macro(&main_ns, name, def);
         }
         let current_ns = main_ns.clone();
-        let global_ns = Rc::new(Namespace::new(template.name.clone()));
+        // 主/全局命名空间共享模板名（构造期 1 次 Rc 分配替代 2 次 String 克隆）
+        let name_shared: Rc<str> = Rc::from(template.name.as_str());
+        let global_ns = Rc::new(Namespace::new_shared(name_shared));
         // Java autoEscaping 默认随 outputFormat 与 incompatibleImprovements（docs/08 §1）
         let auto_escape = match base_settings.auto_escaping {
             crate::core::AutoEscaping::On => true,
@@ -496,6 +529,7 @@ impl<'a> Environment<'a> {
             current_ns,
             global_ns,
             loaded_libs: HashMap::new(),
+            include_stack: vec![template.name.clone()],
             macro_frames: Vec::new(),
             return_depth: None,
             settings: std::borrow::Cow::Borrowed(base_settings),
@@ -761,6 +795,12 @@ impl<'a> Environment<'a> {
         self.global_ns.clone()
     }
 
+    /// 当前模板的命名空间前缀映射（`<#ftl ns_prefixes=...>`；XML 节点前缀解析——
+    /// Java `currentNamespace.getTemplate().getNamespaceForPrefix`。v1 取主模板映射）
+    pub(crate) fn current_ns_prefixes(&self) -> crate::xml::NsPrefixes {
+        crate::xml::NsPrefixes::new(self.template.ns_prefixes.clone())
+    }
+
     /// TModel → 命名空间值（内部槽位下沉，Java Namespace 对象）
     pub fn as_namespace(&self, m: &TModel) -> Option<Rc<Namespace>> {
         m.internal::<Namespace>()
@@ -817,9 +857,12 @@ impl<'a> Environment<'a> {
     /// 输出文本（重定向期间写入捕获缓冲）
     pub fn emit(&mut self, s: &str) -> Result<()> {
         if let Some(buf) = &self.redirect {
-            buf.borrow_mut().extend_from_slice(s.as_bytes());
+            let mut redirected = buf.borrow_mut();
+            ensure_output_limit(redirected.len(), s.len())?;
+            redirected.extend_from_slice(s.as_bytes());
             return Ok(());
         }
+        ensure_output_limit(self.output_buffer.len(), s.len())?;
         self.output_buffer.extend_from_slice(s.as_bytes());
         Ok(())
     }
@@ -858,6 +901,10 @@ impl<'a> Environment<'a> {
     /// （Java `escapes.removeFirst()` 仅弹一层）；无显式转义时按 autoesc + output_format。
     /// 占位标识符绑定为插值模型（Java 解析期以插值表达式代入，等价——见 docs/08 §5）。
     pub(crate) fn apply_escape(&mut self, m: &TModel) -> Result<String> {
+        // 热路径快路径：无转义栈且未开自动转义 → 直接字符串化（跳过快照/循环开销）
+        if self.escapes.is_empty() && !self.auto_escape {
+            return model_to_string(self, m);
+        }
         // 从栈顶（最内层）向栈底走：每个 Plain 取消一个 Custom/Html/Xml（对应
         // Java NoEscapeBlock.parse 的 removeFirst 弹栈语义）
         // 先快照栈（借用冲突：求值期需 &mut self）
@@ -918,7 +965,8 @@ impl<'a> Environment<'a> {
         let placeholder_names = collect_ident_names(expr);
         match eval::eval(self, expr) {
             Ok(m) => Ok(m),
-            Err(TemplateError::InvalidReference { name }) if placeholder_names.contains(&name) => {
+            Err(TemplateError::InvalidReference { name, .. })
+                if placeholder_names.contains(&name) => {
                 let body = BodyCtx {
                     vars: std::iter::once((name.clone(), cur.clone())).collect(),
                 };
@@ -985,6 +1033,11 @@ impl<'a> Environment<'a> {
         body_params: Vec<String>,
         is_function: bool,
     ) -> Result<RunSignal> {
+        if self.macro_frames.len() >= MAX_MACRO_CALL_DEPTH {
+            return Err(TemplateError::misc(format!(
+                "Maximum macro/function call depth ({MAX_MACRO_CALL_DEPTH}) exceeded."
+            )));
+        }
         // Java :848-879：宏帧 + 参数绑定（求值发生在调用方上下文）
         let frame = Rc::new(MacroFrame {
             locals: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
@@ -1003,7 +1056,9 @@ impl<'a> Environment<'a> {
         // Java :880-894：压帧、切换命名空间、清空局部上下文
         self.macro_frames.push(frame.clone());
         let prev_ns = self.current_ns.clone();
-        self.current_ns = mv.ns.clone();
+        self.current_ns = mv.ns.upgrade().ok_or_else(|| {
+            TemplateError::misc("The macro's namespace is no longer available.")
+        })?;
         let prev_local = std::mem::take(&mut self.local_stack);
         // Java :893 checkParamsSetAndApplyDefaults（宏上下文内求值默认参数；
         // 必须在压帧/清空局部上下文之后——默认值表达式经宏帧局部变量解析）
@@ -1157,13 +1212,20 @@ impl<'a> Environment<'a> {
     /// 执行被包含模板（Java include(includedTemplate) :3126-3145：
     /// 先 importMacros 把宏注册进当前命名空间，再执行根元素；不切换命名空间）
     pub fn include_template(&mut self, included: &Template) -> Result<()> {
+        if self.include_stack.len() >= MAX_INCLUDE_DEPTH {
+            return Err(TemplateError::misc(format!(
+                "Maximum template include depth ({MAX_INCLUDE_DEPTH}) exceeded."
+            )));
+        }
         let cur_ns = self.current_ns.clone();
         for (name, def) in &included.macros {
             register_macro(&cur_ns, name, def);
         }
         let prev_name = self.current_template_name.clone();
         self.current_template_name = included.name.clone();
+        self.include_stack.push(included.name.clone());
         let r = self.run(&included.root);
+        self.include_stack.pop();
         self.current_template_name = prev_name;
         match r {
             Ok(RunSignal::Completed) => Ok(()),
@@ -1241,9 +1303,19 @@ pub(crate) fn register_macro(ns: &Rc<Namespace>, name: &str, def: &MacroDef) {
         name.to_string(),
         Rc::new(MacroValue {
             def: Rc::new(def.clone()),
-            ns: ns.clone(),
+            ns: Rc::downgrade(ns),
         }),
     );
+}
+
+/// 校验一次写入后不会超过单个输出/捕获缓冲上限。
+fn ensure_output_limit(current_len: usize, additional_len: usize) -> Result<()> {
+    match current_len.checked_add(additional_len) {
+        Some(total) if total <= MAX_OUTPUT_BYTES => Ok(()),
+        _ => Err(TemplateError::misc(format!(
+            "Template output exceeds the {MAX_OUTPUT_BYTES}-byte safety limit."
+        ))),
+    }
 }
 
 /// 宏参数绑定 —— 对应 Java `setMacroContextLocalsFromArguments`（Environment.java:919-1094，
@@ -1956,22 +2028,32 @@ pub(crate) fn attach_location(err: TemplateError, template_name: &str, span: Spa
         span.line, span.col
     );
     match err {
-        TemplateError::InvalidReference { name } => {
+        TemplateError::InvalidReference { name, ctx } => {
             if name.contains("[in template") {
-                TemplateError::InvalidReference { name }
+                TemplateError::InvalidReference { name, ctx }
             } else {
                 TemplateError::InvalidReference {
                     name: format!("{name}  {loc}"),
+                    ctx,
                 }
             }
         }
-        TemplateError::TypeMismatch { expected, actual } => {
+        TemplateError::TypeMismatch {
+            expected,
+            actual,
+            ctx,
+        } => {
             if actual.contains("[in template") {
-                TemplateError::TypeMismatch { expected, actual }
+                TemplateError::TypeMismatch {
+                    expected,
+                    actual,
+                    ctx,
+                }
             } else {
                 TemplateError::TypeMismatch {
                     expected,
                     actual: format!("{actual}  {loc}"),
+                    ctx,
                 }
             }
         }
@@ -2112,11 +2194,72 @@ mod tests {
         let err =
             render_src(&c, &loader, "err.ftl", "${missing}", DynValue::Map(vec![])).unwrap_err();
         match err {
-            TemplateError::InvalidReference { name } => {
+            TemplateError::InvalidReference { name, .. } => {
                 assert!(name.contains("missing"), "{name}");
                 assert!(name.contains("[in template"), "{name}");
             }
             other => panic!("expected InvalidReference, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn macro_namespace_is_released_after_environment_drops() {
+        let (c, loader) = cfg();
+        loader.put("macro.ftl", "<#macro m>ok</#macro>");
+        let template = c.get_template("macro.ftl").unwrap();
+        let namespace = {
+            let mut out = Vec::new();
+            let env = Environment::new(&template, TModel::from_hash(IndexMap::new()), &mut out);
+            let weak = Rc::downgrade(&env.main_ns);
+            assert!(weak.upgrade().is_some());
+            weak
+        };
+        assert!(
+            namespace.upgrade().is_none(),
+            "宏值不得与命名空间形成 Rc 强引用环"
+        );
+    }
+
+    #[test]
+    fn recursive_include_is_stopped_at_depth_limit() {
+        let (c, loader) = cfg();
+        let err = render_src(
+            &c,
+            &loader,
+            "self.ftl",
+            "before<#include 'self.ftl'>",
+            DynValue::Map(vec![]),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_user_message()
+                .contains("Maximum template include depth"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn recursive_macro_is_stopped_at_depth_limit() {
+        let (c, loader) = cfg();
+        let err = render_src(
+            &c,
+            &loader,
+            "recursive.ftl",
+            "<#macro m><@m/></#macro><@m/>",
+            DynValue::Map(vec![]),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_user_message()
+                .contains("Maximum macro/function call depth"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn output_limit_rejects_overflow_without_allocating() {
+        assert!(ensure_output_limit(MAX_OUTPUT_BYTES - 1, 1).is_ok());
+        assert!(ensure_output_limit(MAX_OUTPUT_BYTES, 1).is_err());
+        assert!(ensure_output_limit(usize::MAX, 1).is_err());
     }
 }

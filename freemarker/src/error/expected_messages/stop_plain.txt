@@ -1,0 +1,6 @@
+[No error description was available.]
+
+----
+FTL stack trace ("~" means nesting-related):
+	- Failed at: #stop  [in template "stop_plain.ftl" at line 1, column 1]
+----

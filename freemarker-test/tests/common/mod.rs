@@ -1444,7 +1444,9 @@ impl TemplateDirectiveModel for AssertFailsDirective {
                     // InvalidReferenceException → 消息含 "null or missing" 与 Tip 段）
                     let matched = match exp.as_str() {
                         "UnexpectedTypeException" => {
-                            msg.contains("is required") || msg.contains("is not applicable")
+                            msg.contains("Expected a ")
+                                || msg.contains("is required")
+                                || msg.contains("is not applicable")
                         }
                         "InvalidReferenceException" => msg.contains("null or missing"),
                         _ => msg.contains(&exp),
