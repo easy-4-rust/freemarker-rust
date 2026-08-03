@@ -116,8 +116,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain (1.93, pinned to baseline toolchain)
+        # cargo-public-api 输出随 rustc 版本漂移（实测 1.97.1 缺 builtins 模块）——
+        # 固定到 api-baseline.txt 的生成版本；升级工具链须重新生成基线
+        uses: dtolnay/rust-toolchain@1.93
 
       - name: Check dependency licenses, sources, and duplicates
         uses: EmbarkStudios/cargo-deny-action@v2
