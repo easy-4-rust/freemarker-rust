@@ -94,8 +94,44 @@ fn object_wrapper_emulatable(case: &Case, v: &str) -> bool {
     false
 }
 
+/// 永久 NOT_APPLICABLE 用例判定（用户决策；docs/测试/生产就绪审计.md 完整清单）。
+/// 命中 → 直接 SKIP 并记录分类原因（在 object_wrapper/错误分类等通用路径之前
+/// 判定，保证 15 项 NA 分类确定化、不随引擎演进而改变）：
+/// - JVM 反射系（security.md 决策 1，引擎永久不支持）：
+///   - beans：BeansWrapper/POJO 数据模型（用户以 DynValue 手工包装）
+///   - overloaded-methods-23bc / overloaded-methods-2-{inc,desc}-bwici-* 共 11 项：
+///     BeansWrapper 反射方法重载分派
+/// - 套件自身问题（与真实 Java 2.3.34 行为矛盾，jar 实测用例本身无法通过）：
+///   - transforms：Java 特有变换类 JythonRuntime（ClassNotFoundException）
+///   - string-builtins3 / date-type-builtins：jython25 弃用套件的过期断言
+///     （string-builtins3：-1?lower_abc 解析为 -(1?lower_abc)，错误消息不含
+///     '0|at least 1'；date-type-builtins：?string.xs 对 date-only 输出带 Z）
+fn permanent_na_reason(case: &Case) -> Option<String> {
+    let reason = match case.base.as_str() {
+        "beans" => "永久 NA：JVM 反射（BeansWrapper/POJO 数据模型，security.md 决策 1——以 DynValue 手工包装）",
+        "transforms" => "永久 NA：Java 特有变换类（JythonRuntime，ClassNotFoundException）",
+        "string-builtins3" => {
+            "永久 NA：jython25 弃用套件过期断言（-1?lower_abc 解析为 -(1?lower_abc)，与真实 Java 2.3.34 矛盾）"
+        }
+        "date-type-builtins" => {
+            "永久 NA：jython25 弃用套件过期断言（?string.xs 对 date-only 输出带 Z，与真实 Java 2.3.34 矛盾）"
+        }
+        // overloaded-methods-23bc + overloaded-methods-2-{inc,desc}-bwici-2.3.20/21
+        // 共 11 项：BeansWrapper 反射方法重载分派
+        b if b.starts_with("overloaded-methods") => {
+            "永久 NA：方法模型重载（BeansWrapper 反射方法分派）"
+        }
+        _ => return None,
+    };
+    Some(reason.to_string())
+}
+
 /// 执行单个用例（Java runTest 的等价物）
 fn run_case(case: &Case) -> Outcome {
+    // 永久 NA 用例最先判定（分类确定化，见 permanent_na_reason 注释）
+    if let Some(reason) = permanent_na_reason(case) {
+        return Outcome::Skipped { reason };
+    }
     // Java 特有能力设置 → SKIP（记录原因）。
     // new_builtin_class_resolver：已由引擎实现（core::template_class_resolver
     // 四策略 + 分段列表解析），apply_settings 解析失败时自然落入 SKIP。
@@ -112,25 +148,6 @@ fn run_case(case: &Case) -> Outcome {
     // <2.3.24）已由引擎按 Settings.incompatible_improvements 版本化实现，含旧 ICI 的
     // 用例（encoding-builtins / listhashliteral-ici-2.3.20 / string-builtins-ici-2.3.19 /
     // type-builtins min 变体）照常渲染对比
-    // string-builtins3（jython25 弃用模块套件，未随 Gradle 构建运行）：断言与真实
-    // Java 引擎矛盾（jar 实测：`-1?lower_abc` 按 FTL 文法解析为 `-(1?lower_abc)`，
-    // 错误为 "For \"-...\" right-hand operand: Expected a number..."，不含
-    // messageRegexp 要求的 "0|at least 1"）→ 用例本身无法通过，非引擎缺口
-    if case.base == "string-builtins3" {
-        return Outcome::Skipped {
-            reason: "用例断言与真实 Java 引擎矛盾（jar 实测 -1?lower_abc 解析为 -(1?lower_abc)，错误消息不含 '0|at least 1'；jython25 弃用模块的过期断言）"
-                .to_string(),
-        };
-    }
-    // date-type-builtins（jython25 弃用模块套件，未随 Gradle 构建运行）：line 28/29
-    // 断言与真实 Java 引擎矛盾（jar 实测完整模板在 2.3.34 同样失败——?string.xs 对
-    // date-only 输出带 Z "2003-04-05Z"，断言期望 "2003-04-05"）→ 用例本身无法通过
-    if case.base == "date-type-builtins" {
-        return Outcome::Skipped {
-            reason: "用例断言与真实 Java 引擎矛盾（jar 实测 ?string.xs 对 date-only 输出带 Z，line 28/29 断言 '2003-04-05'/'06:07:08' 在 2.3.34 同样失败；jython25 弃用模块的过期断言）"
-                .to_string(),
-        };
-    }
     // identifier-escaping：转义标识符（`\-` 等）与 `@` 字符、visit/recurse 的 using
     // 子句均已实现；?sort 的 Collator TERTIARY 标点排序已对齐（代理字符映射）；
     // .namespace?keys 已包含 macro/function 条目。全部差异已修复。

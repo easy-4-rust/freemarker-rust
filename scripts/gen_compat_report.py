@@ -26,24 +26,25 @@ def run_golden() -> tuple:
     ).stdout
     m = re.search(r"PASS=(\d+) FAIL=(\d+) SKIPPED=(\d+)", out)
     pass_n, fail_n, skip_n = (int(m.group(i)) for i in (1, 2, 3)) if m else (0, 0, 0)
-    # 分类 SKIP 原因
-    categories = {"Java 特有 wrapper": 0, "?new/?api 类加载": 0, "旧 ICI 版本": 0,
-                  "jython25 断言矛盾": 0, "XML/解析器限制": 0, "其他": 0}
+    # 分类 SKIP 原因（永久 NA 用例由 golden.rs permanent_na_reason 统一标记，
+    # 15 项：JVM 反射/方法重载 12 + jython25 断言矛盾 2 + Java 特有变换类 1；
+    # 其余分类保留给未来新 SKIP 的通用判定）
+    categories = {"永久 NA：JVM 反射/方法重载": 0, "永久 NA：jython25 断言矛盾": 0,
+                  "永久 NA：Java 特有类": 0, "Java 特有 wrapper": 0, "其他": 0}
     for line in out.splitlines():
         line = line.strip()
         if not line.startswith("[skip]"):
             continue
         reason = line
-        if "BeansWrapper" in reason or "DefaultObjectWrapper" in reason or "object_wrapper" in reason:
+        if "永久 NA" in reason:
+            if "JVM 反射" in reason or "方法模型重载" in reason:
+                categories["永久 NA：JVM 反射/方法重载"] += 1
+            elif "jython25" in reason:
+                categories["永久 NA：jython25 断言矛盾"] += 1
+            else:
+                categories["永久 NA：Java 特有类"] += 1
+        elif "BeansWrapper" in reason or "DefaultObjectWrapper" in reason or "object_wrapper" in reason:
             categories["Java 特有 wrapper"] += 1
-        elif "?new" in reason or "?api" in reason or "JythonRuntime" in reason:
-            categories["?new/?api 类加载"] += 1
-        elif "ICI" in reason or "旧版" in reason or "ici-" in reason:
-            categories["旧 ICI 版本"] += 1
-        elif "矛盾" in reason:
-            categories["jython25 断言矛盾"] += 1
-        elif "XML" in reason or "xmlns" in reason or "解析" in reason or "node" in reason:
-            categories["XML/解析器限制"] += 1
         else:
             categories["其他"] += 1
     return pass_n, fail_n, skip_n, categories

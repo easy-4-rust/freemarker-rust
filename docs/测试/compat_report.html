@@ -21,9 +21,9 @@ th { background: #f0f0f0; }
 <table>
 <tr><th>PASS</th><th>FAIL</th><th>SKIP</th><th>总计</th></tr>
 <tr>
-  <td class="green">87</td>
+  <td class="green">113</td>
   <td class="red">0</td>
-  <td>41</td>
+  <td>15</td>
   <td>128</td>
 </tr>
 </table>
@@ -31,33 +31,32 @@ th { background: #f0f0f0; }
 <h3>SKIP 分类</h3>
 <table>
 <tr><th>类别</th><th>数量</th></tr>
-<tr><td>Java 特有 wrapper</td><td>24</td></tr>
-<tr><td>?new/?api 类加载</td><td>7</td></tr>
-<tr><td>旧 ICI 版本</td><td>5</td></tr>
-<tr><td>jython25 断言矛盾</td><td>2</td></tr>
-<tr><td>XML/解析器限制</td><td>1</td></tr>
-<tr><td>其他</td><td>2</td></tr>
+<tr><td>永久 NA：JVM 反射/方法重载</td><td>12</td></tr>
+<tr><td>永久 NA：jython25 断言矛盾</td><td>2</td></tr>
+<tr><td>永久 NA：Java 特有类</td><td>1</td></tr>
+<tr><td>Java 特有 wrapper</td><td>0</td></tr>
+<tr><td>其他</td><td>0</td></tr>
 </table>
 
 <h2>2. java_ported（Java 测试 1:1 移植）</h2>
 <table>
 <tr><th>通过</th><th>失败</th><th>忽略</th></tr>
 <tr>
-  <td class="green">501</td>
+  <td class="green">502</td>
   <td class="red">0</td>
   <td>7</td>
 </tr>
 </table>
 
 <h2>3. 性能基准（Rust/Java 比值，门禁 ≥ 0.5×）</h2>
-<p>汇总: <strong>0/5 达标</strong></p>
+<p>汇总: <strong>5/5 达标</strong></p>
 <table>
 <tr><th>场景</th><th>Rust/Java</th><th>门禁</th></tr>
-<tr><td>big_data_model</td><td>0.336×</td><td><span style="color:red">❌ 未达标</span></td></tr>
-<tr><td>if_else_chain</td><td>0.136×</td><td><span style="color:red">❌ 未达标</span></td></tr>
-<tr><td>macro_call_100</td><td>0.216×</td><td><span style="color:red">❌ 未达标</span></td></tr>
-<tr><td>simple_hello_world</td><td>0.337×</td><td><span style="color:red">❌ 未达标</span></td></tr>
-<tr><td>simple_loop_100</td><td>0.080×</td><td><span style="color:red">❌ 未达标</span></td></tr>
+<tr><td>big_data_model</td><td>1.012×</td><td><span style="color:green">✅ 达标</span></td></tr>
+<tr><td>if_else_chain</td><td>2.802×</td><td><span style="color:green">✅ 达标</span></td></tr>
+<tr><td>macro_call_100</td><td>0.692×</td><td><span style="color:green">✅ 达标</span></td></tr>
+<tr><td>simple_hello_world</td><td>5.053×</td><td><span style="color:green">✅ 达标</span></td></tr>
+<tr><td>simple_loop_100</td><td>1.551×</td><td><span style="color:green">✅ 达标</span></td></tr>
 
 </table>
 
