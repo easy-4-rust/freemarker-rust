@@ -248,8 +248,8 @@ fn decode_bytes(bytes: &[u8], encoding_name: &str) -> String {
     if encoding_name.to_uppercase().contains("UTF-16") {
         let (start, big_endian) = if bytes.len() >= 2 {
             match (bytes[0], bytes[1]) {
-                (0xFE, 0xFF) => (2, true),   // UTF-16BE BOM
-                (0xFF, 0xFE) => (2, false),  // UTF-16LE BOM
+                (0xFE, 0xFF) => (2, true),  // UTF-16BE BOM
+                (0xFF, 0xFE) => (2, false), // UTF-16LE BOM
                 _ => (0, !encoding_name.to_uppercase().contains("LE")),
             }
         } else {
@@ -840,17 +840,27 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             fn bean_props(name: &str) -> IndexMap<String, TModel> {
                 let mut h = IndexMap::new();
                 h.insert("age".to_string(), num(27));
-                h.insert("location".to_string(), TModel::from_scalar("San Francisco".to_string()));
+                h.insert(
+                    "location".to_string(),
+                    TModel::from_scalar("San Francisco".to_string()),
+                );
                 h.insert("luckyNumber".to_string(), num(7));
                 h.insert("name".to_string(), TModel::from_scalar(name.to_string()));
                 h.insert("empty".to_string(), TModel::from_boolean(false));
-                h.insert("class".to_string(), TModel::from_scalar(
-                    "class freemarker.test.templatesuite.TemplateTestCase$TestMapBean".to_string()));
+                h.insert(
+                    "class".to_string(),
+                    TModel::from_scalar(
+                        "class freemarker.test.templatesuite.TemplateTestCase$TestMapBean"
+                            .to_string(),
+                    ),
+                );
                 h
             }
             fn shadow_bean(name: &str) -> TModel {
                 let mut tm = TModel::from_hash(bean_props(name));
-                tm.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar(name.to_string())));
+                tm.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+                    name.to_string(),
+                )));
                 tm.kind = freemarker::template::ModelKind::Wrapped;
                 tm.type_name = "wrapped";
                 tm
@@ -858,19 +868,44 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             fn all_bean_props(name: &str) -> IndexMap<String, TModel> {
                 let mut h = bean_props(name);
                 // Java Object 方法（TemplateHashModelEx2 不暴露 → 值恒 "UNKNOWN"）
-                for method in &["clear","clone","containsKey","containsValue","entrySet",
-                    "equals","get","getClass","getLuckyNumber","getName","hashCode",
-                    "isEmpty","keySet","notify","notifyAll","put","putAll","remove",
-                    "size","toString","values","wait"] {
+                for method in &[
+                    "clear",
+                    "clone",
+                    "containsKey",
+                    "containsValue",
+                    "entrySet",
+                    "equals",
+                    "get",
+                    "getClass",
+                    "getLuckyNumber",
+                    "getName",
+                    "hashCode",
+                    "isEmpty",
+                    "keySet",
+                    "notify",
+                    "notifyAll",
+                    "put",
+                    "putAll",
+                    "remove",
+                    "size",
+                    "toString",
+                    "values",
+                    "wait",
+                ] {
                     if !h.contains_key(*method) {
-                        h.insert(method.to_string(), TModel::from_scalar("UNKNOWN".to_string()));
+                        h.insert(
+                            method.to_string(),
+                            TModel::from_scalar("UNKNOWN".to_string()),
+                        );
                     }
                 }
                 h
             }
             fn shadow_all_bean(name: &str) -> TModel {
                 let mut tm = TModel::from_hash(all_bean_props(name));
-                tm.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar(name.to_string())));
+                tm.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+                    name.to_string(),
+                )));
                 tm.kind = freemarker::template::ModelKind::Wrapped;
                 tm.type_name = "wrapped";
                 tm
@@ -883,10 +918,15 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             {
                 let mut h3 = IndexMap::new();
                 h3.insert("age".to_string(), num(27));
-                h3.insert("location".to_string(), TModel::from_scalar("San Francisco".to_string()));
+                h3.insert(
+                    "location".to_string(),
+                    TModel::from_scalar("San Francisco".to_string()),
+                );
                 h3.insert("name".to_string(), TModel::from_scalar("Chris".to_string()));
                 let mut tm3 = TModel::from_hash(h3);
-                tm3.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar("Chris".to_string())));
+                tm3.scalar = Some(std::rc::Rc::new(freemarker::template::SimpleScalar(
+                    "Chris".to_string(),
+                )));
                 tm3.kind = freemarker::template::ModelKind::Wrapped;
                 tm3.type_name = "wrapped";
                 m.insert("m3".to_string(), tm3);
@@ -895,7 +935,10 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             {
                 let mut h4 = IndexMap::new();
                 h4.insert("age".to_string(), num(27));
-                h4.insert("location".to_string(), TModel::from_scalar("San Francisco".to_string()));
+                h4.insert(
+                    "location".to_string(),
+                    TModel::from_scalar("San Francisco".to_string()),
+                );
                 h4.insert("name".to_string(), TModel::from_scalar("Chris".to_string()));
                 m.insert("m4".to_string(), TModel::from_hash(h4));
             }
@@ -907,7 +950,10 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
             {
                 let mut h7 = IndexMap::new();
                 h7.insert("age".to_string(), num(27));
-                h7.insert("location".to_string(), TModel::from_scalar("San Francisco".to_string()));
+                h7.insert(
+                    "location".to_string(),
+                    TModel::from_scalar("San Francisco".to_string()),
+                );
                 h7.insert("name".to_string(), TModel::from_scalar("Chris".to_string()));
                 m.insert("m7".to_string(), TModel::from_hash(h7));
             }
@@ -920,9 +966,9 @@ pub fn build_data_model(simple_test_name: &str) -> TModel {
         "xml-fragment" => {
             // Java TemplateTestCase：node = NodeModel.parse(XML 字符串) 的 b 元素
             // （模板 `${node?node_name} = b`；根为 <root>，node 是其孙元素 b）
-            let xml = "<root xmlns:n=\"http://x\"><a><b><n:c>C&lt;>&amp;\"']]&gt;</n:c></b></a></root>";
-            let root_node = freemarker::xml::parse_xml(xml)
-                .expect("xml-fragment XML parse");
+            let xml =
+                "<root xmlns:n=\"http://x\"><a><b><n:c>C&lt;>&amp;\"']]&gt;</n:c></b></a></root>";
+            let root_node = freemarker::xml::parse_xml(xml).expect("xml-fragment XML parse");
             // 取 b 元素（document → root → a → b）
             let b = root_node
                 .node

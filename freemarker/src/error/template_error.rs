@@ -12,14 +12,19 @@ pub type Result<T> = std::result::Result<T, TemplateError>;
 pub enum TemplateError {
     /// 变量缺失（Java InvalidReferenceException）：
     /// `The following has evaluated to null or missing:\n==> {name}  [in template ...]` + Tip 段
-    InvalidReference { name: String, ctx: ErrorCtx },
+    ///
+    /// `ctx` 装箱（`Box<ErrorCtx>`）：ErrorCtx 携带完整错误上下文（模板名/位置/
+    /// 指令栈/blamer 等），按值内嵌会使本枚举超过 128 字节，触发
+    /// clippy::result_large_err（全部 Result<TemplateError> 返回点，约 460 处）。
+    /// 装箱后最大变体 < 64 字节；错误路径堆分配一次，可忽略不计。
+    InvalidReference { name: String, ctx: Box<ErrorCtx> },
     /// 类型不匹配（UnexpectedTypeException 族）：
     /// `[{For "{op}" {role}: }Expected {expected}, but this has evaluated to a {actual}{:|.}]`
     /// + `\n==> {blamed}  [in template ...]`（有 blame 时）
     TypeMismatch {
         expected: &'static str,
         actual: String,
-        ctx: ErrorCtx,
+        ctx: Box<ErrorCtx>,
     },
     /// 通用运行时错误（_MiscTemplateException）
     Misc { message: String },
@@ -85,7 +90,7 @@ impl TemplateError {
     pub fn invalid_reference(name: impl Into<String>) -> Self {
         TemplateError::InvalidReference {
             name: name.into(),
-            ctx: ErrorCtx::default(),
+            ctx: Box::new(ErrorCtx::default()),
         }
     }
 
@@ -94,10 +99,10 @@ impl TemplateError {
     pub fn invalid_reference_at(name: impl Into<String>, span: Span) -> Self {
         TemplateError::InvalidReference {
             name: name.into(),
-            ctx: ErrorCtx {
+            ctx: Box::new(ErrorCtx {
                 span,
                 ..ErrorCtx::default()
-            },
+            }),
         }
     }
 
@@ -117,27 +122,23 @@ impl TemplateError {
         TemplateError::TypeMismatch {
             expected,
             actual: actual.into(),
-            ctx: ErrorCtx::default(),
+            ctx: Box::new(ErrorCtx::default()),
         }
     }
 
     /// 带 blame 表达式位置的类型不匹配
-    pub fn type_mismatch_at(
-        expected: &'static str,
-        actual: impl Into<String>,
-        span: Span,
-    ) -> Self {
+    pub fn type_mismatch_at(expected: &'static str, actual: impl Into<String>, span: Span) -> Self {
         TemplateError::TypeMismatch {
             expected,
             actual: actual.into(),
-            ctx: ErrorCtx {
+            ctx: Box::new(ErrorCtx {
                 span,
                 ..ErrorCtx::default()
-            },
+            }),
         }
     }
 
-    /// 附加 blamer 前缀与 blame 表达式（Java `_ErrorDescriptionBuilder.blame(blamed)` 
+    /// 附加 blamer 前缀与 blame 表达式（Java `_ErrorDescriptionBuilder.blame(blamed)`
     /// + `showBlamer(true)` 的 `For "{nodeTypeSymbol}" {role}: ` 段与 `==> {expr}` 行）
     pub fn with_blame(mut self, node_type_symbol: &str, role: &str, blamed_expr: &str) -> Self {
         if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
@@ -172,6 +173,15 @@ impl TemplateError {
     pub fn with_assignment_target(mut self, target: &str) -> Self {
         if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
             ctx.assignment_target = Some(format!("\"{target}\""));
+        }
+        self
+    }
+
+    /// 附加 Tip（Java `_ErrorDescriptionBuilder.tip(...)`；TypeMismatch 消息的
+    /// `\n\n----\nTip: ...\n----` 段——数字键哈希目标 / 集合目标等场景）
+    pub fn with_tip(mut self, tip: &str) -> Self {
+        if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
+            ctx.extra_tip = Some(tip.to_string());
         }
         self
     }
@@ -260,7 +270,9 @@ impl TemplateError {
                     .unwrap_or_else(|| expected_phrase_for(expected));
                 s.push_str(&format!("Expected {expected_phrase}, but "));
                 match &ctx.assignment_target {
-                    Some(t) => s.push_str(&format!("assignment target variable {t} has evaluated to ")),
+                    Some(t) => {
+                        s.push_str(&format!("assignment target variable {t} has evaluated to "))
+                    }
                     None => s.push_str("this has evaluated to "),
                 }
                 s.push_str(&a_or_an(actual));
@@ -271,6 +283,11 @@ impl TemplateError {
                 }
                 if let Some(blamed) = &ctx.blamed_expr {
                     s.push_str(&format!("\n==> {blamed}{}", ctx.blamed_location()));
+                }
+                // Java _ErrorDescriptionBuilder.toString :134-164：Tip 段
+                // （数字键哈希/集合目标等场景的附加提示，jar 实测）
+                if let Some(tip) = &ctx.extra_tip {
+                    s.push_str(&render_tips([tip.as_str()]));
                 }
                 if let Some(sec) = render_ftl_stack_section(&ctx.instruction_stack) {
                     s.push_str(&sec);
@@ -383,16 +400,15 @@ mod tests {
     #[test]
     fn invalid_reference_message_matches_java() {
         // 对照 Java InvalidReferenceException 消息格式（描述 + Tip 段，jar 实测）
-        let mut e = TemplateError::invalid_reference_at(
-            "user.name",
-            Span::new(1, 3),
-        );
+        let mut e = TemplateError::invalid_reference_at("user.name", Span::new(1, 3));
         if let TemplateError::InvalidReference { ctx, .. } = &mut e {
             ctx.template_name = Some("t.ftl".to_string());
         }
         let msg = e.to_user_message();
         assert!(
-            msg.starts_with("The following has evaluated to null or missing:\n==> user.name  [in template"),
+            msg.starts_with(
+                "The following has evaluated to null or missing:\n==> user.name  [in template"
+            ),
             "{msg}"
         );
         assert!(

@@ -566,7 +566,8 @@ fn test_parse_error() {
         .expect("应解析失败");
     let msg = e.to_user_message();
     assert!(msg.contains("test_aa.ftl"), "解析错误应含命中名：{msg}");
-    // Java 断言 e.getTemplateName()=="test_aa.ftl" —— v1 Parse 错误含模板名文本
-    // （Parse { template, .. } 的 to_user_message 为 "Parsing error in template ..."）
-    assert!(msg.contains("Parsing error"), "{msg}");
+    // Java 断言 e.getTemplateName()=="test_aa.ftl" —— Parse { template, .. } 的
+    // to_user_message 为 "Syntax error in template "test_aa.ftl" ..."（Java 2.3.34
+    // ParseException.getMessage 格式，jar 实测）
+    assert!(msg.contains("Syntax error in template"), "{msg}");
 }

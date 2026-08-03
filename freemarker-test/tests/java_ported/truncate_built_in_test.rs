@@ -43,24 +43,59 @@ fn cfg() -> (Configuration, Arc<StringLoader>) {
 fn test_truncate() {
     let (c, loader) = cfg();
     assert_output(&c, &loader, "${t?truncate(20)}", "Some text for tru...");
-    assert_output(&c, &loader, "${t?truncate(20, '|')}", "Some text for trunc|");
+    assert_output(
+        &c,
+        &loader,
+        "${t?truncate(20, '|')}",
+        "Some text for trunc|",
+    );
     // 3-arg overload not implemented: expects 1 or 2 arguments
-    assert_error_contains(&c, &loader, "${t?truncate(20, '|', 7)}", &["?truncate(...) expects 1 or 2 arguments"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncate(20, '|', 7)}",
+        &["?truncate(...) expects 1 or 2 arguments"],
+    );
 
     assert_output(&c, &loader, "${u?truncate(20)}", "CaNotBeBrokenAnyw...");
-    assert_output(&c, &loader, "${u?truncate(20, '|')}", "CaNotBeBrokenAnywhe|");
-    assert_error_contains(&c, &loader, "${u?truncate(20, '|', 3)}", &["?truncate(...) expects 1 or 2 arguments"]);
+    assert_output(
+        &c,
+        &loader,
+        "${u?truncate(20, '|')}",
+        "CaNotBeBrokenAnywhe|",
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${u?truncate(20, '|', 3)}",
+        &["?truncate(...) expects 1 or 2 arguments"],
+    );
 
     assert_output(&c, &loader, "${t?truncate(20)?isMarkupOutput?c}", "false");
 
     assert_output(&c, &loader, "${t?truncate(0)}", "");
-    assert_error_contains(&c, &loader, "${u?truncate(3, '', 0)}", &["?truncate(...) expects 1 or 2 arguments"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${u?truncate(3, '', 0)}",
+        &["?truncate(...) expects 1 or 2 arguments"],
+    );
 
     // mTerm is passed as a plain string (v1 has no markup model)
-    assert_output(&c, &loader, "${t?truncate(200, mTerm)}", "Some text for truncation testing.");
+    assert_output(
+        &c,
+        &loader,
+        "${t?truncate(200, mTerm)}",
+        "Some text for truncation testing.",
+    );
     // Negative length: renders empty
     assert_output(&c, &loader, "${t?truncate(-1)}", "");
-    assert_error_contains(&c, &loader, "${t?truncate(200, 'x', -1)}", &["?truncate(...) expects 1 or 2 arguments"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncate(200, 'x', -1)}",
+        &["?truncate(...) expects 1 or 2 arguments"],
+    );
 }
 
 /// Java testTruncateM
@@ -70,16 +105,51 @@ fn test_truncate_m() {
     // _m variants require markup/node infrastructure which isn't supported yet
     let err = "requires markup/node infrastructure";
     assert_error_contains(&c, &loader, "${t?truncateM(15)}", &[err, "truncate_m"]);
-    assert_error_contains(&c, &loader, "${t?truncate_m(15, mTerm)}", &[err, "truncate_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateM(15, mTerm)}", &[err, "truncate_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateM(15, mTerm, 3)}", &[err, "truncate_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncate_m(15, mTerm)}",
+        &[err, "truncate_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateM(15, mTerm)}",
+        &[err, "truncate_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateM(15, mTerm, 3)}",
+        &[err, "truncate_m"],
+    );
 
-    assert_error_contains(&c, &loader, "${u?truncateM(20, mTerm)}", &[err, "truncate_m"]);
-    assert_error_contains(&c, &loader, "${u?truncateM(20, mTerm, 3)}", &[err, "truncate_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${u?truncateM(20, mTerm)}",
+        &[err, "truncate_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${u?truncateM(20, mTerm, 3)}",
+        &[err, "truncate_m"],
+    );
 
     assert_error_contains(&c, &loader, "${t?truncateM(15, '|')}", &[err, "truncate_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateM(15, '|')?isMarkupOutput?c}", &[err, "truncate_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateM(15, mTerm)?isMarkupOutput?c}", &[err, "truncate_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateM(15, '|')?isMarkupOutput?c}",
+        &[err, "truncate_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateM(15, mTerm)?isMarkupOutput?c}",
+        &[err, "truncate_m"],
+    );
 }
 
 /// Java testTruncateC
@@ -88,12 +158,27 @@ fn test_truncate_c() {
     let (c, loader) = cfg();
     assert_output(&c, &loader, "${t?truncate_c(20)}", "Some text for tru...");
     assert_output(&c, &loader, "${t?truncateC(20)}", "Some text for tru...");
-    assert_output(&c, &loader, "${t?truncateC(20, '|')}", "Some text for trunc|");
+    assert_output(
+        &c,
+        &loader,
+        "${t?truncateC(20, '|')}",
+        "Some text for trunc|",
+    );
     // 3-arg overload not implemented
-    assert_error_contains(&c, &loader, "${t?truncateC(20, '|', 0)}", &["?truncate_c(...) expects 1 or 2 arguments"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateC(20, '|', 0)}",
+        &["?truncate_c(...) expects 1 or 2 arguments"],
+    );
 
     // mTerm as plain string
-    assert_output(&c, &loader, "${t?truncateC(200, mTerm)}", "Some text for truncation testing.");
+    assert_output(
+        &c,
+        &loader,
+        "${t?truncateC(200, mTerm)}",
+        "Some text for truncation testing.",
+    );
 
     assert_output(&c, &loader, "${t?truncateC(20)?isMarkupOutput?c}", "false");
 }
@@ -103,12 +188,37 @@ fn test_truncate_c() {
 fn test_truncate_cm() {
     let (c, loader) = cfg();
     let err = "requires markup/node infrastructure";
-    assert_error_contains(&c, &loader, "${t?truncate_c_m(20, mTerm)}", &[err, "truncate_c_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateCM(20, mTerm, 3)}", &[err, "truncate_c_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncate_c_m(20, mTerm)}",
+        &[err, "truncate_c_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateCM(20, mTerm, 3)}",
+        &[err, "truncate_c_m"],
+    );
 
-    assert_error_contains(&c, &loader, "${t?truncateCM(20)?isMarkupOutput?c}", &[err, "truncate_c_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateCM(20, '|')?isMarkupOutput?c}", &[err, "truncate_c_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateCM(20, mTerm)?isMarkupOutput?c}", &[err, "truncate_c_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateCM(20)?isMarkupOutput?c}",
+        &[err, "truncate_c_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateCM(20, '|')?isMarkupOutput?c}",
+        &[err, "truncate_c_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateCM(20, mTerm)?isMarkupOutput?c}",
+        &[err, "truncate_c_m"],
+    );
 }
 
 /// Java testTruncateW
@@ -117,16 +227,36 @@ fn test_truncate_w() {
     let (c, loader) = cfg();
     // ?truncate_w truncates at word boundaries; "Some text for truncation testing." is 33 chars,
     // truncating to 20 at word boundary leaves the whole string since no word boundary within 20
-    assert_output(&c, &loader, "${t?truncate_w(20)}", "Some text for truncation testing.");
-    assert_output(&c, &loader, "${t?truncateW(20)}", "Some text for truncation testing.");
+    assert_output(
+        &c,
+        &loader,
+        "${t?truncate_w(20)}",
+        "Some text for truncation testing.",
+    );
+    assert_output(
+        &c,
+        &loader,
+        "${t?truncateW(20)}",
+        "Some text for truncation testing.",
+    );
     // u has no word boundaries → stays full length
     assert_output(&c, &loader, "${u?truncateW(20)}", "CaNotBeBrokenAnywhere");
 
     // mTerm as plain string
-    assert_output(&c, &loader, "${t?truncateW(200, mTerm)}", "Some text for truncation testing.");
+    assert_output(
+        &c,
+        &loader,
+        "${t?truncateW(200, mTerm)}",
+        "Some text for truncation testing.",
+    );
 
     assert_output(&c, &loader, "${t?truncateW(20)?isMarkupOutput?c}", "false");
-    assert_output(&c, &loader, "${t?truncateW(20, '|')?isMarkupOutput?c}", "false");
+    assert_output(
+        &c,
+        &loader,
+        "${t?truncateW(20, '|')?isMarkupOutput?c}",
+        "false",
+    );
 }
 
 /// Java testTruncateWM
@@ -134,17 +264,52 @@ fn test_truncate_w() {
 fn test_truncate_wm() {
     let (c, loader) = cfg();
     let err = "requires markup/node infrastructure";
-    assert_error_contains(&c, &loader, "${t?truncate_w_m(15, mTerm)}", &[err, "truncate_w_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateWM(15, mTerm)}", &[err, "truncate_w_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateWM(15, mTerm, 3)}", &[err, "truncate_w_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncate_w_m(15, mTerm)}",
+        &[err, "truncate_w_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateWM(15, mTerm)}",
+        &[err, "truncate_w_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateWM(15, mTerm, 3)}",
+        &[err, "truncate_w_m"],
+    );
 
-    assert_error_contains(&c, &loader, "${u?truncateWM(20, mTerm)}", &[err, "truncate_w_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${u?truncateWM(20, mTerm)}",
+        &[err, "truncate_w_m"],
+    );
 
     // These use truncateCM (c_m variant) in original test; keep consistent
     let err_cm = "requires markup/node infrastructure";
-    assert_error_contains(&c, &loader, "${t?truncateCM(20)?isMarkupOutput?c}", &[err_cm, "truncate_c_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateCM(20, '|')?isMarkupOutput?c}", &[err_cm, "truncate_c_m"]);
-    assert_error_contains(&c, &loader, "${t?truncateCM(20, mTerm)?isMarkupOutput?c}", &[err_cm, "truncate_c_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateCM(20)?isMarkupOutput?c}",
+        &[err_cm, "truncate_c_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateCM(20, '|')?isMarkupOutput?c}",
+        &[err_cm, "truncate_c_m"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateCM(20, mTerm)?isMarkupOutput?c}",
+        &[err_cm, "truncate_c_m"],
+    );
 }
 
 /// Java testSettingHasEffect
@@ -165,9 +330,19 @@ fn test_different_markup_separator_setting() {
     let (c, loader) = cfg();
     assert_output(&c, &loader, "${t?truncate(20)}", "Some text for tru...");
     // _m variant requires markup infrastructure
-    assert_error_contains(&c, &loader, "${t?truncateM(20)}", &["requires markup/node infrastructure", "truncate_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateM(20)}",
+        &["requires markup/node infrastructure", "truncate_m"],
+    );
     assert_output(&c, &loader, "${t?truncate(20)}", "Some text for tru...");
-    assert_error_contains(&c, &loader, "${t?truncateM(20)}", &["requires markup/node infrastructure", "truncate_m"]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "${t?truncateM(20)}",
+        &["requires markup/node infrastructure", "truncate_m"],
+    );
 }
 
 /// Java testJiraIssueFREEMARKER219
@@ -179,15 +354,34 @@ fn test_jira_issue_freemarker219() {
     assert_output(&c, &loader, "${' 2 '?truncate_c(2, '|')}", " |");
     assert_output(&c, &loader, "${'1 '?truncate_c(1, '|')}", "|");
     assert_output(&c, &loader, "${' 2'?truncate_c(1, '|')}", "|");
-    assert_output(&c, &loader, "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(25, '|')}", "1234 SOMESTREETSSS AVE N|");
+    assert_output(
+        &c,
+        &loader,
+        "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(25, '|')}",
+        "1234 SOMESTREETSSS AVE N|",
+    );
 
     // With empty terminator
     assert_output(&c, &loader, "${'1 3'?truncate_c(2, '')}", "1 ");
     assert_output(&c, &loader, "${' 2 '?truncate_c(2, '')}", " 2");
     assert_output(&c, &loader, "${'1 '?truncate_c(1, '')}", "1");
     assert_output(&c, &loader, "${' 2'?truncate_c(1, '')}", " ");
-    assert_output(&c, &loader, "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(25, '')}", "1234 SOMESTREETSSS AVE NE");
-    assert_output(&c, &loader, "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(24, '')}", "1234 SOMESTREETSSS AVE N");
-    assert_output(&c, &loader, "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(23, '')}", "1234 SOMESTREETSSS AVE ");
+    assert_output(
+        &c,
+        &loader,
+        "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(25, '')}",
+        "1234 SOMESTREETSSS AVE NE",
+    );
+    assert_output(
+        &c,
+        &loader,
+        "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(24, '')}",
+        "1234 SOMESTREETSSS AVE N",
+    );
+    assert_output(
+        &c,
+        &loader,
+        "${'1234 SOMESTREETSSS AVE NE 123'?truncate_c(23, '')}",
+        "1234 SOMESTREETSSS AVE ",
+    );
 }
-

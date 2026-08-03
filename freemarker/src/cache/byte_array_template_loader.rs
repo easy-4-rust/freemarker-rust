@@ -81,9 +81,7 @@ impl TemplateLoader for ByteArrayTemplateLoader {
         let t = self.templates.lock().unwrap();
         let bytes = t
             .get(&src.name())
-            .ok_or_else(|| TemplateError::NotFound {
-                name: src.name(),
-            })?;
+            .ok_or_else(|| TemplateError::NotFound { name: src.name() })?;
         let enc = Encoding::for_label(encoding.as_bytes()).ok_or_else(|| {
             TemplateError::misc(format!(
                 "Unknown encoding: \"{encoding}\". Did you mean to use an IANA character set name?"
@@ -109,7 +107,6 @@ impl TemplateSource for ByteArrayTemplateSource {
         self.0.clone()
     }
 }
-
 
 /// 获取当前时间的 Unix 毫秒时间戳
 fn current_time_millis() -> i64 {

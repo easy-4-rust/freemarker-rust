@@ -699,5 +699,3 @@ fn golden_case_string_builtins_ici_2_3_20() {
         );
     }
 }
-
-

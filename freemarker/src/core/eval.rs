@@ -43,7 +43,11 @@ pub fn eval(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel> {
 }
 
 /// eval 包装的位置附加（仅未带位置的错误；Java 异常构造时即取 blamed 位置）
-fn attach_eval_location(e: TemplateError, env: &crate::core::Environment, span: Span) -> TemplateError {
+fn attach_eval_location(
+    e: TemplateError,
+    env: &crate::core::Environment,
+    span: Span,
+) -> TemplateError {
     if e.has_location() {
         return e;
     }
@@ -466,13 +470,15 @@ fn eval_dot(env: &mut crate::core::Environment, target: &Expr, name: &str) -> Re
     // Java NonHashException（blamed = target 表达式；位置 = target 起始）：
     // `For "." left-hand operand: Expected a hash, but this has evaluated to a {type}:`
     // `==> {target}`
-    Err(TemplateError::type_mismatch("hash", t.type_name).with_blame_at(
-        ".",
-        "left-hand operand",
-        &crate::core::environment::expr_desc(target),
-        &env.current_template_name,
-        target.span,
-    ))
+    Err(
+        TemplateError::type_mismatch("hash", t.type_name).with_blame_at(
+            ".",
+            "left-hand operand",
+            &crate::core::environment::expr_desc(target),
+            &env.current_template_name,
+            target.span,
+        ),
+    )
 }
 
 /// 收集 `?builtin.a.b` 点链（Java 同样生成 Dot(BuiltIn) 嵌套——格式化器哈希访问；
@@ -572,7 +578,38 @@ fn eval_dyn_key(env: &mut crate::core::Environment, target: &Expr, key: &Expr) -
         // 报错，jar 实测 type_index_boolean 基线；`${1[0]}` → "1" 首字符）；
         // 越界 → "String index out of range: ..."（Java 捕获 StringIndexOutOfBounds
         // 后改报 FTL 消息）
-        let text = model_to_string(env, &t)?;
+        let text = match model_to_string(env, &t) {
+            Ok(s) => s,
+            // Java dealWithNumericalKey :157-166：evalAndCoerceToPlainText 抛
+            // NonStringException → catch 后改抛 UnexpectedTypeException，expected
+            // = "sequence or " + STRING_COERCABLE_TYPES_DESC；哈希目标附
+            // "You had a numerical value inside the []..."（:163-165），集合目标由
+            // UnexpectedTypeException 附 "you could convert it to a sequence" 提示
+            // （UnexpectedTypeException.java:96-101，jar 实测 coll_index/hash_num_key）
+            // 仅 NonStringException（TypeMismatch）转换；其余错误（如 boolean_format
+            // 的 Misc）原样传播——type_index_boolean 基线逐字
+            Err(_e @ TemplateError::TypeMismatch { .. }) => {
+                let mut err = TemplateError::type_mismatch("sequence-or-string", t.type_name)
+                    .with_expected_phrase(
+                        "a sequence or string or something automatically convertible to string (number, date or boolean)",
+                    )
+                    .with_blame_at(
+                        "...[...]",
+                        "left-hand operand",
+                        &crate::core::environment::expr_desc(target),
+                        &env.current_template_name,
+                        target.span,
+                    );
+                if t.hash.is_some() {
+                    err = err.with_tip("You had a numerical value inside the []. Currently that's only supported for sequences (lists) and strings. To get a Map item with a non-string key, use myMap?api.get(myKey).");
+                }
+                if t.collection.is_some() {
+                    err = err.with_tip("As the problematic value contains a collection of items, you could convert it to a sequence like someValue?sequence. Be sure though that you won't have a large number of items, as all will be held in memory the same time.");
+                }
+                return Err(err);
+            }
+            Err(e) => return Err(e),
+        };
         return match text.chars().nth(i) {
             Some(c) => Ok(TModel::from_scalar(c.to_string())),
             None => Err(TemplateError::misc(format!(
@@ -900,12 +937,12 @@ fn eval_binary_number(
     // Java ArithmeticExpression._eval：操作数类型失败时 blame 对应操作数——
     // `For "-" left-hand operand: Expected a number, ... ==> lho` /
     // `For "-" right-hand operand: ... ==> rho`（位置 = 操作数表达式起始）
-    let l = l.get_number().map_err(|e| {
-        blame_number_operand(e, env, op.symbol(), "left-hand operand", a)
-    })?;
-    let r = r.get_number().map_err(|e| {
-        blame_number_operand(e, env, op.symbol(), "right-hand operand", b)
-    })?;
+    let l = l
+        .get_number()
+        .map_err(|e| blame_number_operand(e, env, op.symbol(), "left-hand operand", a))?;
+    let r = r
+        .get_number()
+        .map_err(|e| blame_number_operand(e, env, op.symbol(), "right-hand operand", b))?;
     let engine = BigDecimalEngine::default();
     let out = match op {
         NumOp::Sub => engine.sub(&l, &r)?,
@@ -933,13 +970,13 @@ fn blame_number_operand(
         } => TemplateError::TypeMismatch {
             expected,
             actual,
-            ctx: crate::error::ErrorCtx {
+            ctx: Box::new(crate::error::ErrorCtx {
                 blamer: Some(format!("For \"{op}\" {side}: ")),
                 blamed_expr: Some(crate::core::environment::expr_desc(blamed)),
                 span: blamed.span,
                 template_name: Some(env.current_template_name.clone()),
-                ..ctx
-            },
+                ..*ctx
+            }),
         },
         other => other,
     }

@@ -125,9 +125,9 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
                 // string or something automatically convertible to string (number, date
                 // or boolean), or "template output" , but this has evaluated to a {type}:
                 // ==> {expr}`（位置 = 表达式起始）
-                let s = env.apply_escape(&m).map_err(|e| {
-                    blame_interpolation_content(e, env, expr)
-                })?;
+                let s = env
+                    .apply_escape(&m)
+                    .map_err(|e| blame_interpolation_content(e, env, expr))?;
                 env.emit(&s)?;
                 Ok(ExecOutcome::Done)
             }
@@ -249,7 +249,14 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             args,
             body,
             body_params,
-        } => exec_call_impl(env, callee, args, body.clone(), body_params.clone(), el.span),
+        } => exec_call_impl(
+            env,
+            callee,
+            args,
+            body.clone(),
+            body_params.clone(),
+            el.span,
+        ),
         ElementKind::Nested { args, body: _ } => exec_nested(env, args),
         ElementKind::Switch {
             expr,
@@ -441,7 +448,9 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             let node = match expr {
                 Some(e) => eval::eval(env, e)?,
                 None => env.get_current_visitor_node().ok_or_else(|| {
-                    TemplateError::misc("#visit must be given a node, or be called while visiting a node")
+                    TemplateError::misc(
+                        "#visit must be given a node, or be called while visiting a node",
+                    )
                 })?,
             };
             env.push_visitor_node(node.clone());
@@ -455,7 +464,9 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             let node = match expr {
                 Some(e) => eval::eval(env, e)?,
                 None => env.get_current_visitor_node().ok_or_else(|| {
-                    TemplateError::misc("#recurse must be given a node, or be called while visiting a node")
+                    TemplateError::misc(
+                        "#recurse must be given a node, or be called while visiting a node",
+                    )
                 })?,
             };
             let children = match &node.node {
@@ -474,7 +485,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             // Java On.accept（2.3.28+）：visit 块内的节点类型处理器注册。
             // 语义：`<#on name>body</#on>` 与 `<#macro name>body</#macro>`
             // 等价（On.java 内部注册为命名宏）；body 内 `.node` 为当前节点。
-            let name = eval_to_string(env, &expr)?;
+            let name = eval_to_string(env, expr)?;
             let mv = macro_from_body(name.clone(), body.clone());
             env.get_current_namespace().put_macro(name, mv);
             Ok(ExecOutcome::Done)
@@ -527,14 +538,13 @@ fn exec_if(
     let mut then = then;
     let mut else_ = else_;
     loop {
-        let cm = eval::eval(env, cond)
-            .map_err(|e| crate::core::environment::attach_location(e, &env.current_template_name, cur_span))?;
+        let cm = eval::eval(env, cond).map_err(|e| {
+            crate::core::environment::attach_location(e, &env.current_template_name, cur_span)
+        })?;
         // Java IfBlock.accept → condition.evalToBoolean：条件类型错误 blame 条件表达式
         // —— `For "#if" condition: Expected a boolean, but this has evaluated to a
         // {type}: ==> {cond}`（位置 = 条件表达式起始）
-        let b = eval::model_to_boolean(env, &cm).map_err(|e| {
-            blame_if_condition(e, env, cond)
-        })?;
+        let b = eval::model_to_boolean(env, &cm).map_err(|e| blame_if_condition(e, env, cond))?;
         if b {
             return Ok(ExecOutcome::Next(then.to_vec()));
         }
@@ -562,10 +572,7 @@ fn exec_if(
 
 /// 所有权版指令执行 —— run_slice 的 mini 栈路径使用：命中分支/调用 body
 /// 直接移动（零克隆）。非热路径 variant 委托 exec(&Element)（借用语义一致）。
-pub(crate) fn exec_owned(
-    env: &mut crate::core::Environment,
-    el: Element,
-) -> Result<ExecOutcome> {
+pub(crate) fn exec_owned(env: &mut crate::core::Environment, el: Element) -> Result<ExecOutcome> {
     let span = el.span;
     match el.kind {
         // `<#if>`：分支 Vec 移动（零克隆）+ elseif 链下钻
@@ -576,10 +583,18 @@ pub(crate) fn exec_owned(
             let mut else_ = else_;
             loop {
                 let cm = eval::eval(env, &cond).map_err(|e| {
-                    crate::core::environment::attach_location(e, &env.current_template_name, cur_span)
+                    crate::core::environment::attach_location(
+                        e,
+                        &env.current_template_name,
+                        cur_span,
+                    )
                 })?;
                 let b = eval::model_to_boolean(env, &cm).map_err(|e| {
-                    crate::core::environment::attach_location(e, &env.current_template_name, cur_span)
+                    crate::core::environment::attach_location(
+                        e,
+                        &env.current_template_name,
+                        cur_span,
+                    )
                 })?;
                 if b {
                     return Ok(ExecOutcome::Next(then));
@@ -587,11 +602,12 @@ pub(crate) fn exec_owned(
                 match else_ {
                     Some(v) if v.len() == 1 => match v.into_iter().next().unwrap() {
                         Element {
-                            kind: ElementKind::If {
-                                cond: c2,
-                                then: t2,
-                                else_: e2,
-                            },
+                            kind:
+                                ElementKind::If {
+                                    cond: c2,
+                                    then: t2,
+                                    else_: e2,
+                                },
                             span: s2,
                         } => {
                             cur_span = s2;
@@ -1437,10 +1453,7 @@ fn exec_call_impl(
                     return Err(crate::core::environment::attach_location(
                         e,
                         &env.current_template_name,
-                        crate::span::Span::new(
-                            call_span.line,
-                            call_span.col.saturating_add(2),
-                        ),
+                        crate::span::Span::new(call_span.line, call_span.col.saturating_add(2)),
                     ))
                 }
             }
@@ -1491,11 +1504,8 @@ fn exec_call_impl(
         let call_body = CallBody {
             elements: body.unwrap_or_default(),
         };
-        let body_ref: Option<&dyn TemplateDirectiveBody> = if has_body {
-            Some(&call_body)
-        } else {
-            None
-        };
+        let body_ref: Option<&dyn TemplateDirectiveBody> =
+            if has_body { Some(&call_body) } else { None };
         d.execute(env, &params, &mut loop_vars, body_ref)?;
         return Ok(ExecOutcome::Done);
     }
@@ -1573,10 +1583,8 @@ fn exec_nested(
     let prev_local = std::mem::take(&mut env.local_stack);
     // 词法宏名随调用方上下文恢复（调用方 body 元素的帧 `in macro "m"` 定位；
     // Java getEnclosingMacro 沿父元素链）
-    let prev_macro_name = std::mem::replace(
-        &mut env.current_macro_name,
-        frame.caller_macro_name.clone(),
-    );
+    let prev_macro_name =
+        std::mem::replace(&mut env.current_macro_name, frame.caller_macro_name.clone());
     env.local_stack = frame.caller_local_stack.clone();
     if !frame.body_params.is_empty() {
         env.push_local(LocalEntry::Body(Rc::new(
@@ -1809,7 +1817,9 @@ fn exec_setting(
         "classic_compatible" => {
             env.settings.to_mut().classic_compatible = parse_bool_setting(&v)?;
         }
-        "whitespace_stripping" => env.settings.to_mut().whitespace_stripping = parse_bool_setting(&v)?,
+        "whitespace_stripping" => {
+            env.settings.to_mut().whitespace_stripping = parse_bool_setting(&v)?
+        }
         "strict_syntax" => env.settings.to_mut().strict_syntax = parse_bool_setting(&v)?,
         "output_format" => {
             env.settings.to_mut().output_format = OutputFormatKind::parse(&v)
@@ -2346,9 +2356,7 @@ ${double(21)}"#;
                 // Java StopException.getMessage() = "boom" + FTL stack trace 段
                 // （jar 实测 stop 基线）——消息主体断言去栈段
                 assert!(
-                    message
-                        .as_deref()
-                        .is_some_and(|m| m.starts_with("boom")),
+                    message.as_deref().is_some_and(|m| m.starts_with("boom")),
                     "{message:?}"
                 );
             }

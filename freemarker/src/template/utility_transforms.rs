@@ -152,7 +152,9 @@ impl crate::template::TemplateMethodModelEx for SimpleTestMethodFn {
         } else {
             "".to_string()
         };
-        Ok(TModel::from_scalar(format!("Single argument value is: {value}")))
+        Ok(TModel::from_scalar(format!(
+            "Single argument value is: {value}"
+        )))
     }
 }
 
@@ -174,11 +176,23 @@ fn arg_to_test_value(m: &TModel) -> String {
     if let Some(s) = &m.scalar {
         let sv = s.as_string().unwrap_or_default();
         let word_map: HashMap<&str, &str> = [
-            ("zero", "0"), ("one", "1"), ("two", "2"), ("three", "3"),
-            ("four", "4"), ("five", "5"), ("six", "6"), ("seven", "7"),
-            ("eight", "8"), ("nine", "9"), ("ten", "10"), ("eleven", "11"),
+            ("zero", "0"),
+            ("one", "1"),
+            ("two", "2"),
+            ("three", "3"),
+            ("four", "4"),
+            ("five", "5"),
+            ("six", "6"),
+            ("seven", "7"),
+            ("eight", "8"),
+            ("nine", "9"),
+            ("ten", "10"),
+            ("eleven", "11"),
             ("twelve", "12"),
-        ].iter().cloned().collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
         if let Some(num) = word_map.get(sv.as_str()) {
             return num.to_string();
         }

@@ -63,8 +63,11 @@ fn numerical_key_hint() {
 #[test]
 fn arithetic_exception() {
     let (c, loader) = cfg();
-    let msg = assert_error_contains(&c, &loader, "<#assign x = 0>\n${1 / x}", &["Arithmetic"]);
-    assert!(msg.contains("line 2"), "消息应含行号 2：{msg}");
+    assert_error_contains(&c, &loader, "<#assign x = 0>\n${1 / x}", &["Arithmetic"]);
+    // 行号 2 只在 FTL stack trace 段（Misc 错误消息本身不含位置）——
+    // 用完整消息断言（Java getMessage() 全量，jar 实测）
+    let full = render_err_full(&c, &loader, "<#assign x = 0>\n${1 / x}");
+    assert!(full.contains("line 2"), "消息应含行号 2：{full}");
 }
 
 /// Java incrementalAssignmentsTest：复合赋值的错误消息（target 名 + 运算符 + 作用域）

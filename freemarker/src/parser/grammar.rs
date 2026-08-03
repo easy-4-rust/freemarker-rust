@@ -5715,18 +5715,21 @@ mod tests {
 
     #[test]
     fn error_positions() {
-        // 未闭合标签
+        // 未闭合标签（Java 2.3.34 ParseException.getMessage 格式，jar 实测）
         let msg = parse_err("<#if x>");
-        assert!(msg.contains("Parsing error in template \"t\" at line 1, column"), "{msg}");
+        assert!(
+            msg.contains("Syntax error in template \"t\" in line 1, column 8:"),
+            "{msg}"
+        );
         assert!(msg.contains("</#if>"), "{msg}");
 
         // 多行模板的行号
         let msg = parse_err("a\nb\n<#if x>");
-        assert!(msg.contains("at line 3, column 8"), "{msg}");
+        assert!(msg.contains("in line 3, column 8"), "{msg}");
 
         // 未闭合插值
         let msg = parse_err("${x");
-        assert!(msg.contains("at line 1, column 4"), "{msg}");
+        assert!(msg.contains("in line 1, column 4"), "{msg}");
 
         // 未闭合注释
         let msg = parse_err("<#-- unclosed");
@@ -5934,16 +5937,20 @@ mod tests {
     }
 }
 
-    #[test]
-    fn probe_atat_markup_parse() {
-        let cfg = Rc::new(Configuration::default());
-        let t = parse(&cfg, "t.ftl", "${doc.@@markup}");
-        assert!(t.is_ok(), "doc.@@markup should parse: {:?}", t.err());
-    }
+#[test]
+fn probe_atat_markup_parse() {
+    let cfg = Rc::new(Configuration::default());
+    let t = parse(&cfg, "t.ftl", "${doc.@@markup}");
+    assert!(t.is_ok(), "doc.@@markup should parse: {:?}", t.err());
+}
 
-    #[test]
-    fn probe_recurse_parse() {
-        let cfg = Rc::new(Configuration::default());
-        let t = parse(&cfg, "t.ftl", "<#recurse doc >\n<#recurse .node.title>\n<#recurse>");
-        assert!(t.is_ok(), "recurse should parse: {:?}", t.err());
-    }
+#[test]
+fn probe_recurse_parse() {
+    let cfg = Rc::new(Configuration::default());
+    let t = parse(
+        &cfg,
+        "t.ftl",
+        "<#recurse doc >\n<#recurse .node.title>\n<#recurse>",
+    );
+    assert!(t.is_ok(), "recurse should parse: {:?}", t.err());
+}

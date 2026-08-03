@@ -116,7 +116,13 @@ pub struct Environment<'a> {
     /// 数字格式解析缓存（默认 `#,##0.###` 模式的 DecimalFmt；首次使用时解析，
     /// 此后直接复用——热路径（`${n}` 循环输出）避免每次重新解析模式串）。
     /// 键为 (number_format, locale)，`<#setting>` 改动任一后自然失效重解析。
-    pub(crate) number_fmt_cache: RefCell<Option<(String, String, std::rc::Rc<crate::builtins::format::DecimalFmt>)>>,
+    pub(crate) number_fmt_cache: RefCell<
+        Option<(
+            String,
+            String,
+            std::rc::Rc<crate::builtins::format::DecimalFmt>,
+        )>,
+    >,
     /// FTL 指令栈 —— 对应 Java `Environment.instructionStack`（:3563+ pushElement/popElement）：
     /// 每个可描述元素执行前压帧、执行后弹帧（docs/09 §6.4）。错误发生时
     /// `stack_snapshot` 取其快照（栈顶帧 + 其余 isShownInStackTrace 帧），经
@@ -436,8 +442,12 @@ pub struct Namespace {
 impl Namespace {
     fn new(template_name: String) -> Self {
         Namespace {
-            vars: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
-            macros: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
+            vars: RefCell::new(HashMap::with_hasher(
+                crate::utility::FnvBuildHasher::default(),
+            )),
+            macros: RefCell::new(HashMap::with_hasher(
+                crate::utility::FnvBuildHasher::default(),
+            )),
             template_name: Rc::from(template_name),
             ns_prefixes: RefCell::new(HashMap::new()),
         }
@@ -446,8 +456,12 @@ impl Namespace {
     /// 共享模板名构造（主/全局命名空间复用同一 Rc<str>）
     fn new_shared(template_name: Rc<str>) -> Self {
         Namespace {
-            vars: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
-            macros: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
+            vars: RefCell::new(HashMap::with_hasher(
+                crate::utility::FnvBuildHasher::default(),
+            )),
+            macros: RefCell::new(HashMap::with_hasher(
+                crate::utility::FnvBuildHasher::default(),
+            )),
             template_name,
             ns_prefixes: RefCell::new(HashMap::new()),
         }
@@ -605,9 +619,7 @@ impl<'a> Environment<'a> {
             Ok(signal) => match signal {
                 RunSignal::Completed => {
                     let output_encoding = &self.settings.output_encoding;
-                    if output_encoding.eq_ignore_ascii_case("UTF-8")
-                        || output_encoding.is_empty()
-                    {
+                    if output_encoding.eq_ignore_ascii_case("UTF-8") || output_encoding.is_empty() {
                         // UTF-8 或未指定：缓冲中的 UTF-8 直接写出
                         self.out
                             .write_all(&self.output_buffer)
@@ -778,7 +790,12 @@ impl<'a> Environment<'a> {
     pub(crate) fn stack_snapshot(&self) -> Vec<StackFrame> {
         let mut out = Vec::new();
         let mut first = true; // 栈顶（最新）帧总是显示
-        for (frame, shown) in self.instruction_stack.iter().zip(self.stack_shown.iter()).rev() {
+        for (frame, shown) in self
+            .instruction_stack
+            .iter()
+            .zip(self.stack_shown.iter())
+            .rev()
+        {
             let keep = first || *shown;
             first = false;
             if keep {
@@ -1139,7 +1156,8 @@ impl<'a> Environment<'a> {
         match eval::eval(self, expr) {
             Ok(m) => Ok(m),
             Err(TemplateError::InvalidReference { name, .. })
-                if placeholder_names.contains(&name) => {
+                if placeholder_names.contains(&name) =>
+            {
                 let body = BodyCtx {
                     vars: std::iter::once((name.clone(), cur.clone())).collect(),
                 };
@@ -1213,7 +1231,9 @@ impl<'a> Environment<'a> {
         }
         // Java :848-879：宏帧 + 参数绑定（求值发生在调用方上下文）
         let frame = Rc::new(MacroFrame {
-            locals: RefCell::new(HashMap::with_hasher(crate::utility::FnvBuildHasher::default())),
+            locals: RefCell::new(HashMap::with_hasher(
+                crate::utility::FnvBuildHasher::default(),
+            )),
             call_body: body,
             body_params,
             caller_ns: self.current_ns.clone(),
@@ -1231,13 +1251,13 @@ impl<'a> Environment<'a> {
         self.macro_frames.push(frame.clone());
         let prev_ns = self.current_ns.clone();
         let prev_ns_prefixes = self.current_ns_prefixes.clone();
-        self.current_ns = mv.ns.upgrade().ok_or_else(|| {
-            TemplateError::misc("The macro's namespace is no longer available.")
-        })?;
+        self.current_ns = mv
+            .ns
+            .upgrade()
+            .ok_or_else(|| TemplateError::misc("The macro's namespace is no longer available."))?;
         // 宏体内 ns_prefixes 随宏所属命名空间切换（Java 宏的 currentNamespace）；
         // 空映射跳过 clone（热路径优化：多数模板无 ns_prefixes；borrow 立即释放）
-        let ns_prefixes: HashMap<String, String> =
-            self.current_ns.ns_prefixes.borrow().clone();
+        let ns_prefixes: HashMap<String, String> = self.current_ns.ns_prefixes.borrow().clone();
         if !ns_prefixes.is_empty() {
             self.current_ns_prefixes = ns_prefixes;
         }
@@ -1268,11 +1288,7 @@ impl<'a> Environment<'a> {
     /// 宏/函数体执行（invoke_macro_common 已压宏帧并切换上下文后调用）：
     /// 默认参数求值 + 宏体/函数体 run；`<#return>` 归属判定（Java Macro.invoke 的
     /// catch(Return)——穿透的 return 继续上传）
-    fn run_macro_body(
-        &mut self,
-        frame: Rc<MacroFrame>,
-        is_function: bool,
-    ) -> Result<RunSignal> {
+    fn run_macro_body(&mut self, frame: Rc<MacroFrame>, is_function: bool) -> Result<RunSignal> {
         // Java :893 checkParamsSetAndApplyDefaults（宏上下文内求值默认参数；
         // 必须在压帧/清空局部上下文之后——默认值表达式经宏帧局部变量解析）
         if !frame.def.params.is_empty() {
@@ -1659,17 +1675,29 @@ fn bind_macro_args(
     Ok(())
 }
 
-/// 默认参数求值 —— 对应 Java `Macro.Context.checkParamsSetAndApplyDefaults`（Macro.java:255-340）。
-/// 默认值在宏上下文内求值；循环重试直到无进展（默认值可相互引用）；仍未设置且带默认值 →
-/// 抛默认值的 InvalidReference；不带默认值 → "required parameter not specified"。
+/// 默认参数求值 —— 对应 Java `Macro.Context.checkParamsSetAndApplyDefaults`
+/// （Macro.java:255-340，bytecode 实测）：
+///
+/// 多遍重试循环（默认值可相互引用，如 `b=c[a] a=d c={"3":"4"}`）：
+/// 每遍遍历参数——已设置跳过；带默认值 → 求值：成功非 null → 绑定 +
+/// somethingChanged；求值为 null → 记录首个 null 默认值表达式；抛
+/// InvalidReferenceException → 记录首个 IR（Java 只 catch 这一种，其余直接上传）。
+/// 遍末：有失败且本遍有赋值 → 整遍重试（失败记录重置）；无失败 → 成功；
+/// 失败但无进展 → 抛 firstIR；无 firstIR → 抛默认值表达式的
+/// `InvalidReferenceException.getInstance(expr, env)`（classic 兼容吞掉）。
+/// 无默认值且未设置 → 循环内立即抛必需参数错误（containsKey 区分
+/// "specified, but had null/missing value." 与 "not specified."）。
 fn apply_macro_defaults(
     env: &mut Environment,
     frame: &Rc<MacroFrame>,
     def: &MacroDef,
 ) -> Result<()> {
     loop {
-        let mut resolved = false;
-        for param in &def.params {
+        let mut first_ir: Option<TemplateError> = None;
+        let mut first_null_expr: Option<&Expr> = None;
+        let mut has_failure = false;
+        let mut something_changed = false;
+        for (idx, param) in def.params.iter().enumerate() {
             if param.catch_all {
                 continue;
             }
@@ -1682,57 +1710,70 @@ fn apply_macro_defaults(
                 match eval::eval(env, def_expr) {
                     Ok(v) if !v.is_nothing() => {
                         frame.locals.borrow_mut().insert(param.name.clone(), v);
-                        resolved = true;
+                        something_changed = true;
                     }
-                    Ok(_) => {} // 默认值本身为 null：继续重试（Java hasUnresolvedDefaultValue）
-                    // Java Macro.java checkParamsSetAndApplyDefaults：默认值表达式求值
-                    // 抛 InvalidReferenceException 直接上传（jar 实测 macro_default_undefined
-                    // 基线 `==> a  [in template ... at line 1, column 13]`——blame 为默认值
-                    // 表达式，位置经 eval 包装附加）
-                    Err(e) => return Err(e),
+                    Ok(_) => {
+                        // 默认值本身为 null → 记录首个 null 默认值表达式
+                        // （Java bytecode :115-130；遍末无 firstIR 时按它构造 IR）
+                        if !has_failure {
+                            first_null_expr = Some(def_expr);
+                            has_failure = true;
+                        }
+                    }
+                    Err(e) => {
+                        // Java 只 catch InvalidReferenceException 重试
+                        // （bytecode Exception table: InvalidReferenceException）；
+                        // 其余异常（TypeMismatch 等）直接上传
+                        if !matches!(e, TemplateError::InvalidReference { .. }) {
+                            return Err(e);
+                        }
+                        if !has_failure {
+                            first_ir = Some(e);
+                            has_failure = true;
+                        }
+                    }
                 }
-            }
-        }
-        if !resolved {
-            break;
-        }
-    }
-    // 收尾：仍未设置的参数
-    for (idx, param) in def.params.iter().enumerate() {
-        if param.catch_all {
-            continue;
-        }
-        let cur = frame.locals.borrow().get(&param.name).cloned();
-        let set = matches!(&cur, Some(m) if !m.is_nothing());
-        if !set {
-            if env.settings.classic_compatible {
-                // Java Macro.java :301-322/:328-333：classic 兼容模式参数保持未设置
-                // （变量查找回退外层作用域），不报错
-                continue;
-            }
-            if param.default.is_some() {
-                return Err(TemplateError::invalid_reference(format!(
-                    "Default value of parameter \"{}\" (parameter #{}) of {} {} could not be resolved",
-                    param.name,
-                    idx + 1,
+            } else if !env.settings.classic_compatible {
+                // 必需参数（无默认值且未设置）→ 循环内立即抛（Java bytecode :176-356）；
+                // localVars.containsKey 区分显式传 null 与完全未传
+                // （"specified, but had null/missing value." vs "not specified."）
+                let specified_but_null = frame.locals.borrow().contains_key(&param.name);
+                if specified_but_null {
+                    return Err(TemplateError::misc(format!(
+                        "When calling {} {}, required parameter {} (parameter #{}) was specified, but had null/missing value.\n\n----\nTip: If the parameter value expression on the caller side is known to be legally null/missing, you may want to specify a default value for it with the \"!\" operator, like paramValue!defaultValue.\n----",
+                        if def.is_function { "function" } else { "macro" },
+                        quote_name(&def.name),
+                        quote_name(&param.name),
+                        idx + 1,
+                    )));
+                }
+                return Err(TemplateError::misc(format!(
+                    "When calling {} {}, required parameter {} (parameter #{}) was not specified.\n\n----\nTip: If the omission was deliberate, you may consider making the parameter optional in the macro by specifying a default value for it, like <#macro macroName paramName=defaultExpr>)\n----",
                     if def.is_function { "function" } else { "macro" },
                     quote_name(&def.name),
+                    quote_name(&param.name),
+                    idx + 1,
                 )));
             }
-            // Java :301-322：When calling macro "m", required parameter "x" (parameter #N) was not specified.
-            // （jar 实测附 Tip 段："If the omission was deliberate, you may consider
-            // making the parameter optional in the macro by specifying a default value
-            // for it, like <#macro macroName paramName=defaultExpr>)"）
-            return Err(TemplateError::misc(format!(
-                "When calling {} {}, required parameter {} (parameter #{}) was not specified.\n\n----\nTip: If the omission was deliberate, you may consider making the parameter optional in the macro by specifying a default value for it, like <#macro macroName paramName=defaultExpr>)\n----",
-                if def.is_function { "function" } else { "macro" },
-                quote_name(&def.name),
-                quote_name(&param.name),
-                idx + 1,
-            )));
         }
+        if has_failure && something_changed {
+            continue; // 整遍重试（Java goto 29：失败记录与 changed 全部重置）
+        }
+        if let Some(ir) = first_ir {
+            return Err(ir);
+        }
+        // 无 firstIR：默认值表达式求值为 null → InvalidReferenceException.getInstance
+        // （Java bytecode :398-411；blame = 默认值表达式及其位置；classic 兼容吞掉）
+        if !env.settings.classic_compatible {
+            if let Some(expr) = first_null_expr {
+                return Err(
+                    TemplateError::invalid_reference_at(expr_desc(expr), expr.span)
+                        .with_location(&env.current_template_name, expr.span),
+                );
+            }
+        }
+        return Ok(());
     }
-    Ok(())
 }
 
 /// 构造 `.args` 特殊变量值 —— 对应 Java `Macro.Context.checkParamsSetAndApplyDefaults`
@@ -1804,9 +1845,8 @@ fn quote_name(s: &str) -> String {
 /// 对应 Java `Writer` + `OutputStreamWriter` 包装：
 /// OutputStreamWriter(out, Charset.forName(outputEncoding))
 fn transcode_output(utf8: &[u8], encoding_name: &str) -> Result<Vec<u8>> {
-    let s = std::str::from_utf8(utf8).map_err(|_| {
-        TemplateError::misc("Internal output is not valid UTF-8")
-    })?;
+    let s = std::str::from_utf8(utf8)
+        .map_err(|_| TemplateError::misc("Internal output is not valid UTF-8"))?;
     // ISO-8859-1（Latin-1）：Unicode 码点 ≤ 0xFF 逐字节输出；超出 → '?'
     if encoding_name.eq_ignore_ascii_case("ISO-8859-1") {
         let mut out = Vec::with_capacity(s.len());
@@ -2180,11 +2220,7 @@ pub(crate) fn expr_desc(e: &Expr) -> String {
             "[{}]",
             items.iter().map(expr_desc).collect::<Vec<_>>().join(", ")
         ),
-        K::BuiltIn {
-            target,
-            name,
-            args,
-        } => match args {
+        K::BuiltIn { target, name, args } => match args {
             Some(args) => format!(
                 "{}?{}({})",
                 expr_desc(target),
@@ -2223,8 +2259,14 @@ fn element_shown_in_stack_trace(el: &Element) -> bool {
 fn describe_element(env: &Environment, el: &Element) -> Option<String> {
     use ElementKind as E;
     let d = match &el.kind {
-        E::Text { .. } | E::NoParse { .. } | E::Comment { .. } | E::FtlHeader { .. }
-        | E::TrimLineStart | E::NoTrimLineStart | E::TrimLineEnd | E::LeftTrimLine
+        E::Text { .. }
+        | E::NoParse { .. }
+        | E::Comment { .. }
+        | E::FtlHeader { .. }
+        | E::TrimLineStart
+        | E::NoTrimLineStart
+        | E::TrimLineEnd
+        | E::LeftTrimLine
         | E::RawText(_) => return None,
         E::Interpolation {
             expr,
@@ -2245,12 +2287,7 @@ fn describe_element(env: &Environment, el: &Element) -> Option<String> {
             }
         }
         E::If { cond, .. } => format!("#if {}", expr_desc(cond)),
-        E::List {
-            seq,
-            var,
-            var2,
-            ..
-        } => {
+        E::List { seq, var, var2, .. } => {
             let mut s = format!("#list {}", expr_desc(seq));
             if !var.is_empty() {
                 s.push_str(&format!(" as {var}"));
@@ -2268,10 +2305,7 @@ fn describe_element(env: &Environment, el: &Element) -> Option<String> {
             s
         }
         E::Assign {
-            target,
-            expr,
-            op,
-            ..
+            target, expr, op, ..
         } => format!(
             "#assign {target} {} {}",
             assign_op_symbol(*op),
@@ -2381,12 +2415,20 @@ fn assign_op_symbol(op: AssignOp) -> &'static str {
 fn macro_def_description(def: &MacroDef) -> String {
     let mut s = format!(
         "{} {name}",
-        if def.is_function { "#function" } else { "#macro" },
+        if def.is_function {
+            "#function"
+        } else {
+            "#macro"
+        },
         name = def.name
     );
     for p in &def.params {
         if p.catch_all {
-            s.push_str(&format!(" {}{}", p.name, if p.default.is_some() { "..." } else { "" }));
+            s.push_str(&format!(
+                " {}{}",
+                p.name,
+                if p.default.is_some() { "..." } else { "" }
+            ));
             continue;
         }
         match &p.default {
@@ -2497,7 +2539,11 @@ fn collect_ident_names_into(e: &Expr, out: &mut Vec<String>) {
 /// 错误附加源码位置 —— `[in template "name" at line L, column C]`（docs/09 §2 消息模板）。
 /// 只附加一次（消息已含 "[in template" 则跳过）；Flow/Stop/Parse/Io 不附加
 /// （Flow 是流控信号；Stop 是 Java StopException 语义，自带消息）。
-pub(crate) fn attach_location(err: TemplateError, template_name: &str, span: Span) -> TemplateError {
+pub(crate) fn attach_location(
+    err: TemplateError,
+    template_name: &str,
+    span: Span,
+) -> TemplateError {
     // 错误已带位置（eval 包装按失败表达式位置附加）或消息已含位置 → 不重复附加
     if err.has_location() {
         return err;
@@ -2509,11 +2555,11 @@ pub(crate) fn attach_location(err: TemplateError, template_name: &str, span: Spa
             } else {
                 TemplateError::InvalidReference {
                     name,
-                    ctx: ErrorCtx {
+                    ctx: Box::new(ErrorCtx {
                         span,
                         template_name: Some(template_name.to_string()),
-                        ..ctx
-                    },
+                        ..*ctx
+                    }),
                 }
             }
         }
@@ -2534,11 +2580,11 @@ pub(crate) fn attach_location(err: TemplateError, template_name: &str, span: Spa
                 TemplateError::TypeMismatch {
                     expected,
                     actual,
-                    ctx: ErrorCtx {
+                    ctx: Box::new(ErrorCtx {
                         span,
                         template_name: Some(template_name.to_string()),
-                        ..ctx
-                    },
+                        ..*ctx
+                    }),
                 }
             }
         }

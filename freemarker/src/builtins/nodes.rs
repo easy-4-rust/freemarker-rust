@@ -91,11 +91,7 @@ pub fn parent(
 }
 
 /// ?root —— 沿父链向上走到根节点（自身若无父节点则就是根）
-pub fn root(
-    env: &mut Environment,
-    target: &Expr,
-    args: Option<&[Expr]>,
-) -> Result<Option<TModel>> {
+pub fn root(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<Option<TModel>> {
     check_arg_count("root", args, 0, 0)?;
     let m = crate::core::eval::eval(env, target)?;
     if m.node.is_none() {
@@ -292,10 +288,7 @@ mod tests {
     fn test_node_namespace() {
         let node = TestNode::new("div", "element").into_model();
         // 默认 namespace 为 None
-        assert_eq!(
-            node.node.as_ref().unwrap().namespace().unwrap(),
-            None
-        );
+        assert_eq!(node.node.as_ref().unwrap().namespace().unwrap(), None);
     }
 
     #[test]
@@ -406,13 +399,7 @@ mod tests {
             };
             match parent {
                 Some(p) => {
-                    let name = p
-                        .node
-                        .as_ref()
-                        .unwrap()
-                        .name()
-                        .unwrap()
-                        .unwrap_or_default();
+                    let name = p.node.as_ref().unwrap().name().unwrap().unwrap_or_default();
                     ancestors.push(name);
                     current = p;
                 }

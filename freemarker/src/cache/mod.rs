@@ -17,7 +17,6 @@ pub use class_template_loader::{ClassTemplateLoader, ClassTemplateSource};
 pub use file_template_loader::{FileLoader, FileSource};
 pub use multi_template_loader::{MultiLoader, MultiSource};
 pub use string_template_loader::{StringLoader, StringSource};
-pub use url_template_loader::URLTemplateLoader;
 pub use template_cache::TemplateCache;
 pub use template_loader::{TemplateLoader, TemplateSource};
 pub use template_lookup_strategy::{
@@ -28,3 +27,4 @@ pub use template_name_format::{
     Default020300 as NameFormatDefault020300, Default020400 as NameFormatDefault020400,
     TemplateNameFormat,
 };
+pub use url_template_loader::URLTemplateLoader;

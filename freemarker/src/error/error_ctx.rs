@@ -7,8 +7,8 @@
 //!
 //! ----
 //! FTL stack trace ("~" means nesting-related):
-//! 	- Failed at: ${missing}  [in template "t.ftl" at line 1, column 1]
-//! 	~ Reached through: #nested  [in template "t.ftl" in macro "m" at line 1, column 11]
+//!     - Failed at: ${missing}  [in template "t.ftl" at line 1, column 1]
+//!     ~ Reached through: #nested  [in template "t.ftl" in macro "m" at line 1, column 11]
 //! ----
 //! ```
 //! 帧位置格式（Environment.appendInstructionStackItem / _MessageUtil.formatLocation）：
@@ -117,7 +117,11 @@ pub fn render_ftl_stack_section(stack: &[StackFrame]) -> Option<String> {
             }
         };
         prev_nesting = frame.nesting;
-        lines.push(format!("\t{marker}{}  {}", frame.description, frame.location()));
+        lines.push(format!(
+            "\t{marker}{}  {}",
+            frame.description,
+            frame.location()
+        ));
     }
     Some(format!(
         "\n\n----\nFTL stack trace (\"~\" means nesting-related):\n{}\n----",

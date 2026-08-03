@@ -344,8 +344,8 @@ pub fn markup_string(
 mod tests {
     use super::*;
     use crate::cache::StringLoader;
-    use crate::template::{Configuration, DynValue, SimpleObjectWrapper};
     use crate::template::ObjectWrapper;
+    use crate::template::{Configuration, DynValue, SimpleObjectWrapper};
     use crate::value::TNumber;
     use std::sync::Arc;
 
@@ -379,27 +379,19 @@ mod tests {
     #[test]
     fn api_returns_error() {
         let err = eval_out(no_root(), "'hello'?api", "t.ftl").unwrap_err();
-        assert!(
-            err.to_string().contains("?api"),
-            "{err}"
-        );
-        assert!(
-            err.to_string().contains("SimpleObjectWrapper"),
-            "{err}"
-        );
+        assert!(err.to_string().contains("?api"), "{err}");
+        assert!(err.to_string().contains("SimpleObjectWrapper"), "{err}");
     }
 
     #[test]
     fn absolute_template_name_absolute() {
         // 名称含 '/' → 原样返回
         assert_eq!(
-            eval_out(no_root(), "'/abs/path.ftl'?absolute_template_name", "t.ftl")
-                .unwrap(),
+            eval_out(no_root(), "'/abs/path.ftl'?absolute_template_name", "t.ftl").unwrap(),
             "/abs/path.ftl"
         );
         assert_eq!(
-            eval_out(no_root(), "'sub/dir/t.ftl'?absolute_template_name", "t.ftl")
-                .unwrap(),
+            eval_out(no_root(), "'sub/dir/t.ftl'?absolute_template_name", "t.ftl").unwrap(),
             "sub/dir/t.ftl"
         );
     }
@@ -408,13 +400,16 @@ mod tests {
     fn absolute_template_name_relative() {
         // 相对名称 → 拼接当前模板的目录前缀
         assert_eq!(
-            eval_out(no_root(), "'child.ftl'?absolute_template_name", "base/t.ftl")
-                .unwrap(),
+            eval_out(
+                no_root(),
+                "'child.ftl'?absolute_template_name",
+                "base/t.ftl"
+            )
+            .unwrap(),
             "base/child.ftl"
         );
         assert_eq!(
-            eval_out(no_root(), "'x.ftl'?absolute_template_name", "a/b/c.ftl")
-                .unwrap(),
+            eval_out(no_root(), "'x.ftl'?absolute_template_name", "a/b/c.ftl").unwrap(),
             "a/b/x.ftl"
         );
     }
@@ -423,8 +418,7 @@ mod tests {
     fn absolute_template_name_no_directory() {
         // 当前模板名不含 '/' → 直接拼接
         assert_eq!(
-            eval_out(no_root(), "'other.ftl'?absolute_template_name", "root.ftl")
-                .unwrap(),
+            eval_out(no_root(), "'other.ftl'?absolute_template_name", "root.ftl").unwrap(),
             "other.ftl"
         );
     }

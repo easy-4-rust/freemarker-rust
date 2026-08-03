@@ -204,18 +204,18 @@ impl Default for Settings {
             classic_compatible: false,
             incompatible_improvements: Version::V2_3_34,
             output_encoding: "UTF-8".to_string(),
-        // Java 默认 null（Configurable.java:491 "outputEncoding and urlEscapingCharset defaults to null"）；
-        // 空串 = 未设置（?url 回退 UTF-8，`.url_escaping_charset` 缺失）
-        url_escaping_charset: String::new(),
-        fallback_on_null_loop_variable: true,
-        delay: 1,
-        localized_lookup: true,
-        lookup_strategy: LookupStrategyKind::Default020300,
-        input_encoding: None,
-        // Java 默认 RETHROW_HANDLER（_TemplateAPI.getDefaultTemplateExceptionHandler）
-        template_exception_handler: "rethrow".to_string(),
+            // Java 默认 null（Configurable.java:491 "outputEncoding and urlEscapingCharset defaults to null"）；
+            // 空串 = 未设置（?url 回退 UTF-8，`.url_escaping_charset` 缺失）
+            url_escaping_charset: String::new(),
+            fallback_on_null_loop_variable: true,
+            delay: 1,
+            localized_lookup: true,
+            lookup_strategy: LookupStrategyKind::Default020300,
+            input_encoding: None,
+            // Java 默认 RETHROW_HANDLER（_TemplateAPI.getDefaultTemplateExceptionHandler）
+            template_exception_handler: "rethrow".to_string(),
+        }
     }
-}
 }
 
 #[cfg(test)]

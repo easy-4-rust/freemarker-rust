@@ -110,16 +110,6 @@ fn test_xml_type_mismarches() {
 
     // Java 期望 ${doc.a.d?nodeName} 报 "used as node"/"no matches"；
     // 引擎：doc 不存在 → "null or missing: doc"
-    assert_error_contains(
-        &c,
-        &loader,
-        "${doc.a.d?nodeName}",
-        &["null or missing"],
-    );
-    assert_error_contains(
-        &c,
-        &loader,
-        "${doc.a.c?nodeName}",
-        &["null or missing"],
-    );
+    assert_error_contains(&c, &loader, "${doc.a.d?nodeName}", &["null or missing"]);
+    assert_error_contains(&c, &loader, "${doc.a.c?nodeName}", &["null or missing"]);
 }

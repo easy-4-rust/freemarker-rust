@@ -203,7 +203,7 @@ pub fn assert_error_contains(
         Ok(_) => panic!("The template had to fail: {ftl}"),
         Err(e) => {
             // Java TemplateException.getMessageWithoutStackTop（不含 FTL/Java stack 段）
-            let msg = e.to_user_message();
+            let msg = message_without_stack(&e.to_user_message()).to_string();
             assert_contains_all(&msg, substrings, ftl);
             msg
         }
@@ -219,6 +219,34 @@ pub fn assert_error_message_eq(
 ) {
     let msg = assert_error_contains(c, _loader, ftl, &[]);
     assert_eq!(msg, expected, "ftl: {ftl}");
+}
+
+/// 去 FTL stack trace 段 —— 对应 Java `TemplateException.getMessageWithoutStackTop()`
+/// （不含 `\n\n----\nFTL stack trace ... \n----` 段；断言用消息以 Java 的
+/// getMessageWithoutStackTop 为基准，Java TemplateTest.assertErrorContains 同口径）
+pub fn message_without_stack(msg: &str) -> &str {
+    match msg.find("\n\n----\nFTL stack trace") {
+        Some(i) => &msg[..i],
+        None => msg,
+    }
+}
+
+/// 渲染失败并返回**完整**消息（含 FTL stack trace 段；断言 stack 段内容用——
+/// Java `getMessage()` 全量，如算术错误的行号只在栈帧位置中出现）
+pub fn render_err_full(c: &Configuration, _loader: &Arc<StringLoader>, ftl: &str) -> String {
+    let cfg = std::rc::Rc::new(c.clone());
+    let t = match freemarker::parser::parse(&cfg, "adhoc", ftl) {
+        Ok(t) => t,
+        Err(e) => return e.to_user_message(),
+    };
+    let mut out = Vec::new();
+    match t.process(
+        freemarker::template::TModel::from_hash(indexmap::IndexMap::new()),
+        &mut out,
+    ) {
+        Ok(_) => panic!("The template had to fail: {ftl}"),
+        Err(e) => e.to_user_message(),
+    }
 }
 
 fn assert_contains_all(msg: &str, substrings: &[&str], ftl: &str) {
@@ -312,7 +340,7 @@ pub fn assert_error_contains_with_dm(
     match t.process(dm, &mut out) {
         Ok(_) => panic!("The template had to fail: {ftl}"),
         Err(e) => {
-            let msg = e.to_user_message();
+            let msg = message_without_stack(&e.to_user_message()).to_string();
             assert_contains_all(&msg, substrings, ftl);
             msg
         }

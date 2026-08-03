@@ -599,7 +599,9 @@ pub fn truncate(
         "...".to_string()
     };
     Ok(Some(TModel::from_scalar(truncate_impl(
-        &s, max_len, &terminator,
+        &s,
+        max_len,
+        &terminator,
     ))))
 }
 
@@ -939,7 +941,10 @@ mod tests {
         // "hello world", truncate(8) → "hello..."
         // UTF-16: 'hello world' = 11 码元；8 码元预算；terminator "..." = 3 码元；
         // 保留 8-3=5 码元 → "hello" + "..." → "hello..."
-        assert_eq!(render_out("${'hello world'?truncate(8)}").unwrap(), "hello...");
+        assert_eq!(
+            render_out("${'hello world'?truncate(8)}").unwrap(),
+            "hello..."
+        );
     }
 
     #[test]
@@ -983,10 +988,7 @@ mod tests {
 
     #[test]
     fn truncate_w_no_truncation() {
-        assert_eq!(
-            render_out("${'one two'?truncate_w(5)}").unwrap(),
-            "one two"
-        );
+        assert_eq!(render_out("${'one two'?truncate_w(5)}").unwrap(), "one two");
     }
 
     #[test]
@@ -1027,15 +1029,14 @@ mod tests {
 
     #[test]
     fn truncate_c_no_truncation() {
-        assert_eq!(
-            render_out("${'hi'?truncate_c(5)}").unwrap(),
-            "hi"
-        );
+        assert_eq!(render_out("${'hi'?truncate_c(5)}").unwrap(), "hi");
     }
 
     #[test]
     fn truncate_m_not_supported() {
-        let err = render_out("${'hello'?truncate_m(5)}").unwrap_err().to_string();
+        let err = render_out("${'hello'?truncate_m(5)}")
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("truncate_m"), "{err}");
         assert!(err.contains("isn't supported yet"), "{err}");
     }

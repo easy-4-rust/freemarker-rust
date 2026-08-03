@@ -258,11 +258,12 @@ fn test_error_messages() {
     );
     // Java：lambda 参数个数不匹配 → "1 parameter ... declared 2"；引擎不在 filter 阶段
     // 校验参数个数，[] 空序列谓词不被调用 → ${...} 序列转字符串报错
+    // （Java 2.3.34 插值内容错误消息含 `, or "template output"`，jar 实测对齐）
     assert_error_contains(
         &c,
         &loader,
         "${[]?filter((i, j) -> true)}",
-        &["Expected a string or something automatically convertible to string (number, date or boolean), but this has evaluated to a sequence"],
+        &["Expected a string or something automatically convertible to string (number, date or boolean), or \"template output\" , but this has evaluated to a sequence"],
     );
 }
 

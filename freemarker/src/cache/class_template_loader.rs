@@ -68,18 +68,15 @@ impl TemplateLoader for ClassTemplateLoader {
     fn find(&self, name: &str) -> Result<Option<Box<dyn TemplateSource>>> {
         let resolved = self.resolve_name(name);
         let t = self.templates.lock().unwrap();
-        Ok(t.get(&resolved).map(|_| {
-            Box::new(ClassTemplateSource(resolved)) as Box<dyn TemplateSource>
-        }))
+        Ok(t.get(&resolved)
+            .map(|_| Box::new(ClassTemplateSource(resolved)) as Box<dyn TemplateSource>))
     }
 
     fn read(&self, src: &dyn TemplateSource) -> Result<String> {
         let t = self.templates.lock().unwrap();
         let source = t
             .get(&src.name())
-            .ok_or_else(|| TemplateError::NotFound {
-                name: src.name(),
-            })?;
+            .ok_or_else(|| TemplateError::NotFound { name: src.name() })?;
         Ok((*source).to_string())
     }
 }
@@ -92,7 +89,6 @@ impl TemplateSource for ClassTemplateSource {
         self.0.clone()
     }
 }
-
 
 /// 统一使用正斜杠（与 Java `ClassTemplateLoader` 内部 `canonicalizePrefix` 一致）
 fn normalize_slash(path: &str) -> String {
@@ -131,10 +127,7 @@ mod tests {
         loader.set_base_path("/templates/");
 
         // 带 base_path 前缀查找
-        let src = loader
-            .find("templates/hello.ftl")
-            .unwrap()
-            .expect("应命中");
+        let src = loader.find("templates/hello.ftl").unwrap().expect("应命中");
         assert_eq!(src.name(), "hello.ftl");
         assert_eq!(loader.read(&*src).unwrap(), "Hello, World!");
 
@@ -171,10 +164,7 @@ mod tests {
         loader.set_base_path("prefix");
 
         // 查找 "prefix/foo.ftl" → 剥离 "prefix/" → "foo.ftl"
-        let src = loader
-            .find("prefix/foo.ftl")
-            .unwrap()
-            .expect("应命中");
+        let src = loader.find("prefix/foo.ftl").unwrap().expect("应命中");
         assert_eq!(src.name(), "foo.ftl");
     }
 

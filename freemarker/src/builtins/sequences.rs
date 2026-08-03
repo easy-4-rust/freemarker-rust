@@ -731,8 +731,7 @@ fn collator_cmp(a: &str, b: &str) -> Ordering {
                 if x == y {
                     continue;
                 }
-                if let (Some(xc), Some(yc)) =
-                    (char::from_u32(*x as u32), char::from_u32(*y as u32))
+                if let (Some(xc), Some(yc)) = (char::from_u32(*x as u32), char::from_u32(*y as u32))
                 {
                     // 同字母异大小写 → 小写在前（Java Collator TERTIARY）
                     let xl = xc.to_lowercase().next();
@@ -777,7 +776,9 @@ fn collation_sort_key(s: &str) -> Vec<u16> {
                 '-' => vec![0x0008],
                 '@' => vec![0x0009],
                 // 其他 ASCII 标点：码元偏移到 0x000A-0x002F（保持相对顺序）
-                c if c.is_ascii_punctuation() => vec![0x000A + (c as u32 as u16).saturating_sub(0x21)],
+                c if c.is_ascii_punctuation() => {
+                    vec![0x000A + (c as u32 as u16).saturating_sub(0x21)]
+                }
                 // 字母数字：小写码元（>= 0x30）
                 c => vec![c as u16],
             }
@@ -957,7 +958,10 @@ pub fn sequence(
     // 字符串 → 字符序列（每字符一个单字符串）
     if t.is_scalar() {
         let s = t.get_scalar()?;
-        let chars: Vec<TModel> = s.chars().map(|c| TModel::from_scalar(c.to_string())).collect();
+        let chars: Vec<TModel> = s
+            .chars()
+            .map(|c| TModel::from_scalar(c.to_string()))
+            .collect();
         return Ok(Some(TModel::from_sequence(chars)));
     }
     Err(TemplateError::misc(format!(
@@ -1559,35 +1563,20 @@ mod tests {
     #[test]
     fn sequence_on_sequence() {
         // 已是序列 → 原样返回
-        assert_eq!(
-            eval_out(no_root(), "[1,2,3]?sequence?size").unwrap(),
-            "3"
-        );
-        assert_eq!(
-            eval_out(no_root(), "([1,2]?sequence)?first").unwrap(),
-            "1"
-        );
+        assert_eq!(eval_out(no_root(), "[1,2,3]?sequence?size").unwrap(), "3");
+        assert_eq!(eval_out(no_root(), "([1,2]?sequence)?first").unwrap(), "1");
     }
 
     #[test]
     fn sequence_on_string() {
         // 字符串 → 字符序列
-        assert_eq!(
-            eval_out(no_root(), "'abc'?sequence?size").unwrap(),
-            "3"
-        );
+        assert_eq!(eval_out(no_root(), "'abc'?sequence?size").unwrap(), "3");
         assert_eq!(
             eval_out(no_root(), "('abc'?sequence)?join(',')").unwrap(),
             "a,b,c"
         );
-        assert_eq!(
-            eval_out(no_root(), "('abc'?sequence)?first").unwrap(),
-            "a"
-        );
-        assert_eq!(
-            eval_out(no_root(), "('abc'?sequence)?last").unwrap(),
-            "c"
-        );
+        assert_eq!(eval_out(no_root(), "('abc'?sequence)?first").unwrap(), "a");
+        assert_eq!(eval_out(no_root(), "('abc'?sequence)?last").unwrap(), "c");
     }
 
     #[test]
@@ -1617,7 +1606,8 @@ mod tests {
         // 数字 → 报错
         let err = eval_out(no_root(), "42?sequence").unwrap_err();
         assert!(
-            err.to_string().contains("?sequence is not applicable to a number value"),
+            err.to_string()
+                .contains("?sequence is not applicable to a number value"),
             "{err}"
         );
     }
@@ -1625,9 +1615,6 @@ mod tests {
     #[test]
     fn sequence_on_empty_string() {
         // 空字符串 → 空字符序列
-        assert_eq!(
-            eval_out(no_root(), "''?sequence?size").unwrap(),
-            "0"
-        );
+        assert_eq!(eval_out(no_root(), "''?sequence?size").unwrap(), "0");
     }
 }

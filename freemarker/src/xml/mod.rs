@@ -15,7 +15,7 @@
 
 use crate::core::Environment;
 use crate::error::{Result, TemplateError};
-use crate::template::{NodeHashModel, TemplateNodeModel, TModel, ModelKind};
+use crate::template::{ModelKind, NodeHashModel, TModel, TemplateNodeModel};
 use roxmltree::{Document, Node, NodeId};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -98,9 +98,8 @@ impl XmlTree {
     /// 存活期间不释放，因此该借用恒有效（标准 Rc 自引用模式）。
     fn parse(text: &str) -> Result<Rc<XmlTree>> {
         let text: Rc<str> = Rc::from(text);
-        let doc = Document::parse(&text).map_err(|e| {
-            TemplateError::misc(format!("XML parsing failed: {e}"))
-        })?;
+        let doc = Document::parse(&text)
+            .map_err(|e| TemplateError::misc(format!("XML parsing failed: {e}")))?;
         // 安全：见上方注释 —— doc 与 text 同住 Rc<XmlTree>，且 doc 先于 text 析构
         let doc: Document<'static> = unsafe { std::mem::transmute(doc) };
         Ok(Rc::new(XmlTree { doc, _text: text }))
@@ -157,7 +156,10 @@ impl XmlNode {
     fn child_nodes(&self) -> Vec<XmlNode> {
         let mut out = Vec::new();
         for c in self.node().children() {
-            if matches!(c.node_type(), roxmltree::NodeType::Comment | roxmltree::NodeType::PI) {
+            if matches!(
+                c.node_type(),
+                roxmltree::NodeType::Comment | roxmltree::NodeType::PI
+            ) {
                 continue;
             }
             out.push(XmlNode {
@@ -520,7 +522,9 @@ impl XmlNode {
             // 前缀形式 `p:attr`：解析 p → URI，匹配 (URI, localName)
             if let Some((prefix, local)) = qname.split_once(':') {
                 let uri = if prefix == "D" {
-                    env.current_ns_prefixes().get_default_ns().map(str::to_string)
+                    env.current_ns_prefixes()
+                        .get_default_ns()
+                        .map(str::to_string)
                 } else {
                     env.current_ns_prefixes()
                         .get_namespace_for_prefix(prefix)
@@ -814,7 +818,10 @@ impl XmlNode {
             &mut next_gen,
         );
         if let Some(dns) = &default_ns {
-            if !lookup.iter().any(|(u, _)| u.as_deref() == Some(dns.as_str())) {
+            if !lookup
+                .iter()
+                .any(|(u, _)| u.as_deref() == Some(dns.as_str()))
+            {
                 lookup.push((Some(dns.clone()), String::new()));
             }
         }
@@ -959,7 +966,11 @@ impl TemplateNodeModel for XmlNode {
         if self.is_attr() {
             return Ok(Vec::new());
         }
-        Ok(self.child_nodes().into_iter().map(|c| c.into_model()).collect())
+        Ok(self
+            .child_nodes()
+            .into_iter()
+            .map(|c| c.into_model())
+            .collect())
     }
 
     fn name(&self) -> Result<Option<String>> {
@@ -1046,9 +1057,7 @@ fn xml_enc_nqg(s: &str) -> String {
         match c {
             '<' => out.push_str("&lt;"),
             '&' => out.push_str("&amp;"),
-            '>' if i >= 2 && bytes[i - 2] == ']' && bytes[i - 1] == ']' => {
-                out.push_str("&gt;")
-            }
+            '>' if i >= 2 && bytes[i - 2] == ']' && bytes[i - 1] == ']' => out.push_str("&gt;"),
             _ => out.push(c),
         }
     }
@@ -1058,7 +1067,10 @@ fn xml_enc_nqg(s: &str) -> String {
 /// Java DomStringUtil.isXMLNameLike：字母/数字/_/-/. + 单个 ":"；首字符非 -/. 数字
 fn is_xml_name_like(name: &str) -> bool {
     // XPath/特殊符号开头 → 非元素名（`/`、`//`、`@`、`*`、`[` 等走 XPath 子集）
-    if matches!(name.chars().next(), Some('/') | Some('@') | Some('*') | Some('[') | Some('.')) {
+    if matches!(
+        name.chars().next(),
+        Some('/') | Some('@') | Some('*') | Some('[') | Some('.')
+    ) {
         return false;
     }
     let mut chars = name.chars();
@@ -1095,7 +1107,9 @@ fn split_qname(s: &str) -> Result<(Option<String>, String, bool)> {
         )));
     }
     match s.split_once(':') {
-        Some((p, l)) if !p.is_empty() && !l.is_empty() => Ok((Some(p.to_string()), l.to_string(), false)),
+        Some((p, l)) if !p.is_empty() && !l.is_empty() => {
+            Ok((Some(p.to_string()), l.to_string(), false))
+        }
         Some(_) => Err(TemplateError::misc(format!(
             "Unsupported XPath query: //{s}"
         ))),
