@@ -4,7 +4,11 @@
 [语义化版本](https://semver.org/lang/zh-CN/)（晋级规则见
 [docs/release/versioning.md](docs/release/versioning.md)）。
 
-## [Unreleased]
+## [0.1.0-alpha.1] - 2026-08-03
+
+> 本版本相对 v0.1.0-alpha.0：**生产就绪计划 v2 阶段 A/B/C 全部收口**——内建 183/183、
+> golden 82 → **113/128（88%）定格**（0 FAIL / 0 BLOCKED，15 项永久 NA 分类确定化）、
+> pyo3 一键可发布。详见 `docs/测试/验收报告.md`（v13）+ `docs/测试/生产就绪审计.md`。
 
 ### Added
 - 内建函数补齐最后 5 个：`eval_json`/`is_date_like`/`next_sibling`/`previous_sibling`/
