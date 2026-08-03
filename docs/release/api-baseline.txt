@@ -2970,6 +2970,7 @@ pub fn freemarker::template::SimpleSequence::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::template::SimpleSequence
 pub fn freemarker::template::SimpleSequence::from(T) -> T
 pub struct freemarker::template::TModel
+pub freemarker::template::TModel::api: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateApiSupport>>
 pub freemarker::template::TModel::boolean: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateBooleanModel>>
 pub freemarker::template::TModel::collection: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateCollectionModel>>
 pub freemarker::template::TModel::collection_ex: bool
@@ -3163,6 +3164,8 @@ pub fn freemarker::template::ObjectWrapper::wrap(&self, &freemarker::template::D
 impl freemarker::template::ObjectWrapper for freemarker::template::SimpleObjectWrapper
 pub fn freemarker::template::SimpleObjectWrapper::unwrap(&self, &freemarker::TModel) -> freemarker::Result<freemarker::template::DynValue>
 pub fn freemarker::template::SimpleObjectWrapper::wrap(&self, &freemarker::template::DynValue) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub trait freemarker::template::TemplateApiSupport
+pub fn freemarker::template::TemplateApiSupport::api_view(&self) -> freemarker::Result<freemarker::TModel>
 pub trait freemarker::template::TemplateBooleanModel
 pub fn freemarker::template::TemplateBooleanModel::as_boolean(&self) -> freemarker::Result<bool>
 impl freemarker::template::TemplateBooleanModel for freemarker::template::SimpleBoolean
@@ -3664,6 +3667,7 @@ pub fn freemarker::Environment<'a>::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::Environment<'a>
 pub fn freemarker::Environment<'a>::from(T) -> T
 pub struct freemarker::TModel
+pub freemarker::TModel::api: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateApiSupport>>
 pub freemarker::TModel::boolean: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateBooleanModel>>
 pub freemarker::TModel::collection: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateCollectionModel>>
 pub freemarker::TModel::collection_ex: bool

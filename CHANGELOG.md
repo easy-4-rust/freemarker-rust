@@ -11,13 +11,21 @@
   `web_safe`（Java 2.3.34 内建名 183/183 全覆盖）
 - XML visit 前缀宏分派（Java getNodeProcessor 语义）、`node[0]` 自身索引、
   XPath 子集 `./` 相对路径与 `true()` 函数
+- `?api`/`?has_api` 支持：新增 `TemplateApiSupport` trait 与 `TModel.api` 槽位
+  （对应 Java `TemplateModelWithAPISupport`；API 视图由包装方提供，引擎无反射）
+- `?new` 四解析策略（unrestricted/safer/allows_nothing/opt-in + trusted_templates）
+- ICI 版本化：`?html` <2.3.20 用 HTMLEnc、哈希字面量 <2.3.21 保留重复键、
+  `?is_sequence` <2.3.24 / `?is_enumerable` <2.3.21 不排除方法模型
 - pyo3 发布准备：pyproject readme/authors/classifiers/license-files、
   LICENSE 文件（Apache-2.0）、pyo3-publish workflow（Trusted Publishing）
 - cargo-fuzz 启用：expression/parser target 声明（nightly 构建验证）
 
 ### Changed
-- golden 套件 PASS 90 → 102+（B6 harness 收口 + B2/B3 ICI 版本化与 ?new 策略、
-  B5 XML 扩展——最终数字见版本条目）
+- golden 套件 PASS 90 → **113/128（88%）定格**（B6 harness 收口 + B2/B3 ICI 版本化
+  与 ?new 策略 + B5 XML 扩展 + B4 ?api；0 FAIL / 0 BLOCKED）
+- 15 项 SKIP 全部登记**永久 NA**（分类确定化，golden.rs `permanent_na_reason`）：
+  JVM 反射 12（beans + BeansWrapper 方法重载 11）+ transforms 1 + jython25 过期断言 2
+- 公开 API 面新增 `TemplateApiSupport` trait + `TModel::api` 字段（api-baseline 已重生成）
 - proptest fuzz 10000 用例（versioning.md 1.0 晋级条件 6）
 
 ## [0.1.0-alpha.0] - 2026-08-03

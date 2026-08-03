@@ -14,7 +14,7 @@
 ## 2. 端到端流程
 
 ```
-git tag v0.1.0-alpha.2
+git tag v0.1.0-alpha.1
         │
         ▼
 GitHub Actions: .github/workflows/release.yml 触发
@@ -35,12 +35,12 @@ docs.rs 自动构建（无需额外 CI 步骤，docs.rs 监听 crates.io）
 
 | 阻断 | 原因 | 解除路径 |
 |---|---|---|
-| **freemarker-pyo3 不发布** | PyPI 通路独立，需 maturin 打 wheel + twine 上传；CI pyo3 job 仅验证构建/测试 | 后续单独阶段：maturin + PyPI 发布流程 + 版本号双轨（crates.io + PyPI） |
-| **golden 86/128（计划）** | JVM 反射不可恢复的 33 项 NOT_APPLICABLE 永久保留（POJO 反射 25 + `?api` 2 + `?new` 4 + XML 节点 2） + BLOCKED 工程量缺口（计划阶段 B 清零） | 阶段 B 完成；NOT_APPLICABLE 41 保持稳定，文档化"受限子集"边界 |
+| **freemarker-pyo3 实际上传** | PyPI 通路独立，需 maturin 打 wheel + Trusted Publishing；`pyo3-publish.yml` 已就绪（tag `pyo3-v*` 触发，dry-run 演练通过） | 用户手动配置 PyPI 发布者后打 tag；本仓库演练到 TestPyPI |
+| **golden 15 项永久 NA（已定格 113/128）** | JVM 反射 12 项（beans 1 + BeansWrapper 方法重载 11，决策 1）+ transforms JythonRuntime 1 + jython25 过期断言 2——用户决策永久 NA，分类确定化（golden.rs permanent_na_reason） | 不解除；"受限子集"边界文档化（docs/测试/验收报告.md v13 + 生产就绪审计报告） |
 | **JVM 反射（决策 1）** | `BeansWrapper`/`ClassIntrospector`/`MemberAccessPolicy` 在 Rust 不可 1:1 实现 | 用户在 Rust 侧手工包装 POJO 为 `DynValue`；文档 `docs/release/security.md` 明记 |
-| **无 docs.rs metadata** | 当前 `[package.metadata.docs.rs]` 未配置 | 阶段 A7 落地：all-features、rustdoc-args |
-| **无 proptest fuzz** | 当前无属性测试 | 阶段 A8 落地：解析器 + 表达式 fuzz 10000 用例 |
-| **无 criterion baseline 落档** | `benches/simple_render.rs` 存在但未跑过基线 | 阶段 A8 落档 `docs/release/benchmarks.md` |
+| ~~docs.rs metadata~~ | 已落地：`[package.metadata.docs.rs]`（all-features + rustdoc-args） | ✅ 已解除（阶段 A7） |
+| ~~proptest fuzz~~ | 已落地：解析器 + 表达式 10000 用例（robustness_fuzz_smoke） | ✅ 已解除（阶段 C） |
+| ~~criterion baseline~~ | 已落档 `docs/release/benchmarks.md`（性能基准报告 5/5 达标） | ✅ 已解除（阶段 C） |
 
 ## 4. 演练 Checklist（每个 release tag 前必跑）
 
@@ -61,8 +61,8 @@ cargo llvm-cov --workspace --exclude freemarker-pyo3 --lcov  # 覆盖率快照
 
 ```bash
 # 确认所有演练项绿后
-git tag v0.1.0-alpha.2                    # 或后续版本
-git push origin v0.1.0-alpha.2            # 触发 release.yml dry-run + GH Release
+git tag v0.1.0-alpha.1                    # 或后续版本
+git push origin v0.1.0-alpha.1            # 触发 release.yml dry-run + GH Release
 # 检查 GH Release 页面内容 → 人工 cargo login + cargo publish -p freemarker
 cargo publish -p freemarker               # crates.io 上传
 # docs.rs 在 1-2 分钟内自动重建

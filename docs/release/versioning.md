@@ -6,7 +6,7 @@
 
 ## 1. 当前版本与目标
 
-- 当前：`0.1.0`（alpha 早期 + 治理清零阶段；golden 82/128 MIRRORED）
+- 当前：`0.1.0-alpha.1`（生产就绪计划 v2 收口；golden 113/128 MIRRORED（88%），15 项永久 NA 分类确定化）
 - 阶段目标：维持 `0.1.x` 直至治理、鲁棒性与发布流程全部就绪，再按 §3 晋级
   `1.0.0`（首个稳定版），此后按 SemVer 承诺演化。
 - 与 thymeleaf-rust 同口径：deny/audit/public-api 三类治理门禁齐备 + 多 OS CI + 发布演练。
@@ -30,7 +30,7 @@
 
 1. cargo-deny / cargo-audit 全绿（已落地）；
 2. cargo public-api 基线 diff 门禁 0（已落地）；
-3. 严格 Clippy、fmt、workspace 全测试、128 套件用例（≥86 MIRRORED）全绿；
+3. 严格 Clippy、fmt、workspace 全测试、128 套件用例（≥86 MIRRORED，当前 **113/128**）全绿；
 4. `cargo package --verify -p freemarker` 发布演练通过；
 5. 多 OS CI 矩阵（ubuntu/macos/windows × stable + MSRV 1.85）全绿；
 6. proptest fuzz（解析器 + 表达式）10000 用例无 panic；

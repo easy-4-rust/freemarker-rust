@@ -41,10 +41,10 @@ assert_eq!(out, b"Hello World!");
 
 - `cargo fmt --all --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test --workspace --exclude freemarker-pyo3`（**87 MIRRORED / 41 NOT_APPLICABLE / 0 BLOCKED** golden；509 java_ported 测试）
+- `cargo test --workspace --exclude freemarker-pyo3`（**113 PASS / 15 永久 NA / 0 FAIL** golden（88%）；502 java_ported 测试）
 - `cargo deny check`（licenses/bans/sources/advisories）
 - `cargo audit`（0 error）
-- `cargo public-api -p freemarker` diff `docs/release/api-baseline.txt`（3,705 项基线）
+- `cargo public-api -p freemarker` diff `docs/release/api-baseline.txt`（3,707 项基线）
 - 多 OS 矩阵（ubuntu/macos/windows × stable + MSRV 1.85）
 - `cargo package -p freemarker`（演练发布）
 
@@ -56,7 +56,7 @@ assert_eq!(out, b"Hello World!");
 - [docs/release/security.md](docs/release/security.md) — 安全模型 + 受限子集
 - [docs/release/api-baseline.txt](docs/release/api-baseline.txt) — 公共 API 基线
 - [docs/release/benchmarks.md](docs/release/benchmarks.md) — criterion 基准落档
-- [docs/测试/验收报告.md](docs/测试/验收报告.md) — golden + java_ported 验收 v12
+- [docs/测试/验收报告.md](docs/测试/验收报告.md) — golden + java_ported 验收 v13
 - [docs/测试/迁移测试对照表.md](docs/测试/迁移测试对照表.md) — 128 用例逐条 disposition
 
 ## 限制（决策 1）
