@@ -8,6 +8,12 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 license = "Apache-2.0"
+description = "Apache FreeMarker 语义兼容的 Rust 模板引擎"
+authors = ["Thymeleaf Rust Contributors"]
+repository = "https://github.com/easy-4-rust/freemarker-rust"
+homepage = "https://github.com/easy-4-rust/freemarker-rust"
+categories = ["template-engine", "text-processing"]
+keywords = ["freemarker", "template", "templating", "ast"]
 
 [workspace.dependencies]
 thiserror = "2"

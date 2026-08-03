@@ -6,6 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 description = "Apache FreeMarker 语义兼容的 Rust 模板引擎（freemarker-core 迁移）"
 
+categories.workspace = true
+keywords.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
 [dependencies]
 thiserror.workspace = true
 regex.workspace = true

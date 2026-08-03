@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "freemarker 的 Python 绑定（pyo3）—— freemarker-jython25 迁移（docs/10）"
+categories = ["python-bindings", "template-engine"]
+keywords = ["freemarker", "pyo3", "python"]
+repository.workspace = true
+homepage.workspace = true
 
 [lib]
 name = "freemarker_pyo3"
