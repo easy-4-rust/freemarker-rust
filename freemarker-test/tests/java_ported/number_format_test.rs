@@ -449,16 +449,19 @@ fn test_c_format_of_special_numbers() {
     assert_eq!(out_human, "0 0 0");
     // Java: env.getCNumberFormat().format(...) —— 引擎等价 format_c_number
     assert_eq!(
-        freemarker::builtins::format::format_c_number(&freemarker::value::TNumber::Double(
-            f64::INFINITY
-        )) + " "
-            + &freemarker::builtins::format::format_c_number(&freemarker::value::TNumber::Double(
-                f64::NEG_INFINITY
-            ))
+        freemarker::builtins::format::format_c_number(
+            &freemarker::value::TNumber::Double(f64::INFINITY),
+            freemarker::builtins::format::CFormatKind::JavaScriptOrJson
+        ) + " "
+            + &freemarker::builtins::format::format_c_number(
+                &freemarker::value::TNumber::Double(f64::NEG_INFINITY),
+                freemarker::builtins::format::CFormatKind::JavaScriptOrJson
+            )
             + " "
-            + &freemarker::builtins::format::format_c_number(&freemarker::value::TNumber::Double(
-                f64::NAN
-            )),
+            + &freemarker::builtins::format::format_c_number(
+                &freemarker::value::TNumber::Double(f64::NAN),
+                freemarker::builtins::format::CFormatKind::JavaScriptOrJson
+            ),
         computer_audience_output
     );
 }

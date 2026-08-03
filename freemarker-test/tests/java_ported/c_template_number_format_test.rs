@@ -43,11 +43,17 @@ fn assert_format_result(n: &TNumber, actual: &str, expected: &str) {
 /// 对应 Java `testFormat(Number, String)`：格式化 + 取负复验
 /// （NaN/0/负值跳过取负；SimpleNumber 包装等价 TNumber）
 fn test_format(n: &TNumber, expected: &str) {
-    let actual = format_c_number(n);
+    let actual = format_c_number(
+        n,
+        freemarker::builtins::format::CFormatKind::JavaScriptOrJson,
+    );
     assert_format_result(n, &actual, expected);
     if actual != "NaN" && actual != "0" && !actual.starts_with('-') {
         let negative_n = negate(n);
-        let actual_neg = format_c_number(&negative_n);
+        let actual_neg = format_c_number(
+            &negative_n,
+            freemarker::builtins::format::CFormatKind::JavaScriptOrJson,
+        );
         assert_format_result(&negative_n, &actual_neg, &format!("-{expected}"));
     }
 }
@@ -128,7 +134,10 @@ fn test_format_big_decimal_whole_numbers() {
     // "9" + 100 个 "0"。此处按引擎实际输出断言并注明 Java 期望值。
     let n9e100 = &TNumber::Decimal(BigDecimal::from_str("9e100").unwrap());
     assert_eq!(
-        format_c_number(n9e100),
+        format_c_number(
+            n9e100,
+            freemarker::builtins::format::CFormatKind::JavaScriptOrJson
+        ),
         format!("9{}", "0".repeat(100)),
         "Java 期望 \"9E+100\"（指数形式），引擎差异输出 plain string"
     );

@@ -1847,6 +1847,11 @@ fn exec_setting(
             env.settings.to_mut().output_format = OutputFormatKind::parse(&v)
                 .ok_or_else(|| TemplateError::misc(format!("Unknown output format: {v}")))?;
         }
+        "c_format" => {
+            // Java Configurable.C_FORMAT_KEY（c_format 设置；StandardCFormats 注册名）
+            env.settings.to_mut().c_format = crate::builtins::format::CFormatKind::parse(&v)
+                .ok_or_else(|| TemplateError::misc(format!("Unknown c_format: {v}")))?;
+        }
         "auto_escaping" => {
             env.settings.to_mut().auto_escaping = match v.as_str() {
                 "on" => crate::core::AutoEscaping::On,

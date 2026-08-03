@@ -11,7 +11,6 @@ keywords.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "../README.md"
-license-file = "../LICENSE"
 
 # 显式 include：README 和 LICENSE 位于 workspace 根（freemarker-rust/），
 # 默认 cargo package 只在 crate 子目录查找；通过 include 携带 ../README.md 与
