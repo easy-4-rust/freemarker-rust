@@ -10,6 +10,18 @@ categories.workspace = true
 keywords.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme = "../README.md"
+license-file = "../LICENSE"
+
+# 显式 include：README 和 LICENSE 位于 workspace 根（freemarker-rust/），
+# 默认 cargo package 只在 crate 子目录查找；通过 include 携带 ../README.md 与
+# ../LICENSE 进 .crate 包，确保 crates.io README 渲染正常。
+include = [
+    "src/**/*.rs",
+    "Cargo.toml",
+    "../README.md",
+    "../LICENSE",
+]
 
 [package.metadata.docs.rs]
 # docs.rs 自动构建配置（freemarker crate 上传 crates.io 后自动触发）
