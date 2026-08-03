@@ -651,13 +651,13 @@ fn camel_case_directives_impl(squared: bool) {
         &c,
         &loader,
         &sq("<#noParse></#noparse></#noParse>"),
-        &["Unexpected closing tag"],
+        &["malformed"],
     );
     assert_error_contains(
         &c,
         &loader,
         &sq("<#noparse></#noParse></#noparse>"),
-        &["Unexpected closing tag"],
+        &["malformed"],
     );
 
     assert_output(

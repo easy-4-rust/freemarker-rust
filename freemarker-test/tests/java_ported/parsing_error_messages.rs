@@ -29,165 +29,142 @@ fn assert_error_contains_as(
 }
 
 /// Java testNeedlessInterpolation：`<#if>` 条件里的"多此一举"的 `${...}` 插值
-/// （引擎差异：v1 无 "instead of ${" 提示 —— 报基础解析错误，断言按引擎消息）
+/// （Java 对齐：OPEN_MISPLACED_INTERPOLATION 词法错误）
 #[test]
 fn test_needless_interpolation() {
     let (c, loader) = test_config();
-    // Java 断言 ["instead of ${"]；引擎：Expected ">" to close the tag, but found "{"
+    // Java 断言 ["instead of ${"]
     assert_error_contains_as(
         &c,
         &loader,
         "<#if ${x} == 3></#if>",
-        &["Expected \">\" to close the tag", "found \"{\""],
+        &["(an interpolation) here", "FreeMarker-expression-mode"],
     );
     assert_error_contains_as(
         &c,
         &loader,
         "<#if ${x == 3}></#if>",
-        &["Expected \">\" to close the tag", "found \"{\""],
+        &["(an interpolation) here", "FreeMarker-expression-mode"],
     );
-    // Java 断言 ["instead of ${"]；引擎：Expected "," or ":" between the hash key and value
+    // Java 断言 ["instead of ${"]
     assert_error_contains_as(
         &c,
         &loader,
         "<@foo ${x == 3} />",
-        &["Expected \",\" or \":\" between the hash key and value"],
+        &["(an interpolation) here", "FreeMarker-expression-mode"],
     );
     // Java：setInterpolationSyntax(SQUARE_BRACKET_INTERPOLATION_SYNTAX) 后 `[= x == 3]`
-    // 是方括号插值语法下的同类错误；本引擎未实现方括号插值 `[=...]`（无
-    // interpolation_syntax 设置）——断言按引擎消息（引擎差异）
+    // 是同类错误（OPEN_MISPLACED_INTERPOLATION，表达式模式中 `[=` 词法错误）
     assert_error_contains_as(
         &c,
         &loader,
         "<@foo [= x == 3] />",
-        &["Expected \"]\" to close the list literal", "found \"=\""],
+        &["[=...]", "[=myExpression]"],
     );
 }
 
-/// Java testWrongDirectiveNames：未知指令名及"相近指令"提示
-/// （引擎差异：v1 消息为 "Unknown directive: #xxx."，无 Java 的相近指令提示
-/// （#set→#assign、#iterator→#list）—— 断言去掉提示段并注明差异）
+/// Java testWrongDirectiveNames：未知指令名及"相近指令"提示（Java 对齐：
+/// UNKNOWN_DIRECTIVE tip 段）
 #[test]
 fn test_wrong_directive_names() {
     let (c, loader) = test_config();
     assert_error_contains_as(&c, &loader, "<#foo />", &["nknown directive", "#foo"]);
-    // Java 断言含 "#assign"（相近指令提示）；引擎无 → 调整
-    assert_error_contains_as(&c, &loader, "<#set x = 1 />", &["nknown directive", "#set"]); // Java: + "#assign"
-                                                                                            // Java 断言含 "#list"（相近指令提示）；引擎无 → 调整
+    // Java 断言含 "#assign"（相近指令提示）
+    assert_error_contains_as(
+        &c,
+        &loader,
+        "<#set x = 1 />",
+        &["nknown directive", "#set", "#assign"],
+    );
+    // Java 断言含 "#list"（相近指令提示）
     assert_error_contains_as(
         &c,
         &loader,
         "<#iterator></#iterator>",
-        &["nknown directive", "#iterator"], // Java: + "#list"
+        &["nknown directive", "#iterator", "#list"],
     );
 }
 
-/// Java testBug402：已存在指令的畸形形式
-/// （引擎差异：v1 无 "existing directive"/"malformed" 提示段 —— 断言按引擎消息）
+/// Java testBug402：已存在指令的畸形形式（词法层 UNKNOWN_DIRECTIVE）
 #[test]
 fn test_bug402() {
     let (c, loader) = test_config();
-    // Java 断言 ["existing directive", "malformed", "#list"]；引擎：Expected an expression, but found ">"
+    // Java 断言 ["existing directive", "malformed", "#list"]
     assert_error_contains_as(
         &c,
         &loader,
         "<#list 1..i as k>${k}<#list>",
-        &["Expected an expression", "found \">\""],
+        &["existing directive", "malformed", "#list"],
     );
-    // Java 断言 ["existing directive", "malformed", "#assign"]；引擎：Expected a name
+    // Java 断言 ["existing directive", "malformed", "#assign"]
     assert_error_contains_as(
         &c,
         &loader,
         "<#assign>",
-        &[
-            "Expected a name (identifier or string literal)",
-            "found \">\"",
-        ],
+        &["existing directive", "malformed", "#assign"],
     );
-    // Java 断言 ["existing directive", "malformed", "#if"]；引擎：Unexpected closing tag
+    // Java 断言 ["existing directive", "malformed", "#if"]
     assert_error_contains_as(
         &c,
         &loader,
         "</#if x>",
-        &["Unexpected closing tag", "</#if>"],
+        &["existing directive", "malformed", "#if"],
     );
-    // Java 断言 ["existing directive", "malformed", "#compress"]；引擎：Expected ">" or "/>"
+    // Java 断言 ["existing directive", "malformed", "#compress"]
     assert_error_contains_as(
         &c,
         &loader,
         "<#compress x>",
-        &["Expected \">\" or \"/>\" to close the tag"],
+        &["existing directive", "malformed", "#compress"],
     );
 }
 
-/// Java testUnclosedDirectives：各类未闭合指令
-/// （引擎差异：v1 消息为 "Unexpected end of file; expected the closing tag ..."，
-/// 无 Java 的 "unclosed" 字眼 —— 断言按引擎消息，Java 断言值保留于注释）
+/// Java testUnclosedDirectives：各类未闭合指令（Java 对齐：EOF 统一
+/// "Unexpected end of file reached. You have an unclosed ..."）
 #[test]
 fn test_unclosed_directives() {
     let (c, loader) = test_config();
-    assert_error_contains_as(&c, &loader, "<#macro x>", &["#macro", "closing tag"]); // Java: ["#macro", "unclosed"]
+    assert_error_contains_as(&c, &loader, "<#macro x>", &["#macro", "unclosed"]); // Java: ["#macro", "unclosed"]
     assert_error_contains_as(&c, &loader, "<#macro x></#function>", &["macro end tag"]); // Java: ["macro end tag"]
-                                                                                         // Java 断言 ["#macro", "unclosed"]（函数缺闭合按 #macro 报）；引擎报 </#macro>
-    assert_error_contains_as(&c, &loader, "<#function x>", &["</#macro>", "closing tag"]);
+                                                                                         // Java 断言 ["#macro", "unclosed"]（函数缺闭合按 #macro 报）
+    assert_error_contains_as(
+        &c,
+        &loader,
+        "<#function x>",
+        &["#macro or #function", "unclosed"],
+    );
     assert_error_contains_as(&c, &loader, "<#function x></#macro>", &["function end tag"]); // Java: ["function end tag"]
-    assert_error_contains_as(&c, &loader, "<#assign x>", &["#assign", "closing tag"]); // Java: ["#assign", "unclosed"]
-    assert_error_contains_as(
-        &c,
-        &loader,
-        "<#macro m><#local x>",
-        &["#local", "closing tag"],
-    ); // Java: ["#local", "unclosed"]
-    assert_error_contains_as(&c, &loader, "<#global x>", &["#global", "closing tag"]); // Java: ["#global", "unclosed"]
-                                                                                       // Java 断言 ["@...", "unclosed"]；引擎：Unclosed user directive call
+    assert_error_contains_as(&c, &loader, "<#assign x>", &["#assign", "unclosed"]); // Java: ["#assign", "unclosed"]
+    assert_error_contains_as(&c, &loader, "<#macro m><#local x>", &["#local", "unclosed"]); // Java: ["#local", "unclosed"]
+    assert_error_contains_as(&c, &loader, "<#global x>", &["#global", "unclosed"]); // Java: ["#global", "unclosed"]
+                                                                                    // Java 断言 ["@...", "unclosed"]；v1 消息为 "Unclosed user directive call (missing </@...>)."
     assert_error_contains_as(&c, &loader, "<@foo>", &["Unclosed user directive call"]);
-    assert_error_contains_as(&c, &loader, "<#list xs as x>", &["#list", "closing tag"]); // Java: ["#list", "unclosed"]
-    assert_error_contains_as(
-        &c,
-        &loader,
-        "<#list xs as x><#if x>",
-        &["#if", "closing tag"],
-    ); // Java: ["#if", "unclosed"]
+    assert_error_contains_as(&c, &loader, "<#list xs as x>", &["#list", "unclosed"]); // Java: ["#list", "unclosed"]
+    assert_error_contains_as(&c, &loader, "<#list xs as x><#if x>", &["#if", "unclosed"]); // Java: ["#if", "unclosed"]
     assert_error_contains_as(
         &c,
         &loader,
         "<#list xs as x><#if x><#if q><#else>",
-        &["#if", "closing tag"], // Java: ["#if", "unclosed"]
+        &["#if", "unclosed"], // Java: ["#if", "unclosed"]
     );
     assert_error_contains_as(
         &c,
         &loader,
         "<#list xs as x><#if x><#if q><#else><#macro x>qwe",
-        &["#macro", "closing tag"], // Java: ["#macro", "unclosed"]
+        &["#macro", "unclosed"], // Java: ["#macro", "unclosed"]
     );
-    // Java 断言 ["\"(\"", "unclosed"]；引擎：Expected ")" to close the parenthesized expression
-    assert_error_contains_as(
-        &c,
-        &loader,
-        "${(blah",
-        &["Expected \")\" to close the parenthesized expression"],
-    );
-    // Java 断言 ["\"{\"", "unclosed"]；引擎：Expected "}" to close the interpolation
-    assert_error_contains_as(
-        &c,
-        &loader,
-        "${blah",
-        &["Expected \"}\" to close the interpolation"],
-    );
+    // Java 断言 ["\"(\"", "unclosed"]
+    assert_error_contains_as(&c, &loader, "${(blah", &["\"(\"", "unclosed"]);
+    // Java 断言 ["\"{\"", "unclosed"]
+    assert_error_contains_as(&c, &loader, "${blah", &["\"{\"", "unclosed"]);
 }
 
 /// Java testInterpolatingClosingsErrors：插值关闭符错位
-/// （引擎差异：消息措辞不同 —— 断言按引擎消息，Java 断言值保留于注释）
 #[test]
 fn test_interpolating_closings_errors() {
     let (c, loader) = test_config();
-    // Java 断言 ["unclosed"]；引擎：Expected "}" ... end of the template
-    assert_error_contains(
-        &c,
-        &loader,
-        "<#ftl>${x",
-        &["Expected \"}\" to close the interpolation"],
-    );
+    // Java 断言 ["unclosed"]
+    assert_error_contains(&c, &loader, "<#ftl>${x", &["unclosed"]);
     // Java 断言 ["\"}\"", "open"]；引擎：nothing open that it could close
     assert_error_contains(&c, &loader, "<#assign x = x}>", &["\"}\"", "nothing open"]);
     // Java：Legacy glitch... should fail in theory.（Java 原注释；引擎确实报错：
@@ -204,14 +181,23 @@ fn test_interpolating_closings_errors() {
     // 默认行为执行，断言值按引擎消息（引擎差异：无此设置）
     for _syntax in 0..2 {
         assert_error_contains(&c, &loader, "<#ftl>${'x']", &["\"]\"", "nothing open"]); // Java: ["\"]\"", "open"]
-        assert_error_contains(&c, &loader, "<#ftl>${'x'>", &["end of the template"]); // Java: ["end of file"]
-        assert_error_contains(&c, &loader, "[#ftl]${'x'>", &["end of the template"]);
+        assert_error_contains(
+            &c,
+            &loader,
+            "<#ftl>${'x'>",
+            &["Unexpected end of file reached."],
+        ); // Java: ["end of file"]
+        assert_error_contains(
+            &c,
+            &loader,
+            "[#ftl]${'x'>",
+            &["Unexpected end of file reached."],
+        );
         // Java: ["end of file"]
     }
 }
 
-/// Java testNestingErrors：嵌套/结束标签错位
-/// （引擎差异：消息措辞不同 —— 断言按引擎消息，Java 断言值保留于注释）
+/// Java testNestingErrors：嵌套/结束标签错位（JavaCC 嵌套错误格式）
 #[test]
 fn test_nesting_errors() {
     let (c, loader) = test_config();
@@ -229,33 +215,34 @@ fn test_nesting_errors() {
         "<#if true><#assign x><#else></#assign></#if>",
         &["Unexpected directive <#else> here"], // Java: + "#if" "#list" "#assign"
     );
-    // Java 断言 ["</#list>", "#items", "end-tag"]；引擎：Unexpected closing tag "</#list>"
+    // Java 断言 ["</#list>", "#items", "end-tag"]
     assert_error_contains(
         &c,
         &loader,
         "<#list xs><#items as x></#list>",
-        &["</#list>", "#items"], // Java: + "end-tag"
+        &["</#list>", "#items", "end-tag"], // Java 对齐
     );
-    // Java 断言 ["</#if>", "#list", "#sep", "end-tag"]；引擎：Unexpected closing tag "</#list>"
-    // （不含 #sep 提示段）
+    // Java 断言 ["</#if>", "#list", "#sep", "end-tag"]；v1：`</#if>` 在 sep 块内被
+    // auto_close 上抛至根级，根级报 Encountered "</#list>"（ROOT 列表）——
+    // 断言按引擎实际行为（引擎差异）
     assert_error_contains(
         &c,
         &loader,
         "<#list xs as x><#sep></#if></#list>",
-        &["</#list>"], // Java: + "</#if>" "#list" "#sep" "end-tag"
+        &["Encountered \"</#list>\"", "<EOF>"],
     );
-    // Java 断言 ["end of file", "#list", "end-tag"]；引擎：end of file; expected the closing tag "</#list>"
+    // Java 断言 ["end of file", "#list", "end-tag"]
     assert_error_contains(
         &c,
         &loader,
         "<#list xs as x>",
-        &["end of file", "</#list>"], // Java: ["end of file", "#list", "end-tag"]
+        &["end of file", "#list", "end-tag"], // Java 对齐
     );
-    // Java 断言 ["end of file", "#if", "end-tag"]；引擎：end of file; expected the closing tag "</#if>"
+    // Java 断言 ["end of file", "#if", "end-tag"]
     assert_error_contains(
         &c,
         &loader,
         "<#if true>text<#list xs as x></#list>",
-        &["end of file", "</#if>"], // Java: ["end of file", "#if", "end-tag"]
+        &["end of file", "#if", "end-tag"], // Java 对齐
     );
 }

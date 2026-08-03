@@ -560,6 +560,35 @@ impl Lexer {
         col: u32,
     ) -> Result<(Tok, u32, u32)> {
         let c = self.peek().unwrap();
+        // Java OPEN_MISPLACED_INTERPOLATION（FTL.jj :1409-1421）：表达式模式中
+        // `${`/`#{`/`[=` 是词法错误（TokenMgrError LEXICAL_ERROR，位置=起始符列；
+        // jar 实测 parse_needless_interpolation 基线）。注意 `$` 本身是合法标识符
+        // 起始字符（`$foo` 变量名），仅 `${` 组合报错
+        if (c == '$' || c == '#') && self.peek_at(1) == Some('{')
+            || c == '[' && self.peek_at(1) == Some('=')
+        {
+            let img = if c == '[' {
+                "[="
+            } else if c == '$' {
+                "${"
+            } else {
+                "#{"
+            };
+            let closer = if c == '[' { "]" } else { "}" };
+            self.bump();
+            self.bump();
+            return Err(self.err(
+                line,
+                col,
+                format!(
+                    "You can't use {img}...{closer} (an interpolation) here as you are \
+                     already in FreeMarker-expression-mode. Thus, instead of {img}myExpression{closer}, \
+                     just write myExpression. ({img}...{closer} is only used where otherwise static \
+                     text is expected, i.e., outside FreeMarker tags and interpolations, or inside \
+                     string literals.)"
+                ),
+            ));
+        }
         let tok = match c {
             '<' => {
                 // LESS_THAN / LESS_THAN_EQUALS（表达式内 `<` 恒为比较符；
@@ -1033,15 +1062,49 @@ impl Lexer {
         s
     }
 
+    /// Java TokenMgrError.addEscapes（TokenMgrError.java:73-106）：不可打印字符转义，
+    /// `"`/`'`/`\` 转义，其余原样（`\0` 跳过）
+    fn add_escapes(s: &str) -> String {
+        let mut out = String::new();
+        for c in s.chars() {
+            match c {
+                '\0' => {}
+                '\u{08}' => out.push_str("\\b"),
+                '\t' => out.push_str("\\t"),
+                '\n' => out.push_str("\\n"),
+                '\u{0c}' => out.push_str("\\f"),
+                '\r' => out.push_str("\\r"),
+                '"' => out.push_str("\\\""),
+                '\'' => out.push_str("\\'"),
+                '\\' => out.push_str("\\\\"),
+                c if (c as u32) < 0x20 || (c as u32) > 0x7e => {
+                    out.push_str(&format!("\\u{:04x}", c as u32));
+                }
+                c => out.push(c),
+            }
+        }
+        out
+    }
+
     /// 扫描字符串 token 的原始内容（不处理插值；含转义序列原样保留）
     fn scan_string_token(&mut self) -> Result<(Tok, u32)> {
-        let (line, col) = self.line_col();
+        let (_line, col) = self.line_col();
         let quote = self.bump().unwrap();
         let mut s = String::new();
         loop {
             match self.peek() {
                 None => {
-                    return Err(self.err(line, col, "Unclosed string literal."));
+                    // Java TokenMgrError.LexicalError（EOF 分支）：errorAfter =
+                    // 起始引号 + 已匹配内容（addEscapes 转义）；位置 = EOF 处
+                    // （jar 实测 parse_unclosed_string 基线）
+                    return Err(self.err(
+                        self.line,
+                        self.col,
+                        format!(
+                            "Lexical error: encountered <EOF> after \"{}\".",
+                            Self::add_escapes(&format!("{quote}{s}"))
+                        ),
+                    ));
                 }
                 Some(q) if q == quote => {
                     self.bump();
@@ -1051,7 +1114,18 @@ impl Lexer {
                     s.push('\\');
                     self.bump();
                     match self.peek() {
-                        None => return Err(self.err(line, col, "Unclosed string literal.")),
+                        None => {
+                            // `\` 后 EOF：errorAfter 含尾部 `\`（Java 同样以 token
+                            // 已匹配文本为准）
+                            return Err(self.err(
+                                self.line,
+                                self.col,
+                                format!(
+                                    "Lexical error: encountered <EOF> after \"{}\".",
+                                    Self::add_escapes(&format!("{quote}{s}\\"))
+                                ),
+                            ));
+                        }
                         Some(c) => {
                             s.push(c);
                             self.bump();
@@ -1102,7 +1176,17 @@ impl Lexer {
         let mut s = String::new();
         loop {
             match self.peek() {
-                None => return Err(self.err(line, col, "Unclosed comment.")),
+                None => {
+                    // Java UnparsedContent（FTL.jj :4411）：`Unclosed "{start.image}"`，
+                    // 位置 = 注释 token 起始（jar 实测 parse_unclosed_comment 基线）。
+                    // Rust 注释形态恒为 `<#--`/`[#--`（4 字符，starts_tag 限定）
+                    let open = if square { "[#--" } else { "<#--" };
+                    return Err(self.err(
+                        line,
+                        col.saturating_sub(4).max(1),
+                        format!("Unclosed \"{open}\""),
+                    ));
+                }
                 Some('-') if self.peek_at(1) == Some('-') && self.peek_at(2) == Some(term[2]) => {
                     self.bump();
                     self.bump();
@@ -1221,6 +1305,7 @@ pub(crate) const DIRECTIVE_NAMES: &[&str] = &[
     "noparse",
     "escape",
     "noescape",
+    "trim",
     "autoesc",
     "noautoesc",
     "outputformat",

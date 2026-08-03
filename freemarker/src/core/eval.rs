@@ -2593,8 +2593,23 @@ mod tests {
                 .contains("Can't compare values of these types"),
             "{err}"
         );
-        // 字符串不允许 >（EvalUtil.compare :261-267）
+        // 字符串字面量 > 在解析期被拒（Java numberLiteralOnly，FTL.jj :1948-1949，
+        // jar 实测 "Found string literal: \"a\". Expecting: number"）；变量形式
+        // 才到运行时（EvalUtil.compare :261-267）
         let err = eval_out(no_root(), "\"a\" > \"b\"").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Found string literal: \"a\". Expecting: number"),
+            "{err}"
+        );
+        let err = eval_out(
+            DynValue::Map(vec![
+                ("x".into(), DynValue::Str("a".into())),
+                ("y".into(), DynValue::Str("b".into())),
+            ]),
+            "x > y",
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("Can't use operator"), "{err}");
     }
 
@@ -2676,10 +2691,18 @@ mod tests {
     #[test]
     fn unknown_builtin_errors() {
         let root = DynValue::Map(vec![("x".into(), DynValue::Int(1))]);
+        // 未知内建名在**解析期**被拒（Java BuiltIn.newBuiltIn，BuiltIn.java:349-397：
+        // "Unknown built-in: ..." + 字母序内建清单；jar 实测 unknown_builtin 基线）
         let err = eval_out(root.clone(), "x?definitely_not_a_builtin").unwrap_err();
         assert!(
             err.to_string()
-                .contains("Unknown built-in: ?definitely_not_a_builtin"),
+                .contains("Unknown built-in: \"definitely_not_a_builtin\""),
+            "{err}"
+        );
+        // 合法内建名 → 求值期正常路径（未实现的内建仍报 ?name 形式）
+        let err = eval_out(root.clone(), "x?definitely_not_a_builtin").unwrap_err();
+        assert!(
+            !err.to_string().contains("?definitely_not_a_builtin"),
             "{err}"
         );
     }

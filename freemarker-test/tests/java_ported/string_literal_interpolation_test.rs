@@ -170,8 +170,13 @@ fn legacy_length_glitch() {
     assert_error_contains(&c, &loader, "${'${'}", &["Unclosed"]);
     // Java 输出 "${1"；v1 解析期报 Unclosed
     assert_error_contains(&c, &loader, "${'${1'}", &["Unclosed"]);
-    // Java 输出 "${}"；v1 解析期报 "Expected an expression"
-    assert_error_contains(&c, &loader, "${'${}'}", &["Expected an expression"]);
+    // Java 输出 "${}"；v1 解析期报 EOF（JavaCC expected 无 END token → 无 unclosed 段）
+    assert_error_contains(
+        &c,
+        &loader,
+        "${'${}'}",
+        &["Unexpected end of file reached."],
+    );
     assert_output(&c, &loader, "${'${1}'}", "1");
     // Java：assertErrorContains("${'${  '}", "") —— 空子串断言（仅要求报错）
     assert_error_contains(&c, &loader, "${'${  '}", &["Unclosed"]);

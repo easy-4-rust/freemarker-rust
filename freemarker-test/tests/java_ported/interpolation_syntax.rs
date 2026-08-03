@@ -205,20 +205,26 @@ fn legacy_tag_syntax_glitch_still_works_test() {
 fn error_messages_are_square_bracket_interpolation_syntax_aware_test() {
     let (c, loader) = test_config();
     // Java 断言：["${...}", "${myExpression}"]；引擎：Expected ">" ... found "{"
-    assert_error_contains(&c, &loader, "<#if ${x}></#if>", &["found \"{\""]);
+    assert_error_contains(
+        &c,
+        &loader,
+        "<#if ${x}></#if>",
+        &["interpolation) here", "FreeMarker-expression-mode"],
+    );
     // Java 断言：["#{...}", "#{myExpression}"]；引擎：Unexpected character "#"
     assert_error_contains(
         &c,
         &loader,
         "<#if #{x}></#if>",
-        &["Unexpected character \"#\""],
+        &["(an interpolation) here", "FreeMarker-expression-mode"],
     );
-    // Java 断言：["[=...]", "[=myExpression]"]；引擎：Expected "]" to close the list literal
+    // Java 断言：["[=...]", "[=myExpression]"]（OPEN_MISPLACED_INTERPOLATION，
+    // 表达式模式中 `[=` 词法错误——方括号插值语法同样适用）
     assert_error_contains(
         &c,
         &loader,
         "<#if [=x]></#if>",
-        &["Expected \"]\" to close the list literal"],
+        &["[=...]", "[=myExpression]"],
     );
 }
 
@@ -228,7 +234,7 @@ fn unclosed_syntax_error_test() {
     let (c, loader) = test_config();
     // Java 断言：["unclosed \"{\""]；引擎消息为 "Expected \"}\" to close the interpolation,
     // but found the end of the template"
-    assert_error_contains(&c, &loader, "${1", &["end of the template"]);
+    assert_error_contains(&c, &loader, "${1", &["unclosed \"{\""]);
 
     // Java：setInterpolationSyntax(SQUARE_BRACKET_INTERPOLATION_SYNTAX) →
     // `[=1` 未闭合 `[`；引擎无该语法（`[=1` 按文本/标签解析，不报错）——断言按引擎实际输出

@@ -66,6 +66,8 @@ mod encoding_override;
 mod end_tag_syntax;
 #[path = "java_ported/environment_get_template_variants_test.rs"]
 mod environment_get_template_variants_test;
+#[path = "java_ported/error_message_parity.rs"]
+mod error_message_parity;
 #[path = "java_ported/eval_json_built_in_test.rs"]
 mod eval_json_built_in_test;
 #[path = "java_ported/exception_test.rs"]

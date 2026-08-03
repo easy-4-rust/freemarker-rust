@@ -254,7 +254,7 @@ fn test_error_messages() {
         &c,
         &loader,
         "${[]?filter(() -> true)}",
-        &["Expected an expression, but found \")\""],
+        &["Encountered \")\"", "was expecting one of these patterns"],
     );
     // Java：lambda 参数个数不匹配 → "1 parameter ... declared 2"；引擎不在 filter 阶段
     // 校验参数个数，[] 空序列谓词不被调用 → ${...} 序列转字符串报错

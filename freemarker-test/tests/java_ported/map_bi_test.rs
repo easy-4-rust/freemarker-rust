@@ -344,7 +344,7 @@ fn test_error_messages() {
         &c,
         &loader,
         "${[]?map(() -> 1)}",
-        &["Expected an expression"],
+        &["Encountered \")\"", "was expecting one of these patterns"],
     );
     // Java：["lambda", "1 parameter", "declared 2"]；v1：(i, j) 多参数 lambda 解析成
     // 其他表达式 → 类型错误

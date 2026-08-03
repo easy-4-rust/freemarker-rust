@@ -5,7 +5,7 @@
 //! 引擎差异（消息措辞）：Java 错误消息为 "<#break> must be nested inside ..."；
 //! 本引擎（固定 2.3.34）消息为 "break must be nested inside a directive that
 //! supports it: ..."（无尖括号形式）。无法逐字对齐 → 断言引擎消息中最接近子串
-//! "break must be nested inside a directive that supports it"，Java 语义（非法
+//! "must be nested inside a directive that supports it"，Java 语义（非法
 //! 嵌套位置报错）保留。
 //! 另：Java 2.3.28+ 的 `<#on>`（#switch 的 case 标记）本引擎未实现 —— 相关用例
 //! 用 `<#case>` 等价替换（语义不变：switch 分支内 break/continue 的嵌套合法性）。
@@ -15,10 +15,9 @@ use crate::util::*;
 
 // 引擎差异：Java 断言 "<#break> must be nested"；本引擎消息为 "break must be
 // nested inside a directive that supports it: ..." —— 取引擎消息中最接近子串
-const BREAK_NESTING_ERROR_MESSAGE_PART: &str =
-    "break must be nested inside a directive that supports it";
+const BREAK_NESTING_ERROR_MESSAGE_PART: &str = "must be nested inside a directive that supports it";
 const CONTINUE_NESTING_ERROR_MESSAGE_PART: &str =
-    "continue must be nested inside a directive that supports it";
+    "must be nested inside a directive that supports it";
 
 /// Java testValidPlacements：合法位置
 #[test]

@@ -26,7 +26,13 @@ fn expression_rich_template(prefix: &str, middle: &str, suffix: &str) -> String 
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 512, ..ProptestConfig::default() })]
+    // timeout：单 case 超时（毫秒）——防病态输入挂死整个测试进程；
+    // 超时 case 按失败处理并保存最小回归输入到 proptest-regressions/（可诊断）
+    #![proptest_config(ProptestConfig {
+        cases: 512,
+        timeout: 5000,
+        ..ProptestConfig::default()
+    })]
 
     #[test]
     fn html_parser_never_panics(template in "\\PC{0,512}") {

@@ -233,16 +233,18 @@ fn test_output_format_directive() {
         ),
         "XML&apos; HTML&#39; XML&apos;",
     );
-    // Java：<#outputFormat 'dummy'></#outputFormat> assertErrorContains "dummy",
-    //   "nregistered" —— 引擎无注册表，报 "Unknown output format: dummy"（引擎差异消息，
-    //   保留 "dummy" 子串）
+    // Java 对齐：Unregistered output format name, "dummy". ...（Java
+    // OutputFormatDirective/Configuration 注册表消息，jar 实测）
     let m = assert_error_contains(
         &c,
         &l,
         "<#outputFormat 'dummy'></#outputFormat>",
         &["dummy"],
     );
-    assert!(m.contains("Unknown output format"), "引擎消息: {m}");
+    assert!(
+        m.contains("Unregistered output format name"),
+        "引擎消息: {m}"
+    );
     // Java parse-time 参数表达式：'plain' + 'Text' → plainText ✓
     assert_output(
         &c,

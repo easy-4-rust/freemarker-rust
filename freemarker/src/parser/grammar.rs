@@ -12,10 +12,12 @@
 
 use crate::core::{
     AssignOp, BuiltinVar, CallTarget, CaseDef, Element, ElementKind, Expr, ExprKind, MacroDef,
-    MacroParam, RangeKind, StrPart,
+    MacroParam, OutputFormatKind, RangeKind, StrPart,
 };
 use crate::error::{Result, TemplateError};
-use crate::parser::lexer::{ExprCtx, Lexer, TagOpen, TagSyntax, TextStop, Tok};
+use crate::parser::lexer::{
+    ExprCtx, Lexer, TagOpen, TagSyntax, TextStop, Tok, DIRECTIVE_NAMES, PARAM_DIRECTIVES,
+};
 use crate::span::Span;
 use crate::template::{Configuration, Template};
 use crate::value::TNumber;
@@ -44,6 +46,228 @@ pub fn parse_expression(cfg: &Rc<Configuration>, src: &str) -> Result<crate::cor
         ))),
     }
 }
+
+/// 有结束标签形态（END_xxx token）的指令名——Java FTL.jj 的 `<END_* : <END_TAG>...`
+/// token 全量（:1038-1100）。无 END 形态的指令（else/elseif/case/default/recover 外
+/// 的 visit/on/fallback 等）出现 `</#name>` 时词法层即报畸形标签。
+/// 注意：该集合比 getEndTokenDescIfIsEndToken 的 desc 映射（end_tag_descs，仅供
+/// 错误消息）大——END_AUTOESC/END_NOAUTOESC/END_OUTPUTFORMAT/END_RECOVER 存在但
+/// 无 desc
+const END_TAG_NAMES: &[&str] = &[
+    "foreach",
+    "list",
+    "sep",
+    "items",
+    "switch",
+    "if",
+    "compress",
+    "macro",
+    "function",
+    "transform",
+    "escape",
+    "noescape",
+    "assign",
+    "global",
+    "local",
+    "attempt",
+    "recover",
+    "outputformat",
+    "autoesc",
+    "noautoesc",
+    // "trim"：Rust 契约扩展（Java 无 `<#trim>` 块指令）——结束标签随扩展保留
+    "trim",
+];
+
+/// Java PropertySetting.SETTING_NAMES（PropertySetting.java:43-68）：模板内可设置
+/// 的 12 项设置（snake_case 规范键；camelCase 由 canonical_setting_key 归一）。
+/// 顺序与 Java 错误消息的 allowed 列表一致（jar 实测 parse_setting_unknown 基线）
+const SETTING_NAMES: &[&str] = &[
+    "boolean_format",
+    "c_format",
+    "classic_compatible",
+    "date_format",
+    "datetime_format",
+    "locale",
+    "number_format",
+    "output_encoding",
+    "sql_date_and_time_time_zone",
+    "time_format",
+    "time_zone",
+    "url_escaping_charset",
+];
+
+/// 表达式起始 token 集合（FTL.jj 表达式产生式起始 LOOKAHEAD 的 tokenImage）——
+/// JavaCC "was expecting one of these patterns" 列表（jar 实测 parse_invalid_char
+/// 基线，顺序与 Java 一致）
+const EXPRESSION_START_PATTERNS: &[&str] = &[
+    "<STRING_LITERAL>",
+    "<RAW_STRING>",
+    "\"false\"",
+    "\"true\"",
+    "<INTEGER>",
+    "<DECIMAL>",
+    "\".\"",
+    "\"+\"",
+    "\"-\"",
+    "\"!\"",
+    "\"[\"",
+    "\"(\"",
+    "\"{\"",
+    "<ID>",
+];
+
+/// MixedContentElements 的完整 LOOKAHEAD（JavaCC 生成 ParseException 的
+/// expectedTokenSequences tokenImage；FTL.jj MixedContentElements 产生式，
+/// 顺序与 jar 实测 parse_nested_comment 基线一致，53 项）
+const MIXED_CONTENT_PATTERNS: &[&str] = &[
+    "<ATTEMPT>",
+    "<IF>",
+    "<ELSE_IF>",
+    "<LIST>",
+    "<ITEMS>",
+    "<SEP>",
+    "<FOREACH>",
+    "<SWITCH>",
+    "<ASSIGN>",
+    "<GLOBALASSIGN>",
+    "<LOCALASSIGN>",
+    "<_INCLUDE>",
+    "<IMPORT>",
+    "<FUNCTION>",
+    "<MACRO>",
+    "<TRANSFORM>",
+    "<VISIT>",
+    "<STOP>",
+    "<RETURN>",
+    "<CALL>",
+    "<SETTING>",
+    "<OUTPUTFORMAT>",
+    "<AUTOESC>",
+    "<NOAUTOESC>",
+    "<COMPRESS>",
+    "<COMMENT>",
+    "<TERSE_COMMENT>",
+    "<NOPARSE>",
+    "<END_IF>",
+    "<ELSE>",
+    "<BREAK>",
+    "<CONTINUE>",
+    "<SIMPLE_RETURN>",
+    "<HALT>",
+    "<FLUSH>",
+    "<TRIM>",
+    "<LTRIM>",
+    "<RTRIM>",
+    "<NOTRIM>",
+    "<SIMPLE_NESTED>",
+    "<NESTED>",
+    "<SIMPLE_RECURSE>",
+    "<RECURSE>",
+    "<FALLBACK>",
+    "<ESCAPE>",
+    "<NOESCAPE>",
+    "<UNIFIED_CALL>",
+    "<STATIC_TEXT_WS>",
+    "<STATIC_TEXT_NON_WS>",
+    "<STATIC_TEXT_FALSE_ALARM>",
+    "\"${\"",
+    "\"#{\"",
+    "\"[=\"",
+];
+
+/// 根级 MixedContentElements 的 expected 列表（Java 语义 LOOKAHEAD：无打开的块
+/// → 无 END_IF/ELSE_IF/ELSE，`<EOF>` 置首；jar 实测 parse_double_close 基线）
+const ROOT_MIXED_PATTERNS: &[&str] = &[
+    "<EOF>",
+    "<ATTEMPT>",
+    "<IF>",
+    "<LIST>",
+    "<ITEMS>",
+    "<SEP>",
+    "<FOREACH>",
+    "<SWITCH>",
+    "<ASSIGN>",
+    "<GLOBALASSIGN>",
+    "<LOCALASSIGN>",
+    "<_INCLUDE>",
+    "<IMPORT>",
+    "<FUNCTION>",
+    "<MACRO>",
+    "<TRANSFORM>",
+    "<VISIT>",
+    "<STOP>",
+    "<RETURN>",
+    "<CALL>",
+    "<SETTING>",
+    "<OUTPUTFORMAT>",
+    "<AUTOESC>",
+    "<NOAUTOESC>",
+    "<COMPRESS>",
+    "<COMMENT>",
+    "<TERSE_COMMENT>",
+    "<NOPARSE>",
+    "<BREAK>",
+    "<CONTINUE>",
+    "<SIMPLE_RETURN>",
+    "<HALT>",
+    "<FLUSH>",
+    "<TRIM>",
+    "<LTRIM>",
+    "<RTRIM>",
+    "<NOTRIM>",
+    "<SIMPLE_NESTED>",
+    "<NESTED>",
+    "<SIMPLE_RECURSE>",
+    "<RECURSE>",
+    "<FALLBACK>",
+    "<ESCAPE>",
+    "<NOESCAPE>",
+    "<UNIFIED_CALL>",
+    "<STATIC_TEXT_WS>",
+    "<STATIC_TEXT_NON_WS>",
+    "<STATIC_TEXT_FALSE_ALARM>",
+    "\"${\"",
+    "\"#{\"",
+    "\"[=\"",
+];
+
+/// 无参数指令（Java CLOSE_TAG1/CLOSE_TAG2 家族 + 双 token 的 SIMPLE_* 无参版）：
+/// `<#name>`（空白* + `>`/`]` 直接闭合）合法。BLANK 家族（PARAM_DIRECTIVES）
+/// 之外的指令均属此类
+const NOPARAM_DIRECTIVES: &[&str] = &[
+    "attempt",
+    "recover",
+    "sep",
+    "compress",
+    "comment",
+    "default",
+    "trim",
+    "autoesc",
+    "noautoesc",
+    "noescape",
+    "noparse",
+    "else",
+    "break",
+    "continue",
+    "flush",
+    "t",
+    "lt",
+    "rt",
+    "nt",
+    "fallback",
+    "nested",
+    "recurse",
+    "return",
+    "stop",
+    "ftl",
+];
+
+/// 允许自闭合（`<#name/>`）的指令——Java CLOSE_TAG2 家族 + SIMPLE_* 无参版
+/// （CLOSE_TAG1 不含 `/`：`<#compress/>` 报畸形）
+const SELF_CLOSE_DIRECTIVES: &[&str] = &[
+    "else", "break", "continue", "flush", "t", "lt", "rt", "nt", "fallback", "nested", "recurse",
+    "return", "stop",
+];
 
 /// 递归下降解析器（对应 Java FMParser 的字段 + 产生式方法）
 struct Parser<'a> {
@@ -357,22 +581,25 @@ impl<'a> Parser<'a> {
                             match header_bool(&value) {
                                 Some(b) => self.strip_ws = b,
                                 None => {
+                                    // Java checkBooleanParam（FTL.jj :515，jar 实测
+                                    // parse_ftl_header_bad 基线）：位置 = 值表达式
                                     return Err(self.err(
-                                        l,
-                                        c,
-                                        "Expected a boolean constant for the header parameter.",
-                                    ))
+                                        value.span.line,
+                                        value.span.col,
+                                        "Expecting boolean (true/false) parameter",
+                                    ));
                                 }
                             }
                         }
                         "strict_syntax" | "strictsyntax" => match header_bool(&value) {
                             Some(b) => self.lexer.strict_syntax = b,
                             None => {
+                                // Java checkBooleanParam（FTL.jj :515）
                                 return Err(self.err(
-                                    l,
-                                    c,
-                                    "Expected a boolean constant for \"strict_syntax\".",
-                                ))
+                                    value.span.line,
+                                    value.span.col,
+                                    "Expecting boolean (true/false) parameter",
+                                ));
                             }
                         },
                         // 渲染期设置（auto_esc / output_format / attributes）：
@@ -478,6 +705,115 @@ impl<'a> Parser<'a> {
         self.parse_block_impl(&["sep"], &[], true)
     }
 
+    /// Java ParseException 对 EOF 的统一消息（ParseException.getOrRenderDescription
+    /// :384-392，jar 实测基线）：`Unexpected end of file reached. You have an unclosed
+    /// {descs}. Check if the FreeMarker end-tags are present, and aren't malformed.
+    /// (Note that FreeMarker end-tags must have # or @ after the / character.)`
+    /// descs 为空时省略 " You have an unclosed..." 段（Java :387-391 同款分支）。
+    /// 位置取输入末尾：JavaCC EOF token 的 beginColumn = 最后字符所在列（实测列=模板
+    /// 长度），而 lexer.line_col() 停在不消费字符的 EOF 处（最后字符+1 列）→ 减 1。
+    fn eof_unclosed(&self, descs: &[&str]) -> TemplateError {
+        let (el, ec) = self.lexer.line_col();
+        let details = if descs.is_empty() {
+            "Unexpected end of file reached.".to_string()
+        } else {
+            format!(
+                "Unexpected end of file reached. You have an unclosed {}. Check if the FreeMarker end-tags are present, and aren't malformed. (Note that FreeMarker end-tags must have # or @ after the / character.)",
+                descs.join(" and ")
+            )
+        };
+        self.err(el, ec.saturating_sub(1).max(1), details)
+    }
+
+    /// 结束标签名 → Java getEndTokenDescIfIsEndToken 描述（END_xxx token → desc，
+    /// ParseException.java :499-577；END_MACRO/END_FUNCTION 共享 "#macro or #function"、
+    /// END_ASSIGN/END_GLOBAL/END_LOCAL 共享 "#assign or #local or #global"），
+    /// 去重保序（Java LinkedHashSet :499-500）
+    /// Java UNKNOWN_DIRECTIVE 的 tip 段（FTL.jj :1147-1167）：相近指令名提示或
+    /// Help 链接+版本号；无 null 情形（Java 仅在 dn 是内置名但标签畸形时用另一消息）
+    fn unknown_directive_tip(name: &str) -> &'static str {
+        match name {
+            "set" | "var" => {
+                "Use #assign or #local or #global, depending on the intented scope \
+                 (#assign is template-scope). (If you have seen this directive in use \
+                 elsewhere, this was a planned directive, so maybe you need to upgrade \
+                 FreeMarker.)"
+            }
+            "else_if" | "elif" => "Use #elseif.",
+            "no_escape" => "Use #noescape instead.",
+            "method" => "Use #function instead.",
+            "head" | "template" | "fm" => "You may meant #ftl.",
+            "try" | "atempt" => "You may meant #attempt.",
+            "for" | "each" | "iterate" | "iterator" => {
+                "You may meant #list (http://freemarker.org/docs/ref_directive_list.html)."
+            }
+            "prefix" => {
+                "You may meant #import. (If you have seen this directive in use elsewhere, \
+                 this was a planned directive, so maybe you need to upgrade FreeMarker.)"
+            }
+            "item" | "row" | "rows" => "You may meant #items.",
+            "separator" | "separate" | "separ" => "You may meant #sep.",
+            _ => {
+                "Help (latest version): http://freemarker.org/docs/ref_directive_alphaidx.html; \
+                 you're using FreeMarker 2.3.34."
+            }
+        }
+    }
+
+    /// Java UNKNOWN_DIRECTIVE（FTL.jj :1128-1172）错误：`Unknown directive: #{name}. {tip}`，
+    /// 位置 = beginColumn + 1（`#` 处）
+    fn unknown_directive_err(&self, line: u32, col: u32, name: &str) -> TemplateError {
+        self.err(
+            line,
+            col + 1,
+            format!(
+                "Unknown directive: #{name}. {}",
+                Self::unknown_directive_tip(name)
+            ),
+        )
+    }
+
+    /// Java FTL.jj :1135-1143：内置指令名但标签畸形——`</#name>` 缺 `>`（END_xxx
+    /// 不匹配，回退 UNKNOWN_DIRECTIVE）或指令无结束标签形态（`</#else>` 等）。
+    /// 消息：`#{name} is an existing directive, but the tag is malformed.  (See ...)`；
+    /// 位置 = beginColumn + 1（`#` 处，jar 实测 parse_expected_close/parse_bad_close）
+    fn malformed_directive_err(&self, line: u32, col: u32, name: &str) -> TemplateError {
+        self.err(
+            line,
+            col + 1,
+            format!(
+                "#{name} is an existing directive, but the tag is malformed.  \
+                 (See FreeMarker Manual / Directive Reference.)"
+            ),
+        )
+    }
+
+    fn end_tag_descs(end_tags: &[&str]) -> Vec<&'static str> {
+        let mut out = Vec::new();
+        for t in end_tags {
+            let d: &'static str = match *t {
+                "foreach" => "#foreach",
+                "list" => "#list",
+                "sep" => "#sep",
+                "items" => "#items",
+                "switch" => "#switch",
+                "if" => "#if",
+                "compress" => "#compress",
+                "macro" | "function" => "#macro or #function",
+                "transform" => "#transform",
+                "escape" => "#escape",
+                "noescape" => "#noescape",
+                "assign" | "global" | "local" => "#assign or #local or #global",
+                "attempt" => "#attempt",
+                _ => continue,
+            };
+            if !out.contains(&d) {
+                out.push(d);
+            }
+        }
+        out
+    }
+
     fn parse_block_impl(
         &mut self,
         end_tags: &[&str],
@@ -499,14 +835,9 @@ impl<'a> Parser<'a> {
                     if auto_close || end_tags.is_empty() {
                         return Ok((els, BlockStop::Eof));
                     }
-                    return Err(self.err(
-                        line,
-                        col,
-                        format!(
-                            "Unexpected end of file; expected the closing tag \"</#{0}>\".",
-                            end_tags[0]
-                        ),
-                    ));
+                    // Java getOrRenderDescription EOF 分支（含 end tag 描述；
+                    // 实测 parse_unclosed_tag/parse_macro_no_end 基线）
+                    return Err(self.eof_unclosed(&Self::end_tag_descs(end_tags)));
                 }
                 TextStop::Interp => {
                     els.push(self.parse_interpolation()?);
@@ -543,25 +874,74 @@ impl<'a> Parser<'a> {
                             self.enter_tag(square);
                             let name = self.lexer.read_name().unwrap_or_default();
                             let lname = name.to_ascii_lowercase();
+                            // Java 词法层语义：未知名 `</#foo>` 落 UNKNOWN_DIRECTIVE
+                            // （jar 实测 parse_unknown_closing）；无 END token 的指令
+                            // `</#else>` 同样落 UNKNOWN_DIRECTIVE → 内置名畸形标签
+                            // （jar 实测 parse_bad_close）；END 集合指令 `</#if` 缺 `>`
+                            // 时 END_xxx 不匹配 → 畸形标签（FTL.jj :1135-1143，jar 实测
+                            // parse_expected_close）。位置 = `#` 处 = 标签起始列 + 1
+                            if !DIRECTIVE_NAMES.contains(&lname.as_str()) {
+                                return Err(self.unknown_directive_err(line, col, &lname));
+                            }
+                            if !END_TAG_NAMES.contains(&lname.as_str()) {
+                                return Err(self.malformed_directive_err(line, col, &lname));
+                            }
+                            if self.expect_tag_end_raw().is_err() {
+                                return Err(self.malformed_directive_err(line, col, &lname));
+                            }
                             if end_tags.iter().any(|e| *e == lname) {
-                                // 结束标签的 `>`（END_xxx 的 CLOSE_TAG1）
-                                self.expect_tag_end_raw()?;
                                 return Ok((els, BlockStop::EndTag(lname)));
                             }
                             if auto_close {
                                 // Java Sep()：`[LOOKAHEAD(1) end = <END_SEP>]` 可选 ——
                                 // 父块结束标签自动收尾，停止信息上抛给外层块
-                                self.expect_tag_end_raw()?;
                                 return Ok((els, BlockStop::EndTag(lname)));
                             }
-                            return Err(self.err(
-                                line,
-                                col,
-                                format!(
-                                    "Unexpected closing tag \"</#{name}>\" (expected \"</#{0}>\" or the end of the enclosing block).",
-                                    end_tags.first().copied().unwrap_or("?")
-                                ),
-                            ));
+                            // JavaCC 嵌套错误格式（ParseException :423-479，jar 实测
+                            // parse_nested_comment 基线）：expectedEndTokenDescs 非空时
+                            // 附 "only this/these can be closed" + 嵌套提示段，再加
+                            // MixedContentElements 全量 expected 列表。根级
+                            // （end_tags 空）时 expected 序列无 END token → 普通格式
+                            // （无 close 段），列表为根级变体（<EOF> 置首）
+                            let patterns = if end_tags.is_empty() {
+                                ROOT_MIXED_PATTERNS
+                            } else {
+                                MIXED_CONTENT_PATTERNS
+                            };
+                            let mut msg = format!(
+                                "Encountered \"</#{name}>\", but was expecting one of these patterns:\n    {}",
+                                patterns.join("\n    ")
+                            );
+                            if !end_tags.is_empty() {
+                                let descs = Self::end_tag_descs(end_tags);
+                                let close_desc = if descs.len() > 1 {
+                                    format!(
+                                        "these can be closed: {}",
+                                        descs
+                                            .iter()
+                                            .map(|d| format!("\"{d}\""))
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    )
+                                } else {
+                                    // descs 可能为空（end_tags 名不在
+                                    // getEndTokenDescIfIsEndToken 映射，如 "nested"）
+                                    // → 兜底用 end_tags[0]
+                                    format!(
+                                        "this can be closed: \"{}\"",
+                                        descs.first().copied().unwrap_or(end_tags[0])
+                                    )
+                                };
+                                msg = format!(
+                                    "Encountered \"</#{name}>\", but at this place only {close_desc}. \
+                                     This usually because of wrong nesting of FreeMarker directives, \
+                                     like a missed or malformed end-tag somewhere. (Note that FreeMarker \
+                                     end-tags must have # or @ after the / character.)\n\
+                                     Was expecting one of these patterns:\n    {}",
+                                    MIXED_CONTENT_PATTERNS.join("\n    ")
+                                );
+                            }
+                            return Err(self.err(line, col, msg));
                         }
                         TagOpen::Call { square } => {
                             self.enter_tag(square);
@@ -571,6 +951,41 @@ impl<'a> Parser<'a> {
                             self.enter_tag(square);
                             let name = self.lexer.read_name().unwrap_or_default();
                             let lname = name.to_ascii_lowercase();
+                            // Java 词法层（FTL.jj token 结构，:921-1111）：指令 token
+                            // 分四类——BLANK 家族（需参数，名字后必须空白：if/list/
+                            // assign 等）、CLOSE_TAG1（无参 `>`/`]` 闭合）、CLOSE_TAG2
+                            // （无参，`/` 自闭合可）、双 token（nested/recurse/return/
+                            // stop 的 BLANK + SIMPLE 两版）。不匹配 token 结构 → 落
+                            // UNKNOWN_DIRECTIVE → 内置名畸形标签（FTL.jj :1135-1143，
+                            // jar 实测 parse_malformed_assign）；未知名报 Unknown
+                            // directive。位置 = beginColumn + 1（`#` 处）
+                            if !DIRECTIVE_NAMES.contains(&lname.as_str()) {
+                                return Err(self.unknown_directive_err(line, col, &lname));
+                            }
+                            let after = self.lexer.peek();
+                            let whitespace = matches!(
+                                after,
+                                Some(c) if c == ' ' || c == '\t' || c == '\r' || c == '\n'
+                            );
+                            let direct_close = matches!(after, Some('>') | Some(']'));
+                            let self_close = after == Some('/');
+                            let malformed = if whitespace {
+                                // 无参家族带参数 → token 不匹配（`<#compress x>`）；
+                                // else 特例：`<#else x>` 走 ELSE_IF（BLANK）
+                                !PARAM_DIRECTIVES.contains(&lname.as_str()) && lname != "else"
+                            } else if direct_close {
+                                // BLANK-only 指令无空白直接闭合 → 不匹配
+                                !NOPARAM_DIRECTIVES.contains(&lname.as_str())
+                            } else if self_close {
+                                // CLOSE_TAG1 家族不含 `/`（`<#compress/>` 畸形）
+                                !SELF_CLOSE_DIRECTIVES.contains(&lname.as_str())
+                            } else {
+                                // EOF 或其他字符 → token 不完整 → 畸形
+                                true
+                            };
+                            if malformed {
+                                return Err(self.malformed_directive_err(line, col, &lname));
+                            }
                             if dir_terms.iter().any(|t| *t == lname) {
                                 return Ok((els, BlockStop::Dir(lname)));
                             }
@@ -686,6 +1101,11 @@ impl<'a> Parser<'a> {
             }
             let (t, l, c2) = self.next_tok()?;
             if t != Tok::InterpEnd {
+                if t == Tok::Eof {
+                    // Java：EOF 时表达式状态期望 CLOSING_CURLY_BRACKET（FTL.jj），
+                    // desc = "\"{\""；实测 parse_unclosed_interpolation 基线
+                    return Err(self.eof_unclosed(&["\"{\""]));
+                }
                 return Err(self.err(
                     l,
                     c2,
@@ -727,10 +1147,12 @@ impl<'a> Parser<'a> {
             "break" => {
                 self.expect_tag_end_raw()?;
                 if self.loop_nesting == 0 {
+                    // Java FTL.jj :3080：`start.image + " must be nested inside ..."`
+                    // （start.image = `<#break>` 标签原文，jar 实测 break_outside 基线）
                     return Err(self.err(
                         line,
                         col,
-                        "break must be nested inside a directive that supports it:  #list with \"as\", #items, #switch (or the deprecated #foreach)",
+                        "<#break> must be nested inside a directive that supports it:  #list with \"as\", #items, #switch (or the deprecated #foreach)",
                     ));
                 }
                 Element::new(ElementKind::Break, span)
@@ -738,10 +1160,11 @@ impl<'a> Parser<'a> {
             "continue" => {
                 self.expect_tag_end_raw()?;
                 if self.continue_nesting == 0 {
+                    // Java FTL.jj :3101（start.image = `<#continue>`）
                     return Err(self.err(
                         line,
                         col,
-                        "continue must be nested inside a directive that supports it:  #list with \"as\", #items (or the deprecated #foreach)",
+                        "<#continue> must be nested inside a directive that supports it:  #list with \"as\", #items (or the deprecated #foreach)",
                     ));
                 }
                 Element::new(ElementKind::Continue, span)
@@ -811,6 +1234,22 @@ impl<'a> Parser<'a> {
             }
             "outputformat" => {
                 let name_expr = self.expression()?;
+                // Java OutputFormatBlock（FTL.jj :4079-4128）：参数必须为解析期可
+                // 求值的字符串字面量；未注册的格式名 → 逐字报
+                // "Unregistered output format name, \"{name}\". The output formats
+                // registered in the Configuration are: ..."（位置 = 指令标签起始，
+                // jar 实测 unknown_output_format 基线 col 1）
+                if let ExprKind::Str(s) = &name_expr.kind {
+                    if OutputFormatKind::parse(s).is_none() {
+                        return Err(self.err(
+                            line,
+                            col,
+                            format!(
+                                "Unregistered output format name, \"{s}\". The output formats registered in the Configuration are: \"CSS\", \"HTML\", \"JSON\", \"JavaScript\", \"RTF\", \"XHTML\", \"XML\", \"plainText\", \"undefined\""
+                            ),
+                        ));
+                    }
+                }
                 self.expect_tag_end()?;
                 let (body, stop) = self.parse_block(&["outputformat"], &[])?;
                 if !matches!(stop, BlockStop::EndTag(_)) {
@@ -850,6 +1289,23 @@ impl<'a> Parser<'a> {
                         "The setting name is recognized, but changing this setting from inside a template isn't supported.",
                     ));
                 }
+                // Java PropertySetting.SETTING_NAMES（:43-68）白名单：未知名解析期
+                // 报错（jar 实测 parse_setting_unknown 基线；两种命名约定 canonical
+                // 后校验）。Java 在读取 key 后立即校验（先于 `=` 检查）
+                let canonical = crate::core::canonical_setting_key(&key);
+                if !SETTING_NAMES.contains(&canonical) && canonical != "template_exception_handler"
+                {
+                    // template_exception_handler：Rust 文档化偏差（允许模板内设置，
+                    // Java 属 Configurable 级）——不出现在 allowed 列表
+                    return Err(self.err(
+                        kl,
+                        kc,
+                        format!(
+                            "Unknown setting name: \"{key}\". The allowed setting names are: {}",
+                            SETTING_NAMES.join(", ")
+                        ),
+                    ));
+                }
                 self.expect_tok(Tok::Eq, "\"=\"")?;
                 let value = self.expression()?;
                 self.loose_end()?;
@@ -857,7 +1313,7 @@ impl<'a> Parser<'a> {
                 // 两种命名约定并存（booleanFormat/boolean_format 等 12 项），
                 // 渲染期 exec_setting 按 snake_case 规范键匹配
                 // （configurable.rs canonical_setting_key）
-                let key = crate::core::canonical_setting_key(&key).to_string();
+                let key = canonical.to_string();
                 Element::new(ElementKind::Setting { key, value }, span)
             }
             "comment" => {
@@ -980,7 +1436,9 @@ impl<'a> Parser<'a> {
                 ));
             }
             other => {
-                return Err(self.err(line, col, format!("Unknown directive: #{other}.")));
+                // Java UNKNOWN_DIRECTIVE（FTL.jj :1128-1172）：消息含 tip 段；
+                // 位置 = beginColumn + 1（`#` 处，jar 实测 parse_unknown_directive）
+                return Err(self.unknown_directive_err(line, col, other));
             }
         };
         Ok(elem)
@@ -1917,7 +2375,8 @@ impl<'a> Parser<'a> {
                     }
                     match stop {
                         TextStop::Eof => {
-                            return Err(self.err(line, col, "Unclosed <#switch> block."));
+                            // Java getOrRenderDescription EOF 分支（END_SWITCH → "#switch"）
+                            return Err(self.eof_unclosed(&["#switch"]));
                         }
                         TextStop::Interp => {
                             return Err(self.err(
@@ -2207,7 +2666,8 @@ impl<'a> Parser<'a> {
         self.or_expression()
     }
 
-    /// OrExpression：`lhs (|| rhs)*`
+    /// OrExpression：`lhs (|| rhs)*`；每步两侧按 Java booleanLiteralOnly
+    /// 拒绝字面量（FTL.jj :2044-2045）
     fn or_expression(&mut self) -> Result<Expr> {
         let mut lhs = self.and_expression()?;
         loop {
@@ -2217,13 +2677,16 @@ impl<'a> Parser<'a> {
             }
             self.next_tok()?;
             let rhs = self.and_expression()?;
+            literal_only_check(self, &lhs, BOOLEAN_ONLY)?;
+            literal_only_check(self, &rhs, BOOLEAN_ONLY)?;
             let span = lhs.span;
             lhs = Expr::new(ExprKind::Or(Box::new(lhs), Box::new(rhs)), span);
         }
         Ok(lhs)
     }
 
-    /// AndExpression：`lhs (&& rhs)*`
+    /// AndExpression：`lhs (&& rhs)*`；每步两侧按 Java booleanLiteralOnly
+    /// 拒绝字面量（FTL.jj :2021-2022）
     fn and_expression(&mut self) -> Result<Expr> {
         let mut lhs = self.equality_expression()?;
         loop {
@@ -2233,13 +2696,16 @@ impl<'a> Parser<'a> {
             }
             self.next_tok()?;
             let rhs = self.equality_expression()?;
+            literal_only_check(self, &lhs, BOOLEAN_ONLY)?;
+            literal_only_check(self, &rhs, BOOLEAN_ONLY)?;
             let span = lhs.span;
             lhs = Expr::new(ExprKind::And(Box::new(lhs), Box::new(rhs)), span);
         }
         Ok(lhs)
     }
 
-    /// EqualityExpression：`rel [(==|!=) rel]`（单一可选，非结合）
+    /// EqualityExpression：`rel [(==|!=) rel]`（单一可选，非结合）；两侧按 Java
+    /// 拒绝哈希/列表字面量（FTL.jj :1902-1911 notHashLiteral + notListLiteral）
     fn equality_expression(&mut self) -> Result<Expr> {
         let lhs = self.relational_expression()?;
         let (t, _, _) = self.peek_tok()?;
@@ -2247,12 +2713,16 @@ impl<'a> Parser<'a> {
             Tok::Eq => {
                 self.next_tok()?;
                 let rhs = self.relational_expression()?;
+                literal_only_check(self, &lhs, EQUALITY_CHECK)?;
+                literal_only_check(self, &rhs, EQUALITY_CHECK)?;
                 let span = lhs.span;
                 Ok(Expr::new(ExprKind::Eq(Box::new(lhs), Box::new(rhs)), span))
             }
             Tok::NotEq => {
                 self.next_tok()?;
                 let rhs = self.relational_expression()?;
+                literal_only_check(self, &lhs, EQUALITY_CHECK)?;
+                literal_only_check(self, &rhs, EQUALITY_CHECK)?;
                 let span = lhs.span;
                 Ok(Expr::new(
                     ExprKind::NotEq(Box::new(lhs), Box::new(rhs)),
@@ -2263,7 +2733,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// RelationalExpression：`range [(<|<=|>|>=) range]`（单一可选）
+    /// RelationalExpression：`range [(<|<=|>|>=) range]`（单一可选）；两侧按 Java
+    /// numberLiteralOnly 拒绝字面量（FTL.jj :1948-1949）
     fn relational_expression(&mut self) -> Result<Expr> {
         let lhs = self.range_expression()?;
         let (t, _, _) = self.peek_tok()?;
@@ -2271,24 +2742,32 @@ impl<'a> Parser<'a> {
             Tok::Lt => {
                 self.next_tok()?;
                 let rhs = self.range_expression()?;
+                literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                literal_only_check(self, &rhs, NUMBER_ONLY)?;
                 let span = lhs.span;
                 Ok(Expr::new(ExprKind::Lt(Box::new(lhs), Box::new(rhs)), span))
             }
             Tok::Lte => {
                 self.next_tok()?;
                 let rhs = self.range_expression()?;
+                literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                literal_only_check(self, &rhs, NUMBER_ONLY)?;
                 let span = lhs.span;
                 Ok(Expr::new(ExprKind::Lte(Box::new(lhs), Box::new(rhs)), span))
             }
             Tok::Gt => {
                 self.next_tok()?;
                 let rhs = self.range_expression()?;
+                literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                literal_only_check(self, &rhs, NUMBER_ONLY)?;
                 let span = lhs.span;
                 Ok(Expr::new(ExprKind::Gt(Box::new(lhs), Box::new(rhs)), span))
             }
             Tok::Gte => {
                 self.next_tok()?;
                 let rhs = self.range_expression()?;
+                literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                literal_only_check(self, &rhs, NUMBER_ONLY)?;
                 let span = lhs.span;
                 Ok(Expr::new(ExprKind::Gte(Box::new(lhs), Box::new(rhs)), span))
             }
@@ -2296,7 +2775,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// RangeExpression：`additive [(..<|..*|..) [additive]]`
+    /// RangeExpression：`additive [(..<|..*|..) [additive]]`；两侧按 Java
+    /// numberLiteralOnly 拒绝字面量（FTL.jj :1991-1993）
     fn range_expression(&mut self) -> Result<Expr> {
         let lhs = self.additive_expression()?;
         let (t, _, _) = self.peek_tok()?;
@@ -2304,6 +2784,8 @@ impl<'a> Parser<'a> {
             Tok::DotDotLess => {
                 self.next_tok()?;
                 let end = self.additive_expression()?;
+                literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                literal_only_check(self, &end, NUMBER_ONLY)?;
                 let span = lhs.span;
                 Ok(Expr::new(
                     ExprKind::Range {
@@ -2317,6 +2799,8 @@ impl<'a> Parser<'a> {
             Tok::DotDotStar => {
                 self.next_tok()?;
                 let end = self.additive_expression()?;
+                literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                literal_only_check(self, &end, NUMBER_ONLY)?;
                 let span = lhs.span;
                 Ok(Expr::new(
                     ExprKind::Range {
@@ -2333,11 +2817,12 @@ impl<'a> Parser<'a> {
                 // `..` 后跟加法表达式为含端范围；否则无界（Java END_UNBOUND →
                 // 契约无 Unbounded variant，end=None 时 kind 取 SizeLimited，文档化偏差）
                 let (end, kind) = if self.at_expr_start(false)? {
-                    (
-                        Some(Box::new(self.additive_expression()?)),
-                        RangeKind::Inclusive,
-                    )
+                    let end = self.additive_expression()?;
+                    literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                    literal_only_check(self, &end, NUMBER_ONLY)?;
+                    (Some(Box::new(end)), RangeKind::Inclusive)
                 } else {
+                    literal_only_check(self, &lhs, NUMBER_ONLY)?;
                     (None, RangeKind::SizeLimited)
                 };
                 Ok(Expr::new(
@@ -2353,7 +2838,9 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// AdditiveExpression：`multi ((+|-) multi)*`（`+` 语义为 AddConcat）
+    /// AdditiveExpression：`mul ((+|-) mul)*`；`-` 两侧按 Java numberLiteralOnly
+    /// 拒绝字面量（FTL.jj :1843-1844，jar 实测 `${1 - "a"}` 解析期报
+    /// "Found string literal: \"a\". Expecting: number"）；`+` 为连接运算不校验
     fn additive_expression(&mut self) -> Result<Expr> {
         let mut lhs = self.multiplicative_expression()?;
         loop {
@@ -2368,6 +2855,10 @@ impl<'a> Parser<'a> {
                 Tok::Minus => {
                     self.next_tok()?;
                     let rhs = self.multiplicative_expression()?;
+                    // Java AdditiveExpression（FTL.jj :1826-1850）：仅 SUBTRACTION
+                    // 分支调用 numberLiteralOnly(lhs/rhs)（:1843-1844）
+                    literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                    literal_only_check(self, &rhs, NUMBER_ONLY)?;
                     let span = lhs.span;
                     lhs = Expr::new(ExprKind::Sub(Box::new(lhs), Box::new(rhs)), span);
                 }
@@ -2377,7 +2868,8 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    /// MultiplicativeExpression：`unary ((*|/|%) unary)*`
+    /// MultiplicativeExpression：`unary ((*|/|%) unary)*`；每步两侧按 Java
+    /// numberLiteralOnly 拒绝字面量（FTL.jj :1880-1881）
     fn multiplicative_expression(&mut self) -> Result<Expr> {
         let mut lhs = self.unary_expression()?;
         loop {
@@ -2386,18 +2878,24 @@ impl<'a> Parser<'a> {
                 Tok::Times => {
                     self.next_tok()?;
                     let rhs = self.unary_expression()?;
+                    literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                    literal_only_check(self, &rhs, NUMBER_ONLY)?;
                     let span = lhs.span;
                     lhs = Expr::new(ExprKind::Mul(Box::new(lhs), Box::new(rhs)), span);
                 }
                 Tok::Divide => {
                     self.next_tok()?;
                     let rhs = self.unary_expression()?;
+                    literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                    literal_only_check(self, &rhs, NUMBER_ONLY)?;
                     let span = lhs.span;
                     lhs = Expr::new(ExprKind::Div(Box::new(lhs), Box::new(rhs)), span);
                 }
                 Tok::Percent => {
                     self.next_tok()?;
                     let rhs = self.unary_expression()?;
+                    literal_only_check(self, &lhs, NUMBER_ONLY)?;
+                    literal_only_check(self, &rhs, NUMBER_ONLY)?;
                     let span = lhs.span;
                     lhs = Expr::new(ExprKind::Mod(Box::new(lhs), Box::new(rhs)), span);
                 }
@@ -2556,6 +3054,19 @@ impl<'a> Parser<'a> {
             ));
         };
         let name = camel_to_snake(&name);
+        // Java BuiltIn.newBuiltIn（BuiltIn.java:349-397）：未知内建名在**解析期**报
+        // "Unknown built-in: \"{name}\". Help (latest version): ..." + 字母序内建
+        // 名清单（位置 = 内建名 token，jar 实测 unknown_builtin 基线 col 5）；
+        // 清单文本与换行规则逐字对齐（name 排序 + 首字母换行 + `, ` 分隔）
+        if !is_known_builtin(&name) {
+            return Err(self.err(
+                nl,
+                nc,
+                format!(
+                    "Unknown built-in: \"{name}\". Help (latest version): https://freemarker.apache.org/docs/ref_builtins.html; you're using FreeMarker 2.3.34.\nThe alphabetical list of built-ins:\n{JAVA_BUILTIN_LIST}"
+                ),
+            ));
+        }
         let args = if self.peek_tok()?.0 == Tok::OpenParen {
             self.next_tok()?;
             let args = self.positional_args(true)?;
@@ -2685,10 +3196,22 @@ impl<'a> Parser<'a> {
             Tok::OpenParen => {
                 self.next_tok()?;
                 let e = self.expression()?;
-                self.expect_tok(
-                    Tok::CloseParen,
-                    "\")\" to close the parenthesized expression",
-                )?;
+                let (t, tl, tc) = self.next_tok()?;
+                if t != Tok::CloseParen {
+                    if t == Tok::Eof {
+                        // Java EOF 分支：表达式状态期望 CLOSE_PAREN → desc "\"(\""
+                        // （jar 实测 testUnclosedDirectives `${(blah`）
+                        return Err(self.eof_unclosed(&["\"(\""]));
+                    }
+                    return Err(self.err(
+                        tl,
+                        tc,
+                        format!(
+                            "Expected \")\" to close the parenthesized expression, but found {}.",
+                            tok_desc(&t)
+                        ),
+                    ));
+                }
                 Ok(Expr::new(ExprKind::Paren(Box::new(e)), Span::new(l, c)))
             }
             Tok::OpenBracket => {
@@ -2714,21 +3237,11 @@ impl<'a> Parser<'a> {
                             ));
                         }
                         let value = self.expression()?;
-                        // Java stringLiteralOnly：仅禁止数值/序列/哈希/布尔字面量；
-                        // 标识符、点表达式等均可（求值期须为字符串）
-                        if matches!(
-                            key.kind,
-                            ExprKind::Num(_)
-                                | ExprKind::ListLit(_)
-                                | ExprKind::HashLit(_)
-                                | ExprKind::Bool(_)
-                        ) {
-                            return Err(self.err(
-                                l,
-                                c,
-                                "Hash literal keys must be strings, but a number/list/hash/boolean literal was found.",
-                            ));
-                        }
+                        // Java stringLiteralOnly（FTL.jj :2565,2575）：键仅允许字符串
+                        // 字面量——数字/列表/哈希/布尔字面量按 notXxxLiteral 逐字报错
+                        // （jar 实测 `${{1: 2}}` → "Found number literal: 1. Expecting
+                        // string" 于键位置）；标识符、点表达式等均可（求值期须为字符串）
+                        literal_only_check(self, &key, STRING_ONLY)?;
                         pairs.push((key, value));
                         let p = self.peek_tok()?;
                         if p.0 != Tok::Comma && p.0 != Tok::Colon {
@@ -2740,11 +3253,24 @@ impl<'a> Parser<'a> {
                 self.expect_tok(Tok::CloseCurly, "\"}\" to close the hash literal")?;
                 Ok(Expr::new(ExprKind::HashLit(pairs), Span::new(l, c)))
             }
-            other => Err(self.err(
-                l,
-                c,
-                format!("Expected an expression, but found {}.", tok_desc(&other)),
-            )),
+            other => {
+                // JavaCC ParseException 标准格式（ParseException :394-465 渲染
+                // expectedTokenSequences；FTL.jj 表达式起始 LOOKAHEAD，jar 实测
+                // parse_invalid_char 基线）。EOF 走 getOrRenderDescription 的 EOF
+                // 分支——primary 起始状态 expected 无 END token → 无 unclosed 段
+                if other == Tok::Eof {
+                    return Err(self.eof_unclosed(&[]));
+                }
+                Err(self.err(
+                    l,
+                    c,
+                    format!(
+                        "Encountered {}, but was expecting one of these patterns:\n    {}",
+                        tok_desc(&other),
+                        EXPRESSION_START_PATTERNS.join("\n    ")
+                    ),
+                ))
+            }
         }
     }
 
@@ -3860,38 +4386,87 @@ struct IterCtx {
 }
 
 /// token → 赋值操作符（多赋值续项前瞻用；非赋值符返回 None）
-/// Java `numberLiteralOnly`（FTL.jj 454-459）：`#{...}` 内不允许字符串/列表/哈希/布尔
-/// 字面量。错误消息逐字对齐 notStringLiteral :399-408 / notListLiteral :440-451 /
-/// notHashLiteral :430-438 / notBooleanLiteral :421-428（canonical 形式见
-/// literal_canonical）。
-fn number_literal_only(p: &Parser, e: &Expr) -> Result<()> {
+/// Java FTL.jj 的 `notXxxLiteral(exp, expected)` 字面量校验族（:399-459）：
+/// 算术（`-`/`*`/`/`/`%`）与关系（`<`/`<=`/`>`/`>=`）与范围操作数 → numberLiteralOnly；
+/// `&&`/`||` 操作数 → booleanLiteralOnly；`==`/`!=` 操作数 → notHashLiteral +
+/// notListLiteral；哈希字面量键 → stringLiteralOnly；`#{...}` → numberLiteralOnly。
+/// 消息逐字对齐 notStringLiteral :399-408 / notNumberLiteral :410-417 /
+/// notBooleanLiteral :421-428 / notHashLiteral :430-438 / notListLiteral :440-451
+/// （canonical 形式见 literal_canonical）。
+#[derive(Clone, Copy)]
+struct LiteralCheck {
+    /// 拒绝的字面量种类位掩码：1=字符串, 2=列表, 4=哈希, 8=布尔, 16=数字
+    mask: u8,
+    /// 期望类型描述（Java `expected` 参数：number / boolean (true/false) / string /
+    /// different type for equality check）
+    expected: &'static str,
+}
+
+impl LiteralCheck {
+    const fn all_but(mask: u8, expected: &'static str) -> Self {
+        LiteralCheck { mask, expected }
+    }
+}
+
+/// numberLiteralOnly（FTL.jj :454-459）：`#{}` 与算术/关系/范围操作数校验
+const NUMBER_ONLY: LiteralCheck = LiteralCheck::all_but(1 | 2 | 4 | 8, "number");
+/// booleanLiteralOnly（FTL.jj :475-480）：`&&`/`||` 操作数校验
+const BOOLEAN_ONLY: LiteralCheck = LiteralCheck::all_but(1 | 2 | 4 | 16, "boolean (true/false)");
+/// stringLiteralOnly（FTL.jj :464-473）：哈希字面量键校验
+const STRING_ONLY: LiteralCheck = LiteralCheck::all_but(2 | 4 | 8 | 16, "string");
+/// EqualityExpression（FTL.jj :1902-1911）：`==`/`!=` 拒绝哈希与列表字面量
+const EQUALITY_CHECK: LiteralCheck =
+    LiteralCheck::all_but(2 | 4, "different type for equality check");
+
+fn literal_only_check(p: &Parser, e: &Expr, check: LiteralCheck) -> Result<()> {
     use crate::core::ExprKind as K;
     let (l, c) = (e.span.line, e.span.col);
     let msg = match &e.kind {
-        K::Str(_) | K::InterpStr(_) => {
+        K::Str(_) | K::InterpStr(_) if check.mask & 1 != 0 => {
+            // Java notStringLiteral 的 expected 前有冒号（"Expecting: number"），
+            // 其余 notXxxLiteral 无冒号（jar 实测逐字）
             format!(
-                "Found string literal: {}. Expecting: number",
-                literal_canonical(e)
+                "Found string literal: {}. Expecting: {}",
+                literal_canonical(e),
+                check.expected
             )
         }
-        K::ListLit(_) => {
+        K::ListLit(_) if check.mask & 2 != 0 => {
             format!(
-                "Found list literal: {}. Expecting number",
-                literal_canonical(e)
+                "Found list literal: {}. Expecting {}",
+                literal_canonical(e),
+                check.expected
             )
         }
-        K::HashLit(_) => {
+        K::HashLit(_) if check.mask & 4 != 0 => {
             format!(
-                "Found hash literal: {}. Expecting number",
-                literal_canonical(e)
+                "Found hash literal: {}. Expecting {}",
+                literal_canonical(e),
+                check.expected
             )
         }
-        K::Bool(_) => {
-            format!("Found: {} literal. Expecting number", literal_canonical(e))
+        K::Bool(_) if check.mask & 8 != 0 => {
+            format!(
+                "Found: {} literal. Expecting {}",
+                literal_canonical(e),
+                check.expected
+            )
+        }
+        K::Num(_) if check.mask & 16 != 0 => {
+            format!(
+                "Found number literal: {}. Expecting {}",
+                literal_canonical(e),
+                check.expected
+            )
         }
         _ => return Ok(()),
     };
     Err(p.err(l, c, msg))
+}
+
+/// 兼容旧调用点（`#{...}` 字面量校验）
+fn number_literal_only(p: &Parser, e: &Expr) -> Result<()> {
+    literal_only_check(p, e, NUMBER_ONLY)
 }
 
 /// 字面量 canonical 形式（Java `Expression.getCanonicalForm` 的字面量子集；
@@ -4089,6 +4664,58 @@ fn header_bool(e: &Expr) -> Option<bool> {
         },
         _ => None,
     }
+}
+
+/// Java 2.3.34 内建名清单文本（BuiltIn.newBuiltIn :354-397 逐字：
+/// BUILT_INS_BY_NAME 键排序，首字母变化换行，`, ` 分隔；LEGACY 命名约定视图）。
+/// 文本与换行规则从 `error/expected_messages/unknown_builtin.txt` 基线生成
+/// （183 个内建名；Rust 扩展内建 has_previous/is_even/is_lambda/is_nothing/
+/// is_odd/iso_fz/replace_re 不在 Java 清单中，单独放行）
+pub(crate) const JAVA_BUILTIN_LIST: &str = concat!(
+    "abs, absolute_template_name, ancestors, api,\n",
+    "blank_to_null, boolean, byte,\n",
+    "c, c_lower_case, c_upper_case, cap_first, capitalize, ceiling, children, chop_linebreak, chunk, cn, contains, counter,\n",
+    "date, date_if_unknown, datetime, datetime_if_unknown, default, double, drop_while,\n",
+    "empty_to_null, ends_with, ensure_ends_with, ensure_starts_with, esc, eval, eval_json, exists,\n",
+    "filter, first, float, floor,\n",
+    "groups,\n",
+    "has_api, has_content, has_next, html,\n",
+    "if_exists, index, index_of, int, interpret, is_boolean, is_collection, is_collection_ex, is_date, is_date_like, is_date_only, is_datetime, is_directive, is_enumerable, is_even_item, is_first, is_hash, is_hash_ex, is_indexable, is_infinite, is_last, is_macro, is_markup_output, is_method, is_nan, is_node, is_number, is_odd_item, is_sequence, is_string, is_time, is_transform, is_unknown_date_like, iso, iso_h, iso_h_nz, iso_local, iso_local_h, iso_local_h_nz, iso_local_m, iso_local_m_nz, iso_local_ms, iso_local_ms_nz, iso_local_nz, iso_m, iso_m_nz, iso_ms, iso_ms_nz, iso_nz, iso_utc, iso_utc_fz, iso_utc_h, iso_utc_h_nz, iso_utc_m, iso_utc_m_nz, iso_utc_ms, iso_utc_ms_nz, iso_utc_nz, item_cycle, item_parity, item_parity_cap,\n",
+    "j_string, join, js_string, json_string,\n",
+    "keep_after, keep_after_last, keep_before, keep_before_last, keys,\n",
+    "last, last_index_of, left_pad, length, long, lower_abc, lower_case,\n",
+    "map, markup_string, matches, max, min,\n",
+    "namespace, new, next_sibling, no_esc, node_name, node_namespace, node_type, number, number_to_date, number_to_datetime, number_to_time,\n",
+    "parent, previous_sibling,\n",
+    "remove_beginning, remove_ending, replace, reverse, right_pad, root, round, rtf,\n",
+    "seq_contains, seq_index_of, seq_last_index_of, sequence, short, size, sort, sort_by, split, starts_with, string, substring, switch,\n",
+    "take_while, then, time, time_if_unknown, trim, trim_to_null, truncate, truncate_c, truncate_c_m, truncate_m, truncate_w, truncate_w_m,\n",
+    "uncap_first, upper_abc, upper_case, url, url_path,\n",
+    "values,\n",
+    "web_safe, with_args, with_args_last, word_list,\n",
+    "xhtml, xml",
+);
+
+/// 内建名是否合法（Java BUILT_INS_BY_NAME 的 legacy 视图 + 本引擎扩展内建）
+fn is_known_builtin(name: &str) -> bool {
+    // 直接查清单文本（性能：解析期一次线性扫描即可；清单为静态文本）
+    if JAVA_BUILTIN_LIST
+        .split([',', '\n'])
+        .any(|n| n.trim() == name)
+    {
+        return true;
+    }
+    // Rust 扩展内建（不在 Java 2.3.34 清单中；放行到求值期）
+    matches!(
+        name,
+        "has_previous"
+            | "is_even"
+            | "is_lambda"
+            | "is_nothing"
+            | "is_odd"
+            | "iso_fz"
+            | "replace_re"
+    )
 }
 
 /// 内建/内置变量名 camelCase → legacy 蛇形归一化（对应 Java
@@ -4535,8 +5162,12 @@ mod tests {
 
     #[test]
     fn string_literal_unclosed() {
+        // Java TokenMgrError 词法错误格式（jar 实测 parse_unclosed_string 基线）
         let msg = parse_err(r#"${"abc}"#);
-        assert!(msg.contains("Unclosed string literal"), "{msg}");
+        assert!(
+            msg.contains("Lexical error: encountered <EOF> after \"\\\"abc}\"."),
+            "{msg}"
+        );
     }
 
     #[test]
@@ -4766,9 +5397,13 @@ mod tests {
                 Expr::new(num(TNumber::Int(1)), Span::new(1, 9)),
             )])
         );
-        // 非字符串键 → 解析错误（Java stringLiteralOnly：数字字面量作键）
+        // 非字符串键 → 解析错误（Java stringLiteralOnly：数字字面量作键，
+        // 消息逐字 "Found number literal: 1. Expecting string"，jar 实测）
         let msg = parse_err(r#"${ {1: 2} }"#);
-        assert!(msg.contains("Hash literal keys must be strings"), "{msg}");
+        assert!(
+            msg.contains("Found number literal: 1. Expecting string"),
+            "{msg}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -5486,9 +6121,9 @@ mod tests {
         assert!(matches!(try_[0].kind, ElementKind::Text { ref text, .. } if text == "a"));
         assert!(matches!(recover[0].kind, ElementKind::Text { ref text, .. } if text == "b"));
 
-        // break 需要循环/switch 上下文（Java 消息）
+        // break 需要循环/switch 上下文（Java 消息含 `<#break>` 标签原文）
         let msg = parse_err("<#break>");
-        assert!(msg.contains("break must be nested"), "{msg}");
+        assert!(msg.contains("<#break> must be nested"), "{msg}");
         let t = parse_ok("<#list xs as x><#break><#continue></#list>");
         let ElementKind::List { body, .. } = &t.root[0].kind else {
             panic!("expected List");
@@ -5619,8 +6254,10 @@ mod tests {
         assert!(t.root.is_empty());
         let t = parse_ok("<#rt>");
         assert!(t.root.is_empty());
-        let t = parse_ok("<#gt>");
-        assert!(matches!(t.root[0].kind, ElementKind::RawText(ref s) if s == ">"));
+        // Java 对 `<#gt>` 报 Unknown directive（gt 非内置指令名；Java 的 `&gt;` 是
+        // 表达式转义，非指令）——词法层对齐后为解析错误
+        let msg = parse_err("<#gt>");
+        assert!(msg.contains("Unknown directive: #gt"), "{msg}");
         let t = parse_ok("<#noparse>${x} ${y}</#noparse>");
         assert!(
             matches!(t.root[0].kind, ElementKind::NoParse { ref text, .. } if text == "${x} ${y}")
@@ -5715,36 +6352,39 @@ mod tests {
 
     #[test]
     fn error_positions() {
-        // 未闭合标签（Java 2.3.34 ParseException.getMessage 格式，jar 实测）
+        // 未闭合标签（Java 2.3.34 ParseException.getMessage 格式，jar 实测——
+        // EOF 列=输入末尾（列 7），消息为 unclosed 格式）
         let msg = parse_err("<#if x>");
         assert!(
-            msg.contains("Syntax error in template \"t\" in line 1, column 8:"),
+            msg.contains("Syntax error in template \"t\" in line 1, column 7:"),
             "{msg}"
         );
-        assert!(msg.contains("</#if>"), "{msg}");
+        assert!(msg.contains("You have an unclosed #if"), "{msg}");
 
-        // 多行模板的行号
+        // 多行模板的行号（EOF 列 = 输入末尾字符列）
         let msg = parse_err("a\nb\n<#if x>");
-        assert!(msg.contains("in line 3, column 8"), "{msg}");
+        assert!(msg.contains("in line 3, column 7"), "{msg}");
 
-        // 未闭合插值
+        // 未闭合插值（EOF 列 = 长度；unclosed "{"）
         let msg = parse_err("${x");
-        assert!(msg.contains("in line 1, column 4"), "{msg}");
+        assert!(msg.contains("in line 1, column 3"), "{msg}");
+        assert!(msg.contains("You have an unclosed \"{\""), "{msg}");
 
-        // 未闭合注释
+        // 未闭合注释（Java：Unclosed "<#--"，位置 = 注释 token 起始）
         let msg = parse_err("<#-- unclosed");
-        assert!(msg.contains("Unclosed comment"), "{msg}");
+        assert!(msg.contains("Unclosed \"<#--\""), "{msg}");
 
         // 非法字符（`@` 是合法标识符起始——Java isLegacyFTLIdStartChar 的 `@`..`Z`
         // 区间；`${a @}` 为相邻标识符 → 插值未闭合错误）
         let msg = parse_err("${a @}");
         assert!(msg.contains("to close the interpolation"), "{msg}");
 
-        // 不匹配的结束标签
+        // 不匹配的结束标签（JavaCC 嵌套错误格式）
         let msg = parse_err("<#if x></#list>");
-        assert!(msg.contains("Unexpected closing tag \"</#list>\""), "{msg}");
+        assert!(msg.contains("Encountered \"</#list>\""), "{msg}");
+        assert!(msg.contains("this can be closed: \"#if\""), "{msg}");
 
-        // 自闭合块指令
+        // 自闭合块指令（Rust 自闭合检查消息；Java 无对齐基线场景）
         let msg = parse_err("<#if x/>");
         assert!(msg.contains("self-closing"), "{msg}");
 

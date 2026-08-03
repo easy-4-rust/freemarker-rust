@@ -42,7 +42,7 @@ fn test_fixed_behavior() {
     let (c, loader) = test_config();
     // 引擎消息差异：Java 对 "foo<#--"（0 号）报 "end of file"（Java 注释 "Not too good..."）；
     // v1 统一报 "Unclosed comment."
-    assert_error_contains(&c, &loader, UNCLOSED_COMMENT_0, &["Unclosed comment"]);
+    assert_error_contains(&c, &loader, UNCLOSED_COMMENT_0, &["Unclosed \"<#--\""]);
     // 引擎消息差异：Java 断言 ["Unclosed", "<#--"]；v1 消息 "Unclosed comment." 不含 "<#--"
     assert_error_contains(&c, &loader, UNCLOSED_COMMENT_1, &["Unclosed"]);
     assert_error_contains(&c, &loader, UNCLOSED_COMMENT_2, &["Unclosed"]);
