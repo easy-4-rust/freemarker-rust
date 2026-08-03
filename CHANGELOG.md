@@ -4,6 +4,22 @@
 [语义化版本](https://semver.org/lang/zh-CN/)（晋级规则见
 [docs/release/versioning.md](docs/release/versioning.md)）。
 
+## [Unreleased]
+
+### Added
+- 内建函数补齐最后 5 个：`eval_json`/`is_date_like`/`next_sibling`/`previous_sibling`/
+  `web_safe`（Java 2.3.34 内建名 183/183 全覆盖）
+- XML visit 前缀宏分派（Java getNodeProcessor 语义）、`node[0]` 自身索引、
+  XPath 子集 `./` 相对路径与 `true()` 函数
+- pyo3 发布准备：pyproject readme/authors/classifiers/license-files、
+  LICENSE 文件（Apache-2.0）、pyo3-publish workflow（Trusted Publishing）
+- cargo-fuzz 启用：expression/parser target 声明（nightly 构建验证）
+
+### Changed
+- golden 套件 PASS 90 → 102+（B6 harness 收口 + B2/B3 ICI 版本化与 ?new 策略、
+  B5 XML 扩展——最终数字见版本条目）
+- proptest fuzz 10000 用例（versioning.md 1.0 晋级条件 6）
+
 ## [0.1.0-alpha.0] - 2026-08-03
 
 > 本版本相对之前提交基线（840ffe4 feat(xml) 等）：**完成 freemarker-rust 生产就绪第一轮治理 + BLOCKED 清零 + 鲁棒性/安全最小集**。

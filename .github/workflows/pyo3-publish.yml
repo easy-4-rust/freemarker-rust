@@ -1,0 +1,48 @@
+name: Publish pyo3 (PyPI)
+
+# Python 绑定发布（用户决策：准备到可发布，实际上传由仓库维护者手动触发）。
+# 流程：tag 触发 → 构建 sdist + 各平台 wheel → 上传 PyPI。
+# 需要先在 PyPI 配置 Trusted Publishing（https://docs.pypi.org/trusted-publishers/）
+# 或在仓库 Secrets 配置 PYPI_API_TOKEN / TESTPYPI_API_TOKEN。
+
+on:
+  push:
+    tags:
+      - 'pyo3-v*'        # 示例：pyo3-v0.1.0-alpha.0
+  workflow_dispatch: {}  # 手动触发（带 inputs 选择仓库）
+
+permissions:
+  contents: read
+  id-token: write        # Trusted Publishing
+
+jobs:
+  build-and-publish:
+    name: Build & publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build sdist and wheels
+        working-directory: freemarker-pyo3
+        run: maturin build --release --sdist --out ../dist
+
+      - name: Publish to PyPI
+        # Trusted Publishing 或 PYPI_API_TOKEN secret 二选一
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          # 默认发布到 PyPI；TestPyPI 演练用：
+          # repository-url: https://test.pypi.org/legacy/
+          # password: ${{ secrets.TESTPYPI_API_TOKEN }}

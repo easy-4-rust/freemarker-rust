@@ -11,11 +11,22 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 
 [dependencies.freemarker]
-path = ".."
+path = "../freemarker"
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "expression"
+path = "fuzz_targets/expression.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parser"
+path = "fuzz_targets/parser.rs"
+test = false
+doc = false
+bench = false
+
+# cargo-fuzz 惯例：fuzz crate 独立于主 workspace（libfuzzer 需独立构建，
+# 避免与 workspace 共享 target 干扰）
+[workspace]

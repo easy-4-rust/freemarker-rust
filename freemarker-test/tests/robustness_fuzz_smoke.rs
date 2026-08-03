@@ -29,7 +29,7 @@ proptest! {
     // timeout：单 case 超时（毫秒）——防病态输入挂死整个测试进程；
     // 超时 case 按失败处理并保存最小回归输入到 proptest-regressions/（可诊断）
     #![proptest_config(ProptestConfig {
-        cases: 512,
+        cases: 10000,
         timeout: 5000,
         ..ProptestConfig::default()
     })]
