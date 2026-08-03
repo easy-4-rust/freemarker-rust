@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, dev]
   pull_request:
     branches: [main, master]
 
@@ -24,7 +24,19 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy, llvm-tools-preview
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (all targets, warnings as errors)
+        run: cargo clippy --workspace --exclude freemarker-pyo3 --all-targets -- -D warnings
+
+      - name: Test (workspace, excluding pyo3)
+        run: cargo test --workspace --exclude freemarker-pyo3
 
   msrv:
     name: MSRV build (1.85)
@@ -93,6 +105,32 @@ jobs:
           export DYLD_LIBRARY_PATH="$PY_LIBDIR${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
           cargo test -p freemarker-pyo3
 
+  governance:
+    name: Governance gates (deny / audit / public-api)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check dependency licenses, sources, and duplicates
+        uses: EmbarkStudios/cargo-deny-action@v2
+
+      - name: Check dependency vulnerabilities (cargo-audit)
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cargo-public-api
+        uses: taiki-e/install-action@cargo-public-api
+
+      - name: Enforce core crate public API baseline (docs/release/api-baseline.txt)
+        # 任何未登记的公开 API 变更（增/删/改签名）都会使 diff 非空而失败；
+        # 有意的 API 变更须显式更新基线并在 PR 说明。
+        run: |
+          cargo public-api -p freemarker 2>/dev/null | diff - docs/release/api-baseline.txt
+
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
@@ -111,17 +149,6 @@ jobs:
         run: cargo llvm-cov --workspace --exclude freemarker-pyo3 --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
-      - name: Check dependency licenses, sources, and duplicates
-        uses: EmbarkStudios/cargo-deny-action@v2
-
-      - name: Check dependency vulnerabilities (cargo-audit)
-        run: cargo audit
-
-      - name: Enforce core crate public API baseline (docs/release/api-baseline.txt)
-        # 任何未登记的公开 API 变更（增/删/改签名）都会使 diff 非空而失败；
-        # 有意的 API 变更须显式更新基线并在 PR 说明。
-        run: |
-          cargo public-api -p freemarker 2>/dev/null | diff - docs/release/api-baseline.txt
         uses: codecov/codecov-action@v4
         with:
           files: lcov.info

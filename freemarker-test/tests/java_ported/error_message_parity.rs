@@ -14,6 +14,7 @@
 //!   - ` (X wrapped into f.t.Y)` 后缀
 //!   - `\n----\nJava stack trace ...` 段（Java 堆栈帧，Rust 用 FTL 指令栈替代）
 //!   - `\nThe name was interpreted by this TemplateLoader:...` 行（机器相关路径）
+//!
 //!   逐行 rstrip（尾部空白）
 //!
 //! 场景特例：
