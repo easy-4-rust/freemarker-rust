@@ -1,6 +1,7 @@
 //! 设置集合 —— 对应 Java `freemarker.core.Configurable`
 //! （全部设置项见 docs/07 §2；继承链 v1 为单一层级）
 
+use crate::builtins::format::CFormatKind;
 use crate::cache::LookupStrategyKind;
 use crate::core::template_class_resolver::NewBuiltinClassResolver;
 use crate::core::{AutoEscaping, OutputFormatKind};
@@ -87,6 +88,9 @@ pub struct Settings {
     pub date_time_format: String,
     pub output_format: OutputFormatKind,
     pub auto_escaping: AutoEscaping,
+    /// C 格式变体（Java `c_format` 设置；StandardCFormats 注册表：JavaScript or
+    /// JSON/JavaScript/JSON/Java/legacy/XS；默认 JavaScript or JSON）
+    pub c_format: CFormatKind,
     pub whitespace_stripping: bool,
     pub strict_syntax: bool,
     pub classic_compatible: bool,
@@ -204,6 +208,7 @@ impl Default for Settings {
             date_time_format: String::new(),
             output_format: OutputFormatKind::PlainText,
             auto_escaping: AutoEscaping::Default,
+            c_format: CFormatKind::JavaScriptOrJson,
             whitespace_stripping: true,
             strict_syntax: false,
             classic_compatible: false,

@@ -1831,6 +1831,10 @@ fn builtin_impl(
         // ICI ≥ 2.3.20 → StringUtil.XHTMLEnc（' → &#39;，HTML_APOS）；ICI < 2.3.20 →
         // StringUtil.HTMLEnc = XMLEncNA（StringUtil.java:69-70：不转义 '）
         "html" | "web_safe" => {
+            // Java FTL.jj :2230-2238 BuiltInBannedWhenAutoEscaping：auto-escaping on +
+            // markup 输出格式时禁用 legacy 转义内建（防双重转义；Java 在解析期检查，
+            // Rust 在求值期检查——文档化差异，消息逐字对齐）
+            check_legacy_escaping_ban(env, name)?;
             // Java BuiltIn.java:312：web_safe 是 ?html 的弃用别名（deprecated; use ?html）
             let ici = env.settings.incompatible_improvements.to_int();
             str_builtin(env, target, move |s| {
@@ -1841,7 +1845,11 @@ fn builtin_impl(
                 }
             })
         }
-        "xml" => str_builtin(env, target, crate::utility::xml_escape),
+        "xml" => {
+            // Java FTL.jj :2230-2238 BuiltInBannedWhenAutoEscaping（同上）
+            check_legacy_escaping_ban(env, name)?;
+            str_builtin(env, target, crate::utility::xml_escape)
+        }
         "contains" => {
             let arg = arg_expr(args, 0, "?contains requires one argument")?;
             let m = eval(env, target)?;
@@ -2537,6 +2545,27 @@ fn locale_case(s: &str, locale: &str, upper: bool) -> String {
     out
 }
 
+/// Java FTL.jj :2230-2238 `BuiltInBannedWhenAutoEscaping` 检查：legacy 转义内建
+/// （?html/?web_safe/?xml/?rtf）在 auto-escaping on + markup 输出格式时禁用——
+/// 防止双重转义。Java 在解析期检查（ParseException），Rust 在求值期检查
+/// （文档化差异）；错误消息逐字对齐（FTL.jj :2233-2236）。
+pub(crate) fn check_legacy_escaping_ban(env: &crate::core::Environment, name: &str) -> Result<()> {
+    // auto_escaping 生效判定与 environment.rs :563-568 一致
+    // （Java FTL.jj :355-370 updateAutoEscaping）
+    let auto_escape = match env.settings.auto_escaping {
+        crate::core::AutoEscaping::On => true,
+        crate::core::AutoEscaping::Off => false,
+        crate::core::AutoEscaping::Default => env.settings.output_format.is_markup(),
+    };
+    if env.settings.output_format.is_markup() && auto_escape {
+        return Err(TemplateError::misc(format!(
+            "Using ?{name} (legacy escaping) is not allowed when auto-escaping is on with a markup output format ({}), to avoid double-escaping mistakes.",
+            env.settings.output_format.name()
+        )));
+    }
+    Ok(())
+}
+
 /// 字符串内建（目标按 Java EvalUtil.coerceModelToStringOrMarkup 强制转字符串：
 /// 数字按 number_format、布尔按 boolean_format——默认格式下报错、日期/标量原样）
 fn str_builtin(
@@ -2665,6 +2694,48 @@ mod tests {
 
     fn no_root() -> DynValue {
         DynValue::Map(vec![])
+    }
+
+    /// Java FTL.jj :2230-2238 BuiltInBannedWhenAutoEscaping：auto-escaping on +
+    /// markup 输出格式时 ?html/?xml/?rtf 报错（消息逐字对齐）
+    #[test]
+    fn legacy_escaping_banned_when_autoescaping_on() {
+        // 直接构造 settings（auto_escaping=on + output_format=html）
+        use crate::core::{AutoEscaping, OutputFormatKind};
+        let mut c = Configuration::new();
+        c.settings.auto_escaping = AutoEscaping::On;
+        c.settings.output_format = OutputFormatKind::Html;
+        let loader = Arc::new(StringLoader::default());
+        c.template_loader = loader.clone();
+        loader.put("t.ftl", "${s?html}");
+        let t = c.get_template("t.ftl").unwrap();
+        let mut root = IndexMap::new();
+        root.insert("s".to_string(), TModel::from_scalar("<b>".to_string()));
+        let mut out = Vec::new();
+        let err = t.process(TModel::from_hash(root), &mut out).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Using ?html (legacy escaping) is not allowed when auto-escaping is on with a markup output format (HTML), to avoid double-escaping mistakes."),
+            "{msg}"
+        );
+    }
+
+    /// auto-escaping off 时 ?html 放行（正常转义）
+    #[test]
+    fn legacy_escaping_allowed_when_autoescaping_off() {
+        use crate::core::{AutoEscaping, OutputFormatKind};
+        let mut c = Configuration::new();
+        c.settings.auto_escaping = AutoEscaping::Off;
+        c.settings.output_format = OutputFormatKind::Html;
+        let loader = Arc::new(StringLoader::default());
+        c.template_loader = loader.clone();
+        loader.put("t.ftl", "${s?html}");
+        let t = c.get_template("t.ftl").unwrap();
+        let mut root = IndexMap::new();
+        root.insert("s".to_string(), TModel::from_scalar("<b>".to_string()));
+        let mut out = Vec::new();
+        t.process(TModel::from_hash(root), &mut out).unwrap();
+        assert_eq!(out, b"&lt;b&gt;");
     }
 
     #[test]

@@ -12,8 +12,10 @@
 //! - `?namespace` → namespaceBI（v1：命名空间值返回命名空间模型；非变量目标报错）。
 
 use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, coerce_to_string};
-use crate::builtins::format::{format_c_number, format_number, format_number_with};
-use crate::builtins::strings_encoding::{java_string_enc, js_string_enc};
+use crate::builtins::format::{
+    format_c_number, format_c_string, format_number, format_number_with, CFormatKind,
+};
+use crate::builtins::strings_encoding::java_string_enc;
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;
@@ -148,9 +150,13 @@ fn unknown_date_type_error() -> TemplateError {
 /// ?c —— Java cBI（AbstractCLikeBI）：数字/布尔/字符串；null → InvalidReference
 pub fn c(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<Option<TModel>> {
     check_arg_count("c", args, 0, 0)?;
+    let c_format = env.settings.c_format;
     let m = crate::core::eval::eval(env, target)?;
     if let Some(n) = &m.number {
-        return Ok(Some(TModel::from_scalar(format_c_number(&n.as_number()?))));
+        return Ok(Some(TModel::from_scalar(format_c_number(
+            &n.as_number()?,
+            c_format,
+        ))));
     }
     if let Some(b) = &m.boolean {
         return Ok(Some(TModel::from_scalar(
@@ -158,10 +164,10 @@ pub fn c(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<
         )));
     }
     if let Some(s) = &m.scalar {
-        // JavaScriptOrJSONCFormat.formatString：jsStringEnc(JS_OR_JSON, QUOTATION_MARK)
-        return Ok(Some(TModel::from_scalar(js_string_enc(
+        // CFormat.formatString（按 c_format 变体：JS_OR_JSON/JS/Java/XS 转义）
+        return Ok(Some(TModel::from_scalar(format_c_string(
             &s.as_string()?,
-            true,
+            c_format,
         ))));
     }
     if m.is_nothing() {
@@ -175,12 +181,18 @@ pub fn c(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<
     )))
 }
 
-/// ?cn —— Java cnBI：同 ?c，但 null → "null"（CFormat.getNullString）
+/// ?cn —— Java cnBI：同 ?c，但 null → getNullString（默认 "null"；XSCFormat → ""）
 pub fn cn(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Result<Option<TModel>> {
     check_arg_count("cn", args, 0, 0)?;
     let m = crate::core::eval::eval(env, target)?;
     if m.is_nothing() {
-        return Ok(Some(TModel::from_scalar("null".to_string())));
+        // XSCFormat.getNullString() = ""（XSCFormat.java:67-70：XSD 无 null 字面量）
+        let null_str = if env.settings.c_format == CFormatKind::Xs {
+            ""
+        } else {
+            "null"
+        };
+        return Ok(Some(TModel::from_scalar(null_str.to_string())));
     }
     c(env, target, Some(&[]))
 }
@@ -375,8 +387,14 @@ mod tests {
 
     #[test]
     fn c_format_number_variants() {
-        assert_eq!(format_c_number(&TNumber::Int(3)), "3");
-        assert_eq!(format_c_number(&TNumber::Double(1.5)), "1.5");
+        assert_eq!(
+            format_c_number(&TNumber::Int(3), CFormatKind::JavaScriptOrJson),
+            "3"
+        );
+        assert_eq!(
+            format_c_number(&TNumber::Double(1.5), CFormatKind::JavaScriptOrJson),
+            "1.5"
+        );
     }
 
     #[test]

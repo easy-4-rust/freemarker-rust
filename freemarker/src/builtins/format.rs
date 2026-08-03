@@ -5,25 +5,120 @@
 //! v1 范围：
 //! - C 格式（"c"/"computer"/?c/?cn）：整数 plain、BigDecimal stripTrailingZeros、
 //!   Double/Float 用 Java 最短表示（指数 E 大写、范围对齐 Double.toString）；
+//! - c_format 变体（StandardCFormats：JavaScript or JSON/JavaScript/JSON/Java/XS/legacy）：
+//!   字符串转义与 Infinity/NaN 符号按变体分派（JavaCFormat.java:61/XSCFormat.java:73）；
 //! - DecimalFormat 子集：`0`/`#`/`.`/`,`（分组）/`'...'`（引号字面量），HALF_EVEN 舍入，
 //!   locale 相关小数点与分组符（en/fr/de/es/tr）；完整模式（E、%、‰、货币等）属 P4。
 
+use crate::builtins::strings_encoding::{java_string_enc, js_string_enc};
 use crate::core::Environment;
 use crate::error::{Result, TemplateError};
 use crate::value::TNumber;
 use bigdecimal::{BigDecimal, RoundingMode};
 use std::str::FromStr;
 
+/// C 格式变体 —— 对应 Java `freemarker.core.StandardCFormats` 注册表
+/// （JavaScriptOrJSONCFormat/JavaScriptCFormat/JSONCFormat/JavaCFormat/XSCFormat/
+/// LegacyCFormat，名字见各类的 NAME 常量）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CFormatKind {
+    /// 默认（ICI ≥ 2.3.32）：JavaScript 或 JSON 兼容
+    #[default]
+    JavaScriptOrJson,
+    JavaScript,
+    Json,
+    Java,
+    Legacy,
+    /// XML Schema 风格：字符串不转义、null → ""
+    Xs,
+}
+
+impl CFormatKind {
+    /// 按 StandardCFormats 注册名解析（Java c_format 设置值）
+    pub fn parse(name: &str) -> Option<CFormatKind> {
+        Some(match name {
+            "JavaScript or JSON" => CFormatKind::JavaScriptOrJson,
+            "JavaScript" => CFormatKind::JavaScript,
+            "JSON" => CFormatKind::Json,
+            "Java" => CFormatKind::Java,
+            "legacy" => CFormatKind::Legacy,
+            "XS" => CFormatKind::Xs,
+            _ => return None,
+        })
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            CFormatKind::JavaScriptOrJson => "JavaScript or JSON",
+            CFormatKind::JavaScript => "JavaScript",
+            CFormatKind::Json => "JSON",
+            CFormatKind::Java => "Java",
+            CFormatKind::Legacy => "legacy",
+            CFormatKind::Xs => "XS",
+        }
+    }
+}
+
+/// ?c/?cn 的字符串输出（Java CFormat.formatString）：
+/// - JavaScript or JSON / JSON / legacy：jsStringEnc(JS_OR_JSON, QUOTATION_MARK)
+///   （LegacyCFormat.java:89-91 与默认同转义；数字符号才不同）
+/// - JavaScript：jsStringEnc(JS, QUOTATION_MARK)（' 不转义，\x 2 位 hex）
+/// - Java：javaStringEnc(s, true)（JavaCFormat.java:61-63）
+/// - XS：原样（XSCFormat.java:73-74：假定已有 XML 自动转义）
+///
+/// 注：QUOTATION_MARK 语义 = 双引号包裹（StringUtil.jsStringEnc :1438 开头
+/// sb.append('"')，:1524 结尾补 '"'）——?c 输出为 `"..."` 形式
+pub fn format_c_string(s: &str, kind: CFormatKind) -> String {
+    match kind {
+        CFormatKind::JavaScriptOrJson | CFormatKind::Json | CFormatKind::Legacy => {
+            format!("\"{}\"", js_string_enc(s, true))
+        }
+        CFormatKind::JavaScript => {
+            // jsStringEnc(JS, QUOTATION_MARK)：' 不转义（StringUtil :1461-1463
+            // quotation==QUOTATION_MARK → NO_ESC）；Rust js_string_enc(s,false)
+            // 会转义 '——还原之，仅保留 \x 2 位 hex 差异
+            format!("\"{}\"", js_string_enc(s, false).replace("\\'", "'"))
+        }
+        CFormatKind::Java => format!("\"{}\"", java_string_enc(s)),
+        CFormatKind::Xs => s.to_string(),
+    }
+}
+
+/// Infinity/NaN 符号（Java CFormat.getTemplateNumberFormat 的 CTemplateNumberFormat
+/// 构造参数；JavaCFormat.java:38-40 / XSCFormat.java:44-46）
+fn inf_nan_symbols(
+    kind: CFormatKind,
+    is_float: bool,
+) -> (&'static str, &'static str, &'static str) {
+    match kind {
+        CFormatKind::Java => (
+            if is_float {
+                "Float.POSITIVE_INFINITY"
+            } else {
+                "Double.POSITIVE_INFINITY"
+            },
+            if is_float {
+                "Float.NEGATIVE_INFINITY"
+            } else {
+                "Double.NEGATIVE_INFINITY"
+            },
+            if is_float { "Float.NaN" } else { "Double.NaN" },
+        ),
+        CFormatKind::Xs => ("INF", "-INF", "NaN"),
+        _ => ("Infinity", "-Infinity", "NaN"),
+    }
+}
+
 /// ?c/?cn 与 number_format="c"/"computer" 的 C 格式输出
-/// （Java CTemplateNumberFormat.formatToPlainText；JavaScriptOrJSONCFormat 的
-/// "Infinity"/"NaN" 符号，对应 JavaC20 的 Double.toString 语义）
-pub fn format_c_number(n: &TNumber) -> String {
+/// （Java CTemplateNumberFormat.formatToPlainText；Infinity/NaN 符号按
+/// c_format 变体分派）
+pub fn format_c_number(n: &TNumber, kind: CFormatKind) -> String {
     match n {
         TNumber::Int(v) => v.to_string(),
         TNumber::Long(v) => v.to_string(),
         TNumber::BigInt(v) => v.to_string(),
-        TNumber::Double(v) => format_c_double(*v),
-        TNumber::Float(v) => format_c_float(*v),
+        TNumber::Double(v) => format_c_double(*v, kind),
+        TNumber::Float(v) => format_c_float(*v, kind),
         TNumber::Decimal(d) => format_c_big_decimal(d),
     }
 }
@@ -40,15 +135,16 @@ fn format_c_big_decimal(d: &BigDecimal) -> String {
     }
 }
 
-fn format_c_double(n: f64) -> String {
+fn format_c_double(n: f64, kind: CFormatKind) -> String {
+    let (pos_inf, neg_inf, nan) = inf_nan_symbols(kind, false);
     if n == f64::INFINITY {
-        return "Infinity".to_string();
+        return pos_inf.to_string();
     }
     if n == f64::NEG_INFINITY {
-        return "-Infinity".to_string();
+        return neg_inf.to_string();
     }
     if n.is_nan() {
-        return "NaN".to_string();
+        return nan.to_string();
     }
     if n.floor() == n {
         // 整数且 |n| <= 2^53（MAX_INCREMENT_1_DOUBLE）→ Long.toString
@@ -74,15 +170,16 @@ fn format_c_double(n: f64) -> String {
     remove_redundant_dot0(&java_float_string(n))
 }
 
-fn format_c_float(n: f32) -> String {
+fn format_c_float(n: f32, kind: CFormatKind) -> String {
+    let (pos_inf, neg_inf, nan) = inf_nan_symbols(kind, true);
     if n == f32::INFINITY {
-        return "Infinity".to_string();
+        return pos_inf.to_string();
     }
     if n == f32::NEG_INFINITY {
-        return "-Infinity".to_string();
+        return neg_inf.to_string();
     }
     if n.is_nan() {
-        return "NaN".to_string();
+        return nan.to_string();
     }
     if n.floor() == n {
         // |n| <= 2^24（MAX_INCREMENT_1_FLOAT）→ Long.toString
@@ -512,7 +609,7 @@ pub fn format_number(env: &Environment, n: &TNumber) -> String {
         };
         format_decimal(&df, n)
     } else if fmt == "c" || fmt == "computer" {
-        format_c_number(n)
+        format_c_number(n, CFormatKind::JavaScriptOrJson)
     } else {
         match parse_decimal_format(fmt, locale) {
             Ok(df) => format_decimal(&df, n),
@@ -531,7 +628,7 @@ pub fn format_number_with(fmt: &str, locale: &str, n: &TNumber) -> String {
             Err(_) => n.to_plain_string(),
         }
     } else if fmt == "c" || fmt == "computer" {
-        format_c_number(n)
+        format_c_number(n, CFormatKind::JavaScriptOrJson)
     } else {
         match parse_decimal_format(fmt, locale) {
             Ok(df) => format_decimal(&df, n),
@@ -546,39 +643,127 @@ mod tests {
 
     #[test]
     fn c_format_integers_and_decimals() {
-        assert_eq!(format_c_number(&TNumber::Int(1)), "1");
-        assert_eq!(format_c_number(&TNumber::Long(-5)), "-5");
-        assert_eq!(format_c_number(&TNumber::from_i64(1234567)), "1234567");
         assert_eq!(
-            format_c_number(&TNumber::Decimal(BigDecimal::from_str("1.5").unwrap())),
+            format_c_number(&TNumber::Int(1), CFormatKind::JavaScriptOrJson),
+            "1"
+        );
+        assert_eq!(
+            format_c_number(&TNumber::Long(-5), CFormatKind::JavaScriptOrJson),
+            "-5"
+        );
+        assert_eq!(
+            format_c_number(&TNumber::from_i64(1234567), CFormatKind::JavaScriptOrJson),
+            "1234567"
+        );
+        assert_eq!(
+            format_c_number(
+                &TNumber::Decimal(BigDecimal::from_str("1.5").unwrap()),
+                CFormatKind::JavaScriptOrJson
+            ),
             "1.5"
         );
         assert_eq!(
-            format_c_number(&TNumber::Decimal(BigDecimal::from_str("1.50").unwrap())),
+            format_c_number(
+                &TNumber::Decimal(BigDecimal::from_str("1.50").unwrap()),
+                CFormatKind::JavaScriptOrJson
+            ),
             "1.5"
         );
         // bigDecimal2 = valueOf(1, 16) = 1E-16 → toString → "1E-16"
         assert_eq!(
-            format_c_number(&TNumber::Decimal(BigDecimal::from_str("1E-16").unwrap())),
+            format_c_number(
+                &TNumber::Decimal(BigDecimal::from_str("1E-16").unwrap()),
+                CFormatKind::JavaScriptOrJson
+            ),
             "1E-16"
         );
     }
 
     #[test]
     fn c_format_double_java_style() {
-        assert_eq!(format_c_number(&TNumber::Double(1e-16)), "1E-16");
-        assert_eq!(format_c_number(&TNumber::Double(-1e-16)), "-1E-16");
-        assert_eq!(format_c_number(&TNumber::Double(0.05)), "0.05");
-        assert_eq!(format_c_number(&TNumber::Double(100000.5)), "100000.5");
-        assert_eq!(format_c_number(&TNumber::Double(1.0)), "1");
-        // 整数但超出 2^53 → Double.toString 指数形式（Java CTemplateNumberFormat）
-        assert_eq!(format_c_number(&TNumber::Double(1e21)), "1E21");
-        assert_eq!(format_c_number(&TNumber::Double(f64::INFINITY)), "Infinity");
         assert_eq!(
-            format_c_number(&TNumber::Double(f64::NEG_INFINITY)),
+            format_c_number(&TNumber::Double(1e-16), CFormatKind::JavaScriptOrJson),
+            "1E-16"
+        );
+        assert_eq!(
+            format_c_number(&TNumber::Double(-1e-16), CFormatKind::JavaScriptOrJson),
+            "-1E-16"
+        );
+        assert_eq!(
+            format_c_number(&TNumber::Double(0.05), CFormatKind::JavaScriptOrJson),
+            "0.05"
+        );
+        assert_eq!(
+            format_c_number(&TNumber::Double(100000.5), CFormatKind::JavaScriptOrJson),
+            "100000.5"
+        );
+        assert_eq!(
+            format_c_number(&TNumber::Double(1.0), CFormatKind::JavaScriptOrJson),
+            "1"
+        );
+        // 整数但超出 2^53 → Double.toString 指数形式（Java CTemplateNumberFormat）
+        assert_eq!(
+            format_c_number(&TNumber::Double(1e21), CFormatKind::JavaScriptOrJson),
+            "1E21"
+        );
+        assert_eq!(
+            format_c_number(
+                &TNumber::Double(f64::INFINITY),
+                CFormatKind::JavaScriptOrJson
+            ),
+            "Infinity"
+        );
+        assert_eq!(
+            format_c_number(
+                &TNumber::Double(f64::NEG_INFINITY),
+                CFormatKind::JavaScriptOrJson
+            ),
             "-Infinity"
         );
-        assert_eq!(format_c_number(&TNumber::Double(f64::NAN)), "NaN");
+        assert_eq!(
+            format_c_number(&TNumber::Double(f64::NAN), CFormatKind::JavaScriptOrJson),
+            "NaN"
+        );
+    }
+
+    /// c_format 变体（StandardCFormats）：字符串转义 + Infinity/NaN 符号 + XS null
+    #[test]
+    fn c_format_variants() {
+        // 字符串转义：Java（双引号 + \uXXXX）vs JS_OR_JSON（' 不转义）
+        assert_eq!(
+            format_c_string("a'b\"c", CFormatKind::JavaScriptOrJson),
+            "\"a'b\\\"c\""
+        );
+        // JavaScript 变体（QUOTATION_MARK）：' 不转义（StringUtil :1461-1463），
+        // 仅 \x 2 位 hex 与默认不同
+        assert_eq!(format_c_string("a'b", CFormatKind::JavaScript), "\"a'b\"");
+        assert_eq!(format_c_string("<x>", CFormatKind::Java), "\"<x>\"");
+        // XS：原样（假定已有 XML 自动转义）
+        assert_eq!(format_c_string("<x>", CFormatKind::Xs), "<x>");
+        // Infinity/NaN 符号
+        let d = TNumber::Double(f64::INFINITY);
+        assert_eq!(
+            format_c_number(&d, CFormatKind::JavaScriptOrJson),
+            "Infinity"
+        );
+        assert_eq!(
+            format_c_number(&d, CFormatKind::Java),
+            "Double.POSITIVE_INFINITY"
+        );
+        assert_eq!(format_c_number(&d, CFormatKind::Xs), "INF");
+        let f = TNumber::Float(f32::NAN);
+        assert_eq!(format_c_number(&f, CFormatKind::JavaScriptOrJson), "NaN");
+        assert_eq!(format_c_number(&f, CFormatKind::Java), "Float.NaN");
+        // 注册名解析
+        assert_eq!(CFormatKind::parse("Java"), Some(CFormatKind::Java));
+        assert_eq!(CFormatKind::parse("XS"), Some(CFormatKind::Xs));
+        assert_eq!(CFormatKind::parse("legacy"), Some(CFormatKind::Legacy));
+        assert_eq!(
+            CFormatKind::parse("JavaScript or JSON"),
+            Some(CFormatKind::JavaScriptOrJson)
+        );
+        assert_eq!(CFormatKind::parse("bogus"), None);
+        assert_eq!(CFormatKind::JavaScriptOrJson.name(), "JavaScript or JSON");
     }
 
     #[test]

@@ -5,11 +5,14 @@
 //!
 //! 引擎差异：
 //! - Java `setCFormat(CustomCFormat.INSTANCE)`（自定义类：true→"TRUE"、false→"FALSE"、
-//!   null→"NULL"、字符串→ftlQuote）；v1 无自定义 CFormat API，用内建 C 格式
-//!   （JSON 风格）近似 → 布尔/字符串输出按内建 JSON CFormat。
-//! - v1 不支持模板内 `<#setting c_format=...>`（报 "Unsupported setting: c_format"）：
-//!   testStringFormat 的 XS/JavaScript 切换段不可达；testUnsafeSetting 的
-//!   "not allowed" 消息以 v1 的 "Unsupported setting" 为准。
+//!   null→"NULL"、字符串→ftlQuote）；Rust 无自定义 CFormat API（_ObjectBuilder* 类名
+//!   求值属 NA-DESIGN），用内建 StandardCFormats 变体近似 → 布尔/字符串输出按内建
+//!   C 格式。
+//! - c_format 设置已实现（2026-08，对应 Java Configurable.C_FORMAT_KEY）：
+//!   JavaScript/JSON/Java/XS/legacy 变体按 StandardCFormats 注册名分派；
+//!   testStringFormat 各切换段可 1:1 复现。
+//! - testUnsafeSetting：Java 拒绝不安全自定义类名（消息含 "not allowed"）；Rust 无
+//!   类加载机制，非注册名直接报 "Unknown c_format"（更严格的安全行为，文档化差异）。
 //! - `<#setting boolean_format='c'>` 可 1:1 翻译（Java 断言 2 前半段；
 //!   CustomCFormat 差异同上）。
 
@@ -64,24 +67,42 @@ fn test_boolean_and_null_format() {
 fn test_string_format() {
     let (c, loader) = test_config();
     let dm = dm();
-    // 引擎差异：v1 的 ?c 对字符串用 js_string_enc(JSON) 输出、不包外层引号（c_and_cn
-    // 测试既有行为）；Java CustomCFormat.formatString（ftlQuote）包引号。转义内容一致。
+    // Java 权威输出（CFormatTemplateTest.java:60-68）：
+    // Default: "a'b\\\"c\\u0001"（JS_OR_JSON：' 不转义、\u 4 位 hex）
     let out = render_ftl_with_dm(&c, &loader, "Default: ${s?c} ", dm.clone());
-    assert_eq!(out, "Default: a'b\\\"c\\u0001 ");
-    // Java 的 XS（<#setting c_format='XS'>，无引号）与 JavaScript（<#setting c_format='JavaScript'>，
-    // \x01 转义）切换段 —— 引擎差异：v1 不支持 c_format 设置，?c 恒为 JSON 风格；
-    // JSON/Java 段转义与 v1 一致（差异仅为引号），一并断言
-    let out = render_ftl_with_dm(&c, &loader, "JSON: ${s?c} ", dm.clone());
-    assert_eq!(out, "JSON: a'b\\\"c\\u0001 ");
-    let out = render_ftl_with_dm(&c, &loader, "Java: ${s?c} ", dm.clone());
-    assert_eq!(out, "Java: a'b\\\"c\\u0001 ");
-    // XS/JavaScript 段无法复现（c_format 设置不支持）→ 引擎差异已在上方注释说明
+    assert_eq!(out, "Default: \"a'b\\\"c\\u0001\" ");
+    // XS：原样（假定已有 XML 自动转义）
+    let out = render_ftl_with_dm(
+        &c,
+        &loader,
+        "XS: <#setting c_format='XS'>${s?c} ",
+        dm.clone(),
+    );
+    assert_eq!(out, "XS: a'b\"c\u{1} ");
+    // JavaScript：\x 2 位 hex（' 不转义）
+    let out = render_ftl_with_dm(
+        &c,
+        &loader,
+        "JavaScript: <#setting c_format='JavaScript'>${s?c} ",
+        dm.clone(),
+    );
+    assert_eq!(out, "JavaScript: \"a'b\\\"c\\x01\" ");
+    // JSON 与 Java 段转义一致（\u 4 位 hex）
+    let out = render_ftl_with_dm(
+        &c,
+        &loader,
+        "JSON: <#setting c_format='JSON'>${s?c} ",
+        dm.clone(),
+    );
+    assert_eq!(out, "JSON: \"a'b\\\"c\\u0001\" ");
+    let out = render_ftl_with_dm(&c, &loader, "Java: <#setting c_format='Java'>${s?c} ", dm);
+    assert_eq!(out, "Java: \"a'b\\\"c\\u0001\" ");
 }
 
 /// Java testUnsafeSetting
 /// 引擎差异：Java 拒绝不安全的自定义 CFormat 类名（消息含 "not allowed"）；
-/// v1 对任意 `<#setting c_format>` 值报 "Unsupported setting: c_format" ——
-/// 以 v1 实际消息为准。
+/// Rust 无类加载机制（_ObjectBuilder* NA-DESIGN），非注册名直接报
+/// "Unknown c_format: ..."（更严格的安全行为，文档化差异）。
 #[test]
 fn test_unsafe_setting() {
     let (c, loader) = test_config();
@@ -89,14 +110,14 @@ fn test_unsafe_setting() {
         &c,
         &loader,
         "<#setting c_format='com.example.ExploitCFormat()'>",
-        &["Unsupported setting"],
+        &["Unknown c_format"],
     );
-    assert!(msg.contains("c_format"), "msg: {msg}");
+    assert!(msg.contains("com.example.ExploitCFormat()"), "msg: {msg}");
     let msg = assert_error_contains(
         &c,
         &loader,
         "<#setting cFormat='com.example.ExploitCFormat()'>",
-        &["Unsupported setting"],
+        &["Unknown c_format"],
     );
-    assert!(msg.contains("c_format"), "msg: {msg}");
+    assert!(msg.contains("com.example.ExploitCFormat()"), "msg: {msg}");
 }

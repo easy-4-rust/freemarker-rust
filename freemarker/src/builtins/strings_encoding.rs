@@ -258,8 +258,11 @@ fn url_enc(s: &str, charset: &str, keep_slash: bool) -> Result<String> {
     Ok(out)
 }
 
-/// ?rtf —— Java `StringUtil.RTFEnc`：转义 `\` `{` `}`（不转义换行）
+/// ?rtf —— Java `StringUtil.RTFEnc`：转义 `\` `{` `}`（不转义换行）。
+/// 同时属于 Java FTL.jj :2230-2238 `BuiltInBannedWhenAutoEscaping` 家族
+/// （auto-escaping on + markup 格式时禁用）
 pub fn rtf(env: &mut Environment, target: &Expr, _args: Option<&[Expr]>) -> Result<Option<TModel>> {
+    crate::core::eval::check_legacy_escaping_ban(env, "rtf")?;
     let s = target_string(env, target)?;
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {

@@ -5,12 +5,11 @@
 //!
 //! 引擎差异：
 //! - Java 配置 `setCFormat(CustomCFormat.INSTANCE)`（自定义类，true/false 输出
-//!   "TRUE"/"FALSE"）+ `setBooleanFormat("c")`；v1 无自定义 CFormat API，
-//!   用内建 C 格式（boolean_format='c' → "true"/"false"）近似 → 首段输出为
-//!   "true true false false" 而非 Java 的 "TRUE TRUE FALSE FALSE"。
-//! - v1 不支持模板内 `<#setting cFormat=...>`（exec_setting 无 c_format 分支，
-//!   报 "Unsupported setting: c_format"）→ 涉及 c_format 设置的段改为
-//!   单独断言各段结果，并以 assert_error_contains 断言该设置报错。
+//!   "TRUE"/"FALSE"）+ `setBooleanFormat("c")`；Rust 无自定义 CFormat API
+//!   （_ObjectBuilder* NA-DESIGN），用内建 C 格式（boolean_format='c' → "true"/"false"）
+//!   近似 → 首段输出为 "true true false false" 而非 Java 的 "TRUE TRUE FALSE FALSE"。
+//! - c_format 设置已实现（2026-08）：`<#setting cFormat='JSON'>`/`'Java'` 可 1:1 翻译，
+//!   环境级缓存切换立即生效。
 //! - `<#setting booleanFormat='y,n'>` / `<#setting booleanFormat='c'>` 可 1:1 翻译。
 
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
@@ -33,12 +32,11 @@ fn test() {
     );
 
     // 段 2：<#setting cFormat='JSON'>${true} ${true} ${false} ${false}
-    // 引擎差异：v1 不支持 cFormat 设置；Java 切到 JSON CFormat 后输出 "true ... false"，
-    // 与 v1 内建 C 格式输出一致
+    // Java 切到 JSON CFormat 后输出 "true ... false"（c_format 设置已实现）
     assert_output(
         &c,
         &loader,
-        "${true} ${true} ${false} ${false}",
+        "<#setting cFormat='JSON'>${true} ${true} ${false} ${false}",
         "true true false false",
     );
 
@@ -51,11 +49,11 @@ fn test() {
     );
 
     // 段 4：<#setting cFormat='Java'>${true} ${true} ${false} ${false}
-    // 引擎差异：同段 2 —— v1 恒为 JSON 风格 → "true ... false"
+    // Java CFormat 布尔输出同为 "true ... false"（c_format 设置已实现）
     assert_output(
         &c,
         &loader,
-        "${true} ${true} ${false} ${false}",
+        "<#setting cFormat='Java'>${true} ${true} ${false} ${false}",
         "true true false false",
     );
 
@@ -67,13 +65,4 @@ fn test() {
         "<#setting booleanFormat='c'>${true} ${true} ${false} ${false}",
         "true true false false",
     );
-
-    // 引擎差异：v1 不支持 <#setting cFormat=...>，断言其报错消息
-    let msg = assert_error_contains(
-        &c,
-        &loader,
-        "<#setting cFormat='JSON'>${true}",
-        &["Unsupported setting"],
-    );
-    assert!(msg.contains("c_format"), "msg: {msg}");
 }

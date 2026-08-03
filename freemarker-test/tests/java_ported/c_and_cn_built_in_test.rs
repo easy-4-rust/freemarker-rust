@@ -205,11 +205,11 @@ fn test_with_non_number() {
             let (mut c, loader) = cfg();
             c.settings.incompatible_improvements = ici;
             let dm = data_model();
-            // 引擎差异：Java `?c` 字符串输出带引号（JavaScriptOrJSONCFormat.formatString
-            // 的 QUOTATION_MARK）→ "\"a\\nb\\u0000c\""；v1 的 js_string_enc 不加引号。
+            // ?c 字符串输出带引号（JavaScriptOrJSONCFormat.formatString 的
+            // QUOTATION_MARK → "\"a\\nb\\u0000c\""）
             assert_eq!(
                 render_ftl_with_dm(&c, &loader, &format!("${{string?{bi}}}"), dm.clone()),
-                "a\\nb\\u0000c"
+                "\"a\\nb\\u0000c\""
             );
             assert_eq!(
                 render_ftl_with_dm(&c, &loader, &format!("${{booleanTrue?{bi}}}"), dm.clone()),
@@ -244,29 +244,36 @@ fn test_c_formats_with_string() {
     );
     let dm = TModel::from_hash(dm);
 
-    // Java：conf.setCFormat(JavaScriptCFormat.INSTANCE) → "\"a\\nb\\x00c\""（带引号、\x00）
-    // 引擎差异：v1 无 c_format 设置（固定 JS/JSON 语义），且字符串输出不加引号 → "a\nb\u0000c"
+    // c_format 变体已实现（StandardCFormats 注册名）：
+    // - JavaScript：jsStringEnc(JS, QUOTATION_MARK) → "\"a\\nb\\x00c\""（\x 2 位 hex）
+    assert_eq!(
+        render_ftl_with_dm(
+            &c,
+            &loader,
+            "<#setting c_format='JavaScript'>${string?c}",
+            dm.clone()
+        ),
+        "\"a\\nb\\x00c\""
+    );
+    // - JSON：jsStringEnc(JSON, QUOTATION_MARK) → "\"a\\nb\\u0000c\""（\u 4 位 hex）
+    assert_eq!(
+        render_ftl_with_dm(
+            &c,
+            &loader,
+            "<#setting c_format='JSON'>${string?c}",
+            dm.clone()
+        ),
+        "\"a\\nb\\u0000c\""
+    );
+    // - 默认 JavaScript or JSON：同上
     assert_eq!(
         render_ftl_with_dm(&c, &loader, "${string?c}", dm.clone()),
-        "a\\nb\\u0000c"
+        "\"a\\nb\\u0000c\""
     );
-    // Java：setCFormat(JSONCFormat.INSTANCE) → "\"a\\nb\\u0000c\""（带引号）
-    // 引擎差异：v1 固定 JS/JSON 语义、不加引号 → "a\nb\u0000c"
+    // - XS：原样（真实换行与 NUL、无转义）
     assert_eq!(
-        render_ftl_with_dm(&c, &loader, "${string?c}", dm.clone()),
-        "a\\nb\\u0000c"
-    );
-    // Java：setCFormat(JavaScriptOrJSONCFormat.INSTANCE) → "\"a\\nb\\u0000c\""（带引号）
-    // 引擎差异：同上 → "a\nb\u0000c"
-    assert_eq!(
-        render_ftl_with_dm(&c, &loader, "${string?c}", dm.clone()),
-        "a\\nb\\u0000c"
-    );
-    // Java：setCFormat(XSCFormat.INSTANCE) → 原样 "a\nb\u0000c"（真实换行与 NUL、无转义）
-    // 引擎差异：v1 固定 JS/JSON 语义 → 转义为 "a\nb\u0000c"
-    assert_eq!(
-        render_ftl_with_dm(&c, &loader, "${string?c}", dm),
-        "a\\nb\\u0000c"
+        render_ftl_with_dm(&c, &loader, "<#setting c_format='XS'>${string?c}", dm),
+        "a\nb\u{0}c"
     );
 }
 
