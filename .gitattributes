@@ -1,0 +1,3 @@
+# golden 套件（模板/期望输出）：强制 LF——golden 比较对行尾敏感，
+# windows git autocrlf 的 CRLF 会导致 golden 测试失败
+freemarker-test/tests/suite/** text eol=lf

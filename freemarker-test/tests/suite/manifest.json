@@ -1,0 +1,1284 @@
+{
+ "cases": [
+  {
+   "name": "api-builtins",
+   "base": "api-builtins",
+   "template": "api-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/api-builtins/api-builtins.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)",
+    "api_builtin_enabled": "true"
+   }
+  },
+  {
+   "name": "api-builtins[#endTN]-bw",
+   "base": "api-builtins",
+   "template": "api-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/api-builtins/api-builtins.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "BeansWrapper(2.3.0)",
+    "api_builtin_enabled": "true"
+   }
+  },
+  {
+   "name": "arithmetic",
+   "base": "arithmetic",
+   "template": "arithmetic.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/arithmetic/arithmetic.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/arithmetic/arithmetic.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "assignments",
+   "base": "assignments",
+   "template": "assignments.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/assignments/assignments.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "bean-maps",
+   "base": "bean-maps",
+   "template": "bean-maps.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/bean-maps/bean-maps.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/bean-maps/bean-maps.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "beans",
+   "base": "beans",
+   "template": "beans.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/beans/beans.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/beans/beans.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapper"
+   }
+  },
+  {
+   "name": "boolean",
+   "base": "boolean",
+   "template": "boolean.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/boolean/boolean.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/boolean/boolean.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "charset-in-header",
+   "base": "charset-in-header",
+   "template": "charset-in-header.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/charset-in-header/charset-in-header.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/charset-in-header/charset-in-header.txt",
+   "no_output": false,
+   "settings": {
+    "clear_encoding_map": "Y",
+    "input_encoding": "ISO-8859-5"
+   }
+  },
+  {
+   "name": "comment",
+   "base": "comment",
+   "template": "comment.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/comment/comment.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/comment/comment.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "comparisons",
+   "base": "comparisons",
+   "template": "comparisons.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/comparisons/comparisons.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/comparisons/comparisons.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "compress",
+   "base": "compress",
+   "template": "compress.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/compress/compress.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/compress/compress.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "then-builtin",
+   "base": "then-builtin",
+   "template": "then-builtin.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/then-builtin/then-builtin.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "dateformat-java",
+   "base": "dateformat-java",
+   "template": "dateformat-java.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/dateformat-java/dateformat-java.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/dateformat-java/dateformat-java.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "dateformat-iso-like",
+   "base": "dateformat-iso-like",
+   "template": "dateformat-iso-like.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/dateformat-iso-like/dateformat-iso-like.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "dateformat-iso-bi",
+   "base": "dateformat-iso-bi",
+   "template": "dateformat-iso-bi.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/dateformat-iso-bi/dateformat-iso-bi.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "incompatible_improvements": "min, 2.3.20"
+   }
+  },
+  {
+   "name": "dateformat-iso-bi-ici-2.3.21",
+   "base": "dateformat-iso-bi-ici-2.3.21",
+   "template": "dateformat-iso-bi-ici-2.3.21.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/dateformat-iso-bi-ici-2.3.21/dateformat-iso-bi-ici-2.3.21.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "incompatible_improvements": "2.3.21, max"
+   }
+  },
+  {
+   "name": "dateparsing",
+   "base": "dateparsing",
+   "template": "dateparsing.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/dateparsing/dateparsing.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "default",
+   "base": "default",
+   "template": "default.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/default/default.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/default/default.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "default-xmlns",
+   "base": "default-xmlns",
+   "template": "default-xmlns.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/default-xmlns/default-xmlns.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/default-xmlns/default-xmlns.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapper"
+   }
+  },
+  {
+   "name": "encoding-builtins",
+   "base": "encoding-builtins",
+   "template": "encoding-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/encoding-builtins/encoding-builtins.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/encoding-builtins/encoding-builtins.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "min, 2.3.19"
+   }
+  },
+  {
+   "name": "encoding-builtins[#endTN]-ici-2.3.20",
+   "base": "encoding-builtins",
+   "template": "encoding-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/encoding-builtins/encoding-builtins.ftl",
+   "expected_file": "cases/encoding-builtins/encoding-builtins-ici-2.3.20.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "2.3.20, max"
+   }
+  },
+  {
+   "name": "escapes",
+   "base": "escapes",
+   "template": "escapes.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/escapes/escapes.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/escapes/escapes.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "hashliteral",
+   "base": "hashliteral",
+   "template": "hashliteral.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/hashliteral/hashliteral.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/hashliteral/hashliteral.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "min, 2.3.20, 2.3.21, max"
+   }
+  },
+  {
+   "name": "non-strict-syntax",
+   "base": "non-strict-syntax",
+   "template": "non-strict-syntax.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/non-strict-syntax/non-strict-syntax.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/non-strict-syntax/non-strict-syntax.txt",
+   "no_output": false,
+   "settings": {
+    "strict_syntax": "N"
+   }
+  },
+  {
+   "name": "identifier-non-ascii",
+   "base": "identifier-non-ascii",
+   "template": "identifier-non-ascii.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/identifier-non-ascii/identifier-non-ascii.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/identifier-non-ascii/identifier-non-ascii.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "identifier-escaping",
+   "base": "identifier-escaping",
+   "template": "identifier-escaping.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/identifier-escaping/identifier-escaping.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/identifier-escaping/identifier-escaping.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "import",
+   "base": "import",
+   "template": "import.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/import/import.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/import/import.txt",
+   "no_output": false,
+   "settings": {
+    "auto_import": "import_lib.ftl as my"
+   }
+  },
+  {
+   "name": "include",
+   "base": "include",
+   "template": "include.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/include/include.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/include/include.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "include2",
+   "base": "include2",
+   "template": "include2.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/include2/include2.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/include2/include2.txt",
+   "no_output": false,
+   "settings": {
+    "input_encoding": "utf-8"
+   }
+  },
+  {
+   "name": "interpret",
+   "base": "interpret",
+   "template": "interpret.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/interpret/interpret.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/interpret/interpret.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "iterators",
+   "base": "iterators",
+   "template": "iterators.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/iterators/iterators.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/iterators/iterators.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "lastcharacter",
+   "base": "lastcharacter",
+   "template": "lastcharacter.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/lastcharacter/lastcharacter.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/lastcharacter/lastcharacter.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "list",
+   "base": "list",
+   "template": "list.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list/list.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list/list.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "list[#endTN]-collectionAdapter",
+   "base": "list",
+   "template": "list.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list/list.ftl",
+   "expected_file": "cases/list/list.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)"
+   }
+  },
+  {
+   "name": "list2",
+   "base": "list2",
+   "template": "list2.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list2/list2.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list2/list2.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "list2[#endTN]-collectionAdapter",
+   "base": "list2",
+   "template": "list2.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list2/list2.ftl",
+   "expected_file": "cases/list2/list2.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)"
+   }
+  },
+  {
+   "name": "list3",
+   "base": "list3",
+   "template": "list3.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list3/list3.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list3/list3.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "list3[#endTN]-collectionAdapter",
+   "base": "list3",
+   "template": "list3.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list3/list3.ftl",
+   "expected_file": "cases/list3/list3.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)"
+   }
+  },
+  {
+   "name": "list-bis",
+   "base": "list-bis",
+   "template": "list-bis.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list-bis/list-bis.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list-bis/list-bis.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "list-bis[#endTN]-collectionAdapter",
+   "base": "list-bis",
+   "template": "list-bis.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/list-bis/list-bis.ftl",
+   "expected_file": "cases/list-bis/list-bis.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)"
+   }
+  },
+  {
+   "name": "listhash",
+   "base": "listhash",
+   "template": "listhash.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/listhash/listhash.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/listhash/listhash.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "listhashliteral[#endTN]-ici-2.3.20",
+   "base": "listhashliteral",
+   "template": "listhashliteral.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/listhashliteral/listhashliteral.ftl",
+   "expected_file": "cases/listhashliteral/listhashliteral-ici-2.3.20.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "min, 2.3.20"
+   }
+  },
+  {
+   "name": "listhashliteral[#endTN]-ici-2.3.21",
+   "base": "listhashliteral",
+   "template": "listhashliteral.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/listhashliteral/listhashliteral.ftl",
+   "expected_file": "cases/listhashliteral/listhashliteral-ici-2.3.21.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "2.3.21, max"
+   }
+  },
+  {
+   "name": "listliteral",
+   "base": "listliteral",
+   "template": "listliteral.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/listliteral/listliteral.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/listliteral/listliteral.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "localization",
+   "base": "localization",
+   "template": "localization.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/localization/localization.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/localization/localization.txt",
+   "no_output": false,
+   "settings": {
+    "locale": "en_AU"
+   }
+  },
+  {
+   "name": "loopvariable",
+   "base": "loopvariable",
+   "template": "loopvariable.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/loopvariable/loopvariable.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/loopvariable/loopvariable.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "macros",
+   "base": "macros",
+   "template": "macros.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/macros/macros.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/macros/macros.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "macros2",
+   "base": "macros2",
+   "template": "macros2.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/macros2/macros2.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/macros2/macros2.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "macros-return",
+   "base": "macros-return",
+   "template": "macros-return.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/macros-return/macros-return.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/macros-return/macros-return.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "multimodels",
+   "base": "multimodels",
+   "template": "multimodels.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/multimodels/multimodels.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/multimodels/multimodels.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "nested",
+   "base": "nested",
+   "template": "nested.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/nested/nested.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/nested/nested.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "newlines1",
+   "base": "newlines1",
+   "template": "newlines1.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/newlines1/newlines1.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/newlines1/newlines1.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "newlines2",
+   "base": "newlines2",
+   "template": "newlines2.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/newlines2/newlines2.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/newlines2/newlines2.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "noparse",
+   "base": "noparse",
+   "template": "noparse.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/noparse/noparse.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/noparse/noparse.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "number-format",
+   "base": "number-format",
+   "template": "number-format.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/number-format/number-format.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/number-format/number-format.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "min, 2.3.21, max"
+   }
+  },
+  {
+   "name": "number-literal",
+   "base": "number-literal",
+   "template": "number-literal.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/number-literal/number-literal.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/number-literal/number-literal.txt",
+   "no_output": false,
+   "settings": {
+    "locale": "fr_FR"
+   }
+  },
+  {
+   "name": "numerical-cast",
+   "base": "numerical-cast",
+   "template": "numerical-cast.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/numerical-cast/numerical-cast.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/numerical-cast/numerical-cast.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "output-encoding1",
+   "base": "output-encoding1",
+   "template": "output-encoding1.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/output-encoding1/output-encoding1.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/output-encoding1/output-encoding1.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "output-encoding2",
+   "base": "output-encoding2",
+   "template": "output-encoding2.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/output-encoding2/output-encoding2.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/output-encoding2/output-encoding2.txt",
+   "no_output": false,
+   "settings": {
+    "output_encoding": "UTF-16"
+   }
+  },
+  {
+   "name": "output-encoding3",
+   "base": "output-encoding3",
+   "template": "output-encoding3.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/output-encoding3/output-encoding3.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/output-encoding3/output-encoding3.txt",
+   "no_output": false,
+   "settings": {
+    "output_encoding": "ISO-8859-1",
+    "url_escaping_charset": "UTF-16"
+   }
+  },
+  {
+   "name": "precedence",
+   "base": "precedence",
+   "template": "precedence.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/precedence/precedence.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/precedence/precedence.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "range-ici-2.3.20",
+   "base": "range-ici-2.3.20",
+   "template": "range-ici-2.3.20.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/range-ici-2.3.20/range-ici-2.3.20.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "incompatible_improvements": "min, 2.3.20"
+   }
+  },
+  {
+   "name": "range-ici-2.3.21",
+   "base": "range-ici-2.3.21",
+   "template": "range-ici-2.3.21.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/range-ici-2.3.21/range-ici-2.3.21.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "incompatible_improvements": "2.3.21, max"
+   }
+  },
+  {
+   "name": "range-lazy",
+   "base": "range-lazy",
+   "template": "range-lazy.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/range-lazy/range-lazy.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "incompatible_improvements": "2.3.22"
+   }
+  },
+  {
+   "name": "recover",
+   "base": "recover",
+   "template": "recover.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/recover/recover.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/recover/recover.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "root",
+   "base": "root",
+   "template": "root.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/root/root.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/root/root.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "setting",
+   "base": "setting",
+   "template": "setting.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/setting/setting.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "sequence-builtins[#endTN]-with-BeansWrapper",
+   "base": "sequence-builtins",
+   "template": "sequence-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/sequence-builtins/sequence-builtins.ftl",
+   "expected_file": "cases/sequence-builtins/sequence-builtins.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapper"
+   }
+  },
+  {
+   "name": "sequence-builtins[#endTN]-with-DefaultObjectWrapper",
+   "base": "sequence-builtins",
+   "template": "sequence-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/sequence-builtins/sequence-builtins.ftl",
+   "expected_file": "cases/sequence-builtins/sequence-builtins.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.template.DefaultObjectWrapper"
+   }
+  },
+  {
+   "name": "sequence-builtins[#endTN]-with-DefaultObjectWrapper-collAdapters",
+   "base": "sequence-builtins",
+   "template": "sequence-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/sequence-builtins/sequence-builtins.ftl",
+   "expected_file": "cases/sequence-builtins/sequence-builtins.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "DefaultObjectWrapper(2.3.22, forceLegacyNonListCollections=false)"
+   }
+  },
+  {
+   "name": "sequence-builtins[#endTN]-with-SimpleObjectWrapper",
+   "base": "sequence-builtins",
+   "template": "sequence-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/sequence-builtins/sequence-builtins.ftl",
+   "expected_file": "cases/sequence-builtins/sequence-builtins.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.template.SimpleObjectWrapper"
+   }
+  },
+  {
+   "name": "simplehash-char-key",
+   "base": "simplehash-char-key",
+   "template": "simplehash-char-key.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/simplehash-char-key/simplehash-char-key.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "strictinheader",
+   "base": "strictinheader",
+   "template": "strictinheader.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/strictinheader/strictinheader.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/strictinheader/strictinheader.txt",
+   "no_output": false,
+   "settings": {
+    "strict_syntax": "N"
+   }
+  },
+  {
+   "name": "existence-operators",
+   "base": "existence-operators",
+   "template": "existence-operators.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/existence-operators/existence-operators.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "string-builtins1",
+   "base": "string-builtins1",
+   "template": "string-builtins1.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins1/string-builtins1.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins1/string-builtins1.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "min, 2.3.20, max"
+   }
+  },
+  {
+   "name": "string-builtins2",
+   "base": "string-builtins2",
+   "template": "string-builtins2.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins2/string-builtins2.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins2/string-builtins2.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "string-builtins3",
+   "base": "string-builtins3",
+   "template": "string-builtins3.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins3/string-builtins3.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "string-builtins-regexps",
+   "base": "string-builtins-regexps",
+   "template": "string-builtins-regexps.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins-regexps/string-builtins-regexps.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins-regexps/string-builtins-regexps.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "string-builtins-regexps-matches",
+   "base": "string-builtins-regexps-matches",
+   "template": "string-builtins-regexps-matches.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins-regexps-matches/string-builtins-regexps-matches.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins-regexps-matches/string-builtins-regexps-matches.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "stringbimethods",
+   "base": "stringbimethods",
+   "template": "stringbimethods.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/stringbimethods/stringbimethods.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/stringbimethods/stringbimethods.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "stringliteral",
+   "base": "stringliteral",
+   "template": "stringliteral.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/stringliteral/stringliteral.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/stringliteral/stringliteral.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "if",
+   "base": "if",
+   "template": "if.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/if/if.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/if/if.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "switch",
+   "base": "switch",
+   "template": "switch.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/switch/switch.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/switch/switch.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "switch-builtin",
+   "base": "switch-builtin",
+   "template": "switch-builtin.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/switch-builtin/switch-builtin.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "transforms",
+   "base": "transforms",
+   "template": "transforms.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/transforms/transforms.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/transforms/transforms.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "type-builtins",
+   "base": "type-builtins",
+   "template": "type-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/type-builtins/type-builtins.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/type-builtins/type-builtins.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "min, 2.3.20"
+   }
+  },
+  {
+   "name": "type-builtins[#endTN]-ici-2.3.21",
+   "base": "type-builtins",
+   "template": "type-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/type-builtins/type-builtins.ftl",
+   "expected_file": "cases/type-builtins/type-builtins-ici-2.3.21.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "2.3.21, 2.3.23"
+   }
+  },
+  {
+   "name": "type-builtins[#endTN]-ici-2.3.24",
+   "base": "type-builtins",
+   "template": "type-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/type-builtins/type-builtins.ftl",
+   "expected_file": "cases/type-builtins/type-builtins-ici-2.3.24.txt",
+   "no_output": false,
+   "settings": {
+    "incompatible_improvements": "2.3.24, max"
+   }
+  },
+  {
+   "name": "date-type-builtins",
+   "base": "date-type-builtins",
+   "template": "date-type-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/date-type-builtins/date-type-builtins.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "url",
+   "base": "url",
+   "template": "url.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/url/url.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "var-layers",
+   "base": "var-layers",
+   "template": "var-layers.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/var-layers/var-layers.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/var-layers/var-layers.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "variables",
+   "base": "variables",
+   "template": "variables.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/variables/variables.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/variables/variables.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "whitespace-trim",
+   "base": "whitespace-trim",
+   "template": "whitespace-trim.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/whitespace-trim/whitespace-trim.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/whitespace-trim/whitespace-trim.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "wstrip-in-header",
+   "base": "wstrip-in-header",
+   "template": "wstrip-in-header.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/wstrip-in-header/wstrip-in-header.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/wstrip-in-header/wstrip-in-header.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "xml-fragment",
+   "base": "xml-fragment",
+   "template": "xml-fragment.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xml-fragment/xml-fragment.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xml-fragment/xml-fragment.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapper"
+   }
+  },
+  {
+   "name": "xmlns1",
+   "base": "xmlns1",
+   "template": "xmlns1.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns1/xmlns1.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns1/xmlns1.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapper"
+   }
+  },
+  {
+   "name": "xmlns2",
+   "base": "xmlns2",
+   "template": "xmlns1.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns2/xmlns1.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns2/xmlns1.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "xmlns3",
+   "base": "xmlns3",
+   "template": "xmlns3.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns3/xmlns3.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns3/xmlns3.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapper"
+   }
+  },
+  {
+   "name": "xmlns4",
+   "base": "xmlns4",
+   "template": "xmlns4.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns4/xmlns4.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns4/xmlns4.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapper"
+   }
+  },
+  {
+   "name": "xmlns5",
+   "base": "xmlns5",
+   "template": "xmlns5.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns5/xmlns5.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xmlns5/xmlns5.txt",
+   "no_output": false,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapper"
+   }
+  },
+  {
+   "name": "xml-ns_prefix-scope",
+   "base": "xml-ns_prefix-scope",
+   "template": "xml-ns_prefix-scope-main.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xml-ns_prefix-scope/xml-ns_prefix-scope-main.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/xml-ns_prefix-scope/xml-ns_prefix-scope.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "hashconcat",
+   "base": "hashconcat",
+   "template": "hashconcat.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/hashconcat/hashconcat.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/hashconcat/hashconcat.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "new-defaultresolver",
+   "base": "new-defaultresolver",
+   "template": "new-defaultresolver.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-defaultresolver/new-defaultresolver.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-defaultresolver/new-defaultresolver.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "new-unrestricted",
+   "base": "new-unrestricted",
+   "template": "new-unrestricted.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-unrestricted/new-unrestricted.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-unrestricted/new-unrestricted.txt",
+   "no_output": false,
+   "settings": {
+    "new_builtin_class_resolver": "unrestricted"
+   }
+  },
+  {
+   "name": "new-safer",
+   "base": "new-safer",
+   "template": "new-safer.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-safer/new-safer.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-safer/new-safer.txt",
+   "no_output": false,
+   "settings": {
+    "new_builtin_class_resolver": "safer"
+   }
+  },
+  {
+   "name": "new-allowsnothing",
+   "base": "new-allowsnothing",
+   "template": "new-allowsnothing.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-allowsnothing/new-allowsnothing.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-allowsnothing/new-allowsnothing.txt",
+   "no_output": false,
+   "settings": {
+    "new_builtin_class_resolver": "allows_nothing"
+   }
+  },
+  {
+   "name": "new-optin",
+   "base": "new-optin",
+   "template": "new-optin.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-optin/new-optin.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/new-optin/new-optin.txt",
+   "no_output": false,
+   "settings": {
+    "new_builtin_class_resolver": "         allowed_classes: freemarker.test.templatesuite.models.NewTestModel,         trusted_templates: subdir/new-optin.ftl, subdir/subsub/*"
+   }
+  },
+  {
+   "name": "specialvars",
+   "base": "specialvars",
+   "template": "specialvars.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/specialvars/specialvars.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/specialvars/specialvars.txt",
+   "no_output": false,
+   "settings": {
+    "locale": "en_US",
+    "output_encoding": "utf-8",
+    "url_escaping_charset": "iso-8859-1"
+   }
+  },
+  {
+   "name": "number-to-date",
+   "base": "number-to-date",
+   "template": "number-to-date.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/number-to-date/number-to-date.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/number-to-date/number-to-date.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "varargs",
+   "base": "varargs",
+   "template": "varargs.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/varargs/varargs.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/varargs/varargs.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "classic-compatible",
+   "base": "classic-compatible",
+   "template": "classic-compatible.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/classic-compatible/classic-compatible.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/classic-compatible/classic-compatible.txt",
+   "no_output": false,
+   "settings": {
+    "classic_compatible": "Y"
+   }
+  },
+  {
+   "name": "classic-compatible-mode2",
+   "base": "classic-compatible-mode2",
+   "template": "classic-compatible-mode2.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/classic-compatible-mode2/classic-compatible-mode2.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "classic_compatible": "2"
+   }
+  },
+  {
+   "name": "boolean-formatting",
+   "base": "boolean-formatting",
+   "template": "boolean-formatting.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/boolean-formatting/boolean-formatting.ftl",
+   "expected_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/boolean-formatting/boolean-formatting.txt",
+   "no_output": false,
+   "settings": {}
+  },
+  {
+   "name": "number-math-builtins",
+   "base": "number-math-builtins",
+   "template": "number-math-builtins.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/number-math-builtins/number-math-builtins.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "string-builtin-coercion",
+   "base": "string-builtin-coercion",
+   "template": "string-builtin-coercion.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtin-coercion/string-builtin-coercion.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {}
+  },
+  {
+   "name": "string-builtins-ici-2.3.20",
+   "base": "string-builtins-ici-2.3.20",
+   "template": "string-builtins-ici-2.3.20.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins-ici-2.3.20/string-builtins-ici-2.3.20.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "incompatible_improvements": "2.3.20"
+   }
+  },
+  {
+   "name": "string-builtins-ici-2.3.19",
+   "base": "string-builtins-ici-2.3.19",
+   "template": "string-builtins-ici-2.3.19.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/string-builtins-ici-2.3.19/string-builtins-ici-2.3.19.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "incompatible_improvements": "2.3.19"
+   }
+  },
+  {
+   "name": "overloaded-methods-23bc",
+   "base": "overloaded-methods-23bc",
+   "template": "overloaded-methods-23bc.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-23bc/overloaded-methods-23bc.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "incompatible_improvements": "2.3.0, 2.3.19"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-inc-bwici-2.3.20",
+   "base": "overloaded-methods-2-inc-bwici-2.3.20",
+   "template": "overloaded-methods-2-inc-bwici-2.3.20.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-inc-bwici-2.3.20/overloaded-methods-2-inc-bwici-2.3.20.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapperInc2003020"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-desc-bwici-2.3.20",
+   "base": "overloaded-methods-2-desc-bwici-2.3.20",
+   "template": "overloaded-methods-2-desc-bwici-2.3.20.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-desc-bwici-2.3.20/overloaded-methods-2-desc-bwici-2.3.20.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapperDesc2003020"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-bwici-2.3.21[#endTN]-inc",
+   "base": "overloaded-methods-2-bwici-2.3.21",
+   "template": "overloaded-methods-2-bwici-2.3.21.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-bwici-2.3.21/overloaded-methods-2-bwici-2.3.21.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapperInc2003021"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-bwici-2.3.21[#endTN]-desc",
+   "base": "overloaded-methods-2-bwici-2.3.21",
+   "template": "overloaded-methods-2-bwici-2.3.21.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-bwici-2.3.21/overloaded-methods-2-bwici-2.3.21.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.BeansWrapperDesc2003021"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-inc-bwici-2.3.20[#endTN]-dow",
+   "base": "overloaded-methods-2-inc-bwici-2.3.20",
+   "template": "overloaded-methods-2-inc-bwici-2.3.20.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-inc-bwici-2.3.20/overloaded-methods-2-inc-bwici-2.3.20.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.DefaultObjectWrapperInc2003020"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-desc-bwici-2.3.20[#endTN]-dow",
+   "base": "overloaded-methods-2-desc-bwici-2.3.20",
+   "template": "overloaded-methods-2-desc-bwici-2.3.20.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-desc-bwici-2.3.20/overloaded-methods-2-desc-bwici-2.3.20.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.DefaultObjectWrapperDesc2003020"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-bwici-2.3.21[#endTN]-inc-dow",
+   "base": "overloaded-methods-2-bwici-2.3.21",
+   "template": "overloaded-methods-2-bwici-2.3.21.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-bwici-2.3.21/overloaded-methods-2-bwici-2.3.21.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.DefaultObjectWrapperInc2003021"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-bwici-2.3.21[#endTN]-desc-dow",
+   "base": "overloaded-methods-2-bwici-2.3.21",
+   "template": "overloaded-methods-2-bwici-2.3.21.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-bwici-2.3.21/overloaded-methods-2-bwici-2.3.21.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.DefaultObjectWrapperDesc2003021"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-bwici-2.3.21[#endTN]-inc-dow-2.3.22",
+   "base": "overloaded-methods-2-bwici-2.3.21",
+   "template": "overloaded-methods-2-bwici-2.3.21.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-bwici-2.3.21/overloaded-methods-2-bwici-2.3.21.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.DefaultObjectWrapperInc2003022"
+   }
+  },
+  {
+   "name": "overloaded-methods-2-bwici-2.3.21[#endTN]-desc-dow-2.3.22",
+   "base": "overloaded-methods-2-bwici-2.3.21",
+   "template": "overloaded-methods-2-bwici-2.3.21.ftl",
+   "template_file": "/Users/wandl/workspaces/workspace-github-easy-4-rust/freemarker-rust/scripts/../freemarker/tests/suite/cases/overloaded-methods-2-bwici-2.3.21/overloaded-methods-2-bwici-2.3.21.ftl",
+   "expected_file": null,
+   "no_output": true,
+   "settings": {
+    "object_wrapper": "freemarker.ext.beans.DefaultObjectWrapperDesc2003022"
+   }
+  }
+ ]
+}

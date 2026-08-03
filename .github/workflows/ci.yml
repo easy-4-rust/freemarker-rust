@@ -90,9 +90,11 @@ jobs:
       - name: Build wheel
         working-directory: freemarker-pyo3
         # --interpreter 显式绑定当前 job 的 Python（setup-python 矩阵版本）；
-        # 缺省时 maturin 可能扫描到宿主其他解释器（如 3.13），产出错误 abi
-        # 标签的 wheel 导致 3.9/3.11 job 安装失败（jar 实测）
-        run: maturin build --release --interpreter "$(python3 -c 'import sys; print(sys.executable)')"
+        # 先清 target/wheels：cache 按 Cargo.lock 键跨 Python 版本共享，残留
+        # 其他版本 wheel（如 cp313）会让 pip install *.whl 误装失败
+        run: |
+          rm -rf ../target/wheels
+          maturin build --release --interpreter "$(python3 -c 'import sys; print(sys.executable)')"
 
       # maturin 输出到 workspace 共享 target 目录（仓库根 target/wheels/）
       - name: Install wheel

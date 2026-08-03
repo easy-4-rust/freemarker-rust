@@ -2219,6 +2219,7 @@ pub fn freemarker::TemplateError::with_dot_tip(self) -> Self
 pub fn freemarker::TemplateError::with_expected_phrase(self, &str) -> Self
 pub fn freemarker::TemplateError::with_location(self, &str, freemarker::span::Span) -> Self
 pub fn freemarker::TemplateError::with_stack(self, alloc::vec::Vec<freemarker::error::StackFrame>) -> Self
+pub fn freemarker::TemplateError::with_tip(self, &str) -> Self
 impl core::convert::From<core::io::error::Error> for freemarker::TemplateError
 pub fn freemarker::TemplateError::from(core::io::error::Error) -> Self
 impl core::error::Error for freemarker::TemplateError
@@ -3439,6 +3440,7 @@ pub fn freemarker::TemplateError::with_dot_tip(self) -> Self
 pub fn freemarker::TemplateError::with_expected_phrase(self, &str) -> Self
 pub fn freemarker::TemplateError::with_location(self, &str, freemarker::span::Span) -> Self
 pub fn freemarker::TemplateError::with_stack(self, alloc::vec::Vec<freemarker::error::StackFrame>) -> Self
+pub fn freemarker::TemplateError::with_tip(self, &str) -> Self
 impl core::convert::From<core::io::error::Error> for freemarker::TemplateError
 pub fn freemarker::TemplateError::from(core::io::error::Error) -> Self
 impl core::error::Error for freemarker::TemplateError

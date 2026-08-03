@@ -86,6 +86,8 @@ dist/
 .fastRequest
 *.http
 *.json
+# golden 套件清单（golden.rs 从 manifest 读取用例映射）——*.json 例外
+!freemarker-test/tests/suite/manifest.json
 .flattened-pom.xml
 /agentdb.rvf
 /agentdb.rvf.lock
