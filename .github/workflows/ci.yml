@@ -149,9 +149,10 @@ jobs:
           export RUSTUP_TOOLCHAIN=1.93.0
           # 全局 RUSTFLAGS=-D warnings 会把 rustdoc 的 doc 警告（如 unclosed HTML
           # tag）变 error 导致 public-api 空输出——本步骤清空 RUSTFLAGS
-          RUSTFLAGS= cargo public-api -p freemarker > /tmp/api.txt 2>/tmp/api.err
-          echo "public-api exit=$? lines=$(wc -l < /tmp/api.txt)"
-          head -5 /tmp/api.err
+          RUSTFLAGS= cargo public-api -p freemarker > /tmp/api.txt 2>/tmp/api.err \
+            || echo "public-api FAILED"
+          echo "lines=$(wc -l < /tmp/api.txt)"
+          cat /tmp/api.err
           diff /tmp/api.txt docs/release/api-baseline.txt
 
   coverage:
