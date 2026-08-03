@@ -4,7 +4,7 @@
 //! 工具函数 —— 对应 `freemarker.template.utility.*`
 //! （StringUtil 转义/裁剪等；由各智能体按需补充）
 
-/// HTML 转义（对应 `StringUtil.HTMLEnc`：`& < > " '`）
+/// HTML 转义（对应 `StringUtil.XHTMLEnc`：`& < > " '`）
 pub fn html_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -14,6 +14,23 @@ pub fn html_escape(s: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// 旧版 HTML 转义（对应 `StringUtil.HTMLEnc` = `XMLEncNA`，StringUtil.java:69-70：
+/// 与 XHTMLEnc 的差异——**不转义 `'`**）。?html 内建在 ICI < 2.3.20 时使用
+/// （BuiltInsForStringsEncoding.java:38-43 htmlBI.BIBeforeICI2d3d20）
+pub fn html_enc_legacy(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
             _ => out.push(c),
         }
     }

@@ -2,7 +2,7 @@
 //! （HashLiteral.java:126-151，`SequenceHash` 的 ICI < 2.3.21 路径）。
 
 use crate::error::Result;
-use crate::template::{TemplateHashModel, TemplateHashModelEx, TModel};
+use crate::template::{TModel, TemplateHashModel, TemplateHashModelEx};
 use crate::utility::FnvBuildHasher;
 use indexmap::IndexMap;
 

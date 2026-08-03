@@ -69,7 +69,7 @@ impl OptInClassResolver {
         // 模板，含 include 链）∈ trusted → SAFER 语义；否则须 ∈ allowed_classes
         if template_name
             .and_then(safe_template_name)
-            .is_some_and(|n| self.is_trusted(n))
+            .is_some_and(|n| self.is_trusted(&n))
         {
             return NewBuiltinClassResolver::Safer.resolve(class_name, None);
         }
@@ -203,9 +203,7 @@ fn instantiating_not_allowed(class_name: &str, optin: bool) -> TemplateError {
              check the \"new_builtin_class_resolver\" setting in the FreeMarker configuration.)"
         )
     } else {
-        format!(
-            "Instantiating {class_name} is not allowed in the template for security reasons."
-        )
+        format!("Instantiating {class_name} is not allowed in the template for security reasons.")
     };
     TemplateError::misc(msg)
 }
@@ -301,7 +299,9 @@ mod tests {
         let err = r
             .resolve("freemarker.template.utility.ObjectConstructor", None)
             .unwrap_err();
-        assert!(err.to_string().contains("is not allowed in the template for security reasons"));
+        assert!(err
+            .to_string()
+            .contains("is not allowed in the template for security reasons"));
     }
 
     #[test]
@@ -319,26 +319,19 @@ mod tests {
         )
         .unwrap();
         // 非信任模板：白名单外类拒绝
-        assert!(r
-            .resolve("a.B", Some("main.ftl"))
-            .is_ok());
-        assert!(r
-            .resolve("a.C", Some("main.ftl"))
-            .is_err());
+        assert!(r.resolve("a.B", Some("main.ftl")).is_ok());
+        assert!(r.resolve("a.C", Some("main.ftl")).is_err());
         // 精确信任名 → SAFER 语义（非 ObjectConstructor 放行）
-        assert!(r
-            .resolve("a.C", Some("subdir/x.ftl"))
-            .is_ok());
+        assert!(r.resolve("a.C", Some("subdir/x.ftl")).is_ok());
         // 前缀模式 `subdir/subsub/*`（Java 前缀匹配：startsWith）
-        assert!(r
-            .resolve("a.C", Some("subdir/subsub/deep.ftl"))
-            .is_ok());
-        assert!(r
-            .resolve("a.C", Some("subdir/subsub2/x.ftl"))
-            .is_err());
+        assert!(r.resolve("a.C", Some("subdir/subsub/deep.ftl")).is_ok());
+        assert!(r.resolve("a.C", Some("subdir/subsub2/x.ftl")).is_err());
         // 信任模板内 ObjectConstructor 仍被 SAFER 拒绝
         assert!(r
-            .resolve("freemarker.template.utility.ObjectConstructor", Some("subdir/x.ftl"))
+            .resolve(
+                "freemarker.template.utility.ObjectConstructor",
+                Some("subdir/x.ftl")
+            )
             .is_err());
         // 模板名缺失 → 不信任
         assert!(r.resolve("a.C", None).is_err());

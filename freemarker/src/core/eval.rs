@@ -1441,12 +1441,27 @@ fn eval_exists(env: &mut crate::core::Environment, t: &Expr) -> Result<TModel> {
 fn eval_hash_lit(env: &mut crate::core::Environment, pairs: &[(Expr, Expr)]) -> Result<TModel> {
     // Java HashLiteral → SimpleHash(LinkedHashMap)：插入序即键序
     let mut map = IndexMap::new();
+    let mut raw: Vec<(String, TModel)> = Vec::new();
     for (k, v) in pairs {
         // Java HashLiteral：键按 EvalUtil 强制转字符串（数字 "123"、布尔按 boolean_format）
         let km = eval(env, k)?;
         let key = model_to_string(env, &km)?;
         let value = eval(env, v)?;
-        map.insert(key, value);
+        map.insert(key.clone(), value.clone());
+        raw.push((key, value));
+    }
+    // Java HashLiteral.java:116-151：ICI ≥ 2.3.21 → LinkedHashMap（重复键覆盖）；
+    // ICI < 2.3.21 → legacy 分支（SequenceHash 保留重复键——?keys/?values/
+    // `#list h as k, v` 输出全部字面量对，h[key] 仍取最后值）
+    if env.settings.incompatible_improvements.to_int() < 2_003_021 {
+        let h = Rc::new(crate::core::hash_literal::LegacyHashLiteral::new(raw));
+        return Ok(TModel {
+            hash: Some(h.clone()),
+            hash_ex: Some(h),
+            type_name: "hash",
+            kind: crate::template::ModelKind::Hash,
+            ..TModel::nothing()
+        });
     }
     Ok(TModel::from_hash(map))
 }
@@ -1527,6 +1542,11 @@ fn eval_builtin(
     if name == "new" && args.is_some() {
         let m = eval(env, target)?;
         let class_name = crate::core::environment::model_to_string(env, &m)?;
+        // Java NewBI._eval（NewBI.java:24-27）：构造器创建时即经
+        // env.getNewBuiltinClassResolver().resolve 做权限判定（含 ?new 词法所在
+        // 模板名——OptIn 的 trusted_templates 匹配）
+        let resolver = env.settings.new_builtin_class_resolver.clone();
+        resolver.resolve(&class_name, Some(&env.current_template_name))?;
         let mut vals: Vec<TModel> = Vec::new();
         for a in args.as_deref().unwrap_or(&[]) {
             match eval(env, a) {
@@ -1726,13 +1746,33 @@ fn builtin_impl(
         "time_if_unknown" => date_type_if_unknown(env, target, DateType::Time),
         // Java is_sequenceBI（BuiltInsForMultipleTypes.java:410-418）：ICI ≥ 2.3.24
         // 时排除方法模型（SimpleMethodModel/OverloadedMethodsModel 实现
-        // TemplateSequenceModel 但不可 #list）
-        "is_sequence" => is_type_test(env, target, |m| m.is_sequence() && !m.is_method()),
+        // TemplateSequenceModel 但不可 #list）；ICI < 2.3.24 不排除——
+        // BeansWrapper 方法模型（GenericMethodModel，TModel.method_indexable）
+        // 也算序列（type-builtins 的 min/2.3.21 变体 expected）
+        "is_sequence" => {
+            let ici = env.settings.incompatible_improvements.to_int();
+            is_type_test(env, target, move |m| {
+                if ici < 2_003_024 {
+                    m.is_sequence() || m.method_indexable
+                } else {
+                    m.is_sequence() && !m.is_method()
+                }
+            })
+        }
         "is_collection" => is_type_test(env, target, |m| m.is_collection()),
         // Java is_enumerableBI（:319-327）：序列/集合且（ICI < 2.3.21 或非方法模型）
-        "is_enumerable" => is_type_test(env, target, |m| {
-            (m.is_sequence() || m.is_collection()) && !m.is_method()
-        }),
+        "is_enumerable" => {
+            let ici = env.settings.incompatible_improvements.to_int();
+            is_type_test(env, target, move |m| {
+                if ici < 2_003_021 {
+                    // ICI < 2.3.21：方法模型（GenericMethodModel 实现
+                    // TemplateSequenceModel）同样可枚举
+                    m.is_sequence() || m.is_collection() || m.method_indexable
+                } else {
+                    (m.is_sequence() || m.is_collection()) && !m.is_method()
+                }
+            })
+        }
         // Java is_indexableBI（:350-355）：instanceof TemplateSequenceModel——
         // BeansWrapper 方法模型（GenericMethodModel）同样实现之（bean.m?is_indexable
         // → true）；自定义方法模型不实现 → false（TModel.method_indexable）
@@ -1787,9 +1827,20 @@ fn builtin_impl(
             }
         }),
         "trim" => str_builtin(env, target, |s| java_trim(s).to_string()),
-        "html" => str_builtin(env, target, crate::utility::html_escape),
-        // Java BuiltIn.java:312：web_safe 是 ?html 的弃用别名（deprecated; use ?html）
-        "web_safe" => str_builtin(env, target, crate::utility::html_escape),
+        // Java htmlBI（BuiltInsForStringsEncoding.java:36-62）——ICIChainMember 版本链：
+        // ICI ≥ 2.3.20 → StringUtil.XHTMLEnc（' → &#39;，HTML_APOS）；ICI < 2.3.20 →
+        // StringUtil.HTMLEnc = XMLEncNA（StringUtil.java:69-70：不转义 '）
+        "html" | "web_safe" => {
+            // Java BuiltIn.java:312：web_safe 是 ?html 的弃用别名（deprecated; use ?html）
+            let ici = env.settings.incompatible_improvements.to_int();
+            str_builtin(env, target, move |s| {
+                if ici < 2_003_020 {
+                    crate::utility::html_enc_legacy(s)
+                } else {
+                    crate::utility::html_escape(s)
+                }
+            })
+        }
         "xml" => str_builtin(env, target, crate::utility::xml_escape),
         "contains" => {
             let arg = arg_expr(args, 0, "?contains requires one argument")?;
@@ -2188,10 +2239,11 @@ fn builtin_impl(
                     m.type_name
                 ))
             })?;
-            // Java BuiltInsForHashes：按插入序取值
+            // Java BuiltInsForHashes：按插入序取值（entries() 承载重复键模型的
+            // 原始键值对——legacy HashLiteral 的 valueList，HashLiteral.java:150）
             let mut v = Vec::new();
-            for key in h.keys()? {
-                v.push(h.get(&key)?.unwrap_or_else(TModel::nothing));
+            for (_, value) in h.entries()? {
+                v.push(value);
             }
             Ok(Some(TModel::from_sequence(v)))
         }
@@ -2214,7 +2266,12 @@ fn builtin_impl(
             let m = eval(env, target)?;
             let class_name = crate::core::environment::model_to_string(env, &m)?;
             // Java：resolve 在构造器创建时执行（模板解析期 classname 已知时）——
-            // v1 延迟到方法调用时（等价；类名解析错误消息对齐 Java）
+            // v1 延迟到方法调用时（等价；类名解析错误消息对齐 Java）；
+            // 权限判定与 Java 同步在此处（NewBI.java:32-38：resolve(className, env,
+            // target.getTemplate())——template 即 ?new 词法所在模板，OptIn 的
+            // trusted_templates 按它匹配）
+            let resolver = env.settings.new_builtin_class_resolver.clone();
+            resolver.resolve(&class_name, Some(&env.current_template_name))?;
             Ok(Some(TModel::from_method(NewConstructorFunction {
                 class_name,
             })))

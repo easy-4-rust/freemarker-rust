@@ -60,6 +60,12 @@ pub fn new_utility_class(class_name: &str, ctor_args: &[TModel]) -> Result<TMode
         "freemarker.test.templatesuite.models.NewTestModel" => {
             new_test_model(ctor_args)
         }
+        // 测试夹具类 —— 对应 Java `freemarker.test.templatesuite.models.NewTestModel2`
+        // （与 NewTestModel 同构：() / (String) / (long) / (Object, Serializable)；
+        // new-optin 用例的信任模板内经 SAFER 解析器实例化）
+        "freemarker.test.templatesuite.models.NewTestModel2" => {
+            new_test_model(ctor_args)
+        }
         // 泛型构造器 —— 对应 Java `freemarker.template.utility.ObjectConstructor`
         // （TemplateMethodModelEx：exec(args) = args[0] 类名 + 剩余构造参数）
         "freemarker.template.utility.ObjectConstructor" => {

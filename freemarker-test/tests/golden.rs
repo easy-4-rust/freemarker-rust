@@ -100,11 +100,8 @@ fn run_case(case: &Case) -> Outcome {
                     };
                 }
             }
-            "new_builtin_class_resolver" => {
-                return Outcome::Skipped {
-                    reason: "?new 类解析器（Java 特有）".to_string(),
-                };
-            }
+            // new_builtin_class_resolver：已由引擎实现（core::template_class_resolver
+            // 四策略 + 分段列表解析），apply_settings 解析失败时自然落入 SKIP
             "api_builtin_enabled" => {
                 return Outcome::Skipped {
                     reason: "?api 内建（Java BeanWrapper 特有）".to_string(),
@@ -113,27 +110,10 @@ fn run_case(case: &Case) -> Outcome {
             _ => {}
         }
     }
-    // 旧 ICI 行为特例：encoding-builtins（min, 2.3.19）的 expected 由旧版 ?html（不转义 '）
-    // 生成，本引擎固定 ICI 2.3.34（XHTMLEnc）无法对齐 → SKIP；
-    // 其余含旧 ICI 的用例（如 number-format 的 min 变体）输出与 ICI 无关，照常尝试
-    // ICI <2.3.21 的 HashLiteral 保留重复键（`{"a":1,"b":2,"a":3}` → 两个 a 条目）；
-    // 本引擎固定 ICI 2.3.34（覆盖语义）→ expected 由旧 ICI 行为生成，无法对齐
-    if case.base == "listhashliteral" && case.name.contains("ici-2.3.20") {
-        return Outcome::Skipped {
-            reason: "expected 由 ICI <2.3.21 的重复键 HashLiteral 行为生成（保留重复键），本引擎固定 ICI 2.3.34（覆盖）"
-                .to_string(),
-        };
-    }
-    if case.base == "encoding-builtins" && !case.name.contains("[#endTN]") {
-        // [#endTN] 变体（ici-2.3.20）的 expected 是 encoding-builtins-ici-2.3.20.txt
-        // （新版 ?html，' 转义）→ 正常渲染对比；本变体（ICI min/2.3.19）的
-        // expected 由旧版 ?html 生成（不转义 '）
-        return Outcome::Skipped {
-            reason:
-                "expected 由 ICI <2.3.20 的旧版 ?html 行为生成（不转义 '），本引擎固定 ICI 2.3.34"
-                    .to_string(),
-        };
-    }
+    // 旧 ICI 行为（?html <2.3.20 / HashLiteral 重复键 <2.3.21 / is_sequence&is_enumerable
+    // <2.3.24）已由引擎按 Settings.incompatible_improvements 版本化实现，含旧 ICI 的
+    // 用例（encoding-builtins / listhashliteral-ici-2.3.20 / string-builtins-ici-2.3.19 /
+    // type-builtins min 变体）照常渲染对比
     // string-builtins3（jython25 弃用模块套件，未随 Gradle 构建运行）：断言与真实
     // Java 引擎矛盾（jar 实测：`-1?lower_abc` 按 FTL 文法解析为 `-(1?lower_abc)`，
     // 错误为 "For \"-...\" right-hand operand: Expected a number..."，不含
@@ -156,24 +136,9 @@ fn run_case(case: &Case) -> Outcome {
     // identifier-escaping：转义标识符（`\-` 等）与 `@` 字符、visit/recurse 的 using
     // 子句均已实现；?sort 的 Collator TERTIARY 标点排序已对齐（代理字符映射）；
     // .namespace?keys 已包含 macro/function 条目。全部差异已修复。
-    // string-builtins-ici-2.3.19：expected 由 ICI 2.3.19 的 ?html 行为生成（不转义 '），
-    // 本引擎固定 ICI 2.3.34（转义 ' → &#39;）——与 encoding-builtins 同性质
-    if case.base == "string-builtins-ici-2.3.19" {
-        return Outcome::Skipped {
-            reason: "expected 由 ICI 2.3.19 的旧版 ?html 行为生成（不转义 '），本引擎固定 ICI 2.3.34（转义）"
-                .to_string(),
-        };
-    }
-    // type-builtins 的 min/2.3.21 变体：expected 由 ICI <2.3.24 行为生成——
-    // ?is_sequence/?is_enumerable 对方法模型（GenericMethodModel 实现
-    // TemplateSequenceModel）不排除；本引擎固定 ICI 2.3.24+ 语义（排除）→
-    // 仅 2.3.24 变体可对齐（实测 PASS），其余无法对齐（jar 实测）
-    if case.base == "type-builtins" && !case.name.contains("ici-2.3.24") {
-        return Outcome::Skipped {
-            reason: "expected 由 ICI <2.3.24 行为生成（方法模型 ?is_sequence/?is_enumerable 不排除），本引擎固定 ICI 2.3.34（排除）"
-                .to_string(),
-        };
-    }
+    // string-builtins-ici-2.3.19 的旧版 ?html（不转义 '）已由引擎按 ICI 版本化实现
+    // type-builtins 的 min/2.3.21 变体（方法模型 ?is_sequence/?is_enumerable 不排除）
+    // 已由引擎按 ICI 版本化实现（is_sequence <2.3.24、is_enumerable <2.3.21）
 
     // xmlns3/xmlns4：模板用 `<#macro "x:title">` 等带前缀宏名配合 `<#recurse>` 分派。
     // 引擎 visit_node 已按 Java getNodeProcessor（Environment.java :2943-3000）实现
@@ -218,7 +183,8 @@ fn run_case(case: &Case) -> Outcome {
         &remove_ftl_copyright_comment_bytes(&case_bytes),
     );
 
-    let root = build_data_model(&case.base, &case.name);
+    let ici_int = c.settings.incompatible_improvements.to_int();
+    let root = build_data_model(&case.base, &case.name, ici_int);
     let rendered = render_case(&c, &template_name, root);
 
     match rendered {

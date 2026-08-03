@@ -6,8 +6,10 @@ pub(crate) mod environment;
 pub(crate) mod eval;
 mod exec;
 mod expression;
+mod hash_literal;
 mod macro_def;
 mod output_format;
+mod template_class_resolver;
 mod template_element;
 
 pub use arithmetic_engine::{ArithmeticEngine, BigDecimalEngine};
@@ -18,4 +20,5 @@ pub use exec::{exec, ExecOutcome};
 pub use expression::{BuiltinVar, Expr, ExprKind, RangeKind, StrPart};
 pub use macro_def::{MacroDef, MacroParam};
 pub use output_format::{AutoEscaping, OutputFormatKind};
+pub use template_class_resolver::{NewBuiltinClassResolver, OptInClassResolver};
 pub use template_element::{AssignOp, CallTarget, CaseDef, Element, ElementKind};

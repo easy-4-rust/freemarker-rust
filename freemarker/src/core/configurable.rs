@@ -2,6 +2,7 @@
 //! （全部设置项见 docs/07 §2；继承链 v1 为单一层级）
 
 use crate::cache::LookupStrategyKind;
+use crate::core::template_class_resolver::NewBuiltinClassResolver;
 use crate::core::{AutoEscaping, OutputFormatKind};
 use crate::template::Version;
 use chrono::Offset as _; // fix()（TzOffset → FixedOffset）
@@ -111,6 +112,10 @@ pub struct Settings {
     /// Java 的 DEBUG/HTML_DEBUG 在写出调试文本后仍抛出异常、IGNORE 保留已输出内容并
     /// 继续渲染——v1 在 process() 边界处理（文档化偏差，见 environment.rs process()）。
     pub template_exception_handler: String,
+    /// `?new` 类解析器 —— 对应 Configuration.setNewBuiltinClassResolver
+    /// （Configurable.java:1608；默认 UNRESTRICTED_RESOLVER，Configurable.java:477；
+    /// 权限判定见 core::template_class_resolver）
+    pub new_builtin_class_resolver: NewBuiltinClassResolver,
 }
 
 /// Java `TimeZone.getTimeZone(id).getID()` 的 v1 复刻（以 Java 实测为准）：
@@ -214,6 +219,8 @@ impl Default for Settings {
             input_encoding: None,
             // Java 默认 RETHROW_HANDLER（_TemplateAPI.getDefaultTemplateExceptionHandler）
             template_exception_handler: "rethrow".to_string(),
+            // Java 默认 UNRESTRICTED_RESOLVER（Configurable.java:477）
+            new_builtin_class_resolver: NewBuiltinClassResolver::Unrestricted,
         }
     }
 }

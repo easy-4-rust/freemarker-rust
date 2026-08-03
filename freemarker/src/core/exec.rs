@@ -1173,11 +1173,12 @@ fn materialize_list_items(
             ))
         })?;
         let mut out = std::collections::VecDeque::new();
-        for key in ex.keys()? {
-            let value = ex.get(&key)?;
+        // entries()（Java TemplateHashModelEx2.keyValuePairsIterator，:327-431）：
+        // 常规哈希与 keys+get 等价；legacy HashLiteral（重复键）输出原始键值对
+        for (key, value) in ex.entries()? {
             out.push_back(crate::core::environment::LoopItem {
-                key: Some(TModel::from_scalar(key.clone())),
-                value,
+                key: Some(TModel::from_scalar(key)),
+                value: Some(value),
             });
         }
         return Ok(crate::core::environment::PendingItems::eager(out));

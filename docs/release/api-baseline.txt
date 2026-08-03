@@ -1535,6 +1535,50 @@ impl<T> core::clone::CloneToUninit for freemarker::core::ExprKind where T: core:
 pub unsafe fn freemarker::core::ExprKind::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for freemarker::core::ExprKind
 pub fn freemarker::core::ExprKind::from(T) -> T
+pub enum freemarker::core::NewBuiltinClassResolver
+pub freemarker::core::NewBuiltinClassResolver::AllowsNothing
+pub freemarker::core::NewBuiltinClassResolver::OptIn(freemarker::core::OptInClassResolver)
+pub freemarker::core::NewBuiltinClassResolver::Safer
+pub freemarker::core::NewBuiltinClassResolver::Unrestricted
+impl freemarker::core::NewBuiltinClassResolver
+pub fn freemarker::core::NewBuiltinClassResolver::parse(&str) -> freemarker::Result<Self>
+pub fn freemarker::core::NewBuiltinClassResolver::resolve(&self, &str, core::option::Option<&str>) -> freemarker::Result<()>
+impl core::clone::Clone for freemarker::core::NewBuiltinClassResolver
+pub fn freemarker::core::NewBuiltinClassResolver::clone(&self) -> freemarker::core::NewBuiltinClassResolver
+impl core::cmp::PartialEq for freemarker::core::NewBuiltinClassResolver
+pub fn freemarker::core::NewBuiltinClassResolver::eq(&self, &freemarker::core::NewBuiltinClassResolver) -> bool
+impl core::fmt::Debug for freemarker::core::NewBuiltinClassResolver
+pub fn freemarker::core::NewBuiltinClassResolver::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for freemarker::core::NewBuiltinClassResolver
+impl core::marker::Freeze for freemarker::core::NewBuiltinClassResolver
+impl core::marker::Send for freemarker::core::NewBuiltinClassResolver
+impl core::marker::Sync for freemarker::core::NewBuiltinClassResolver
+impl core::marker::Unpin for freemarker::core::NewBuiltinClassResolver
+impl core::marker::UnsafeUnpin for freemarker::core::NewBuiltinClassResolver
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::core::NewBuiltinClassResolver
+impl core::panic::unwind_safe::UnwindSafe for freemarker::core::NewBuiltinClassResolver
+impl<T, U> core::convert::Into<U> for freemarker::core::NewBuiltinClassResolver where U: core::convert::From<T>
+pub fn freemarker::core::NewBuiltinClassResolver::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::core::NewBuiltinClassResolver where U: core::convert::Into<T>
+pub type freemarker::core::NewBuiltinClassResolver::Error = core::convert::Infallible
+pub fn freemarker::core::NewBuiltinClassResolver::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::core::NewBuiltinClassResolver where U: core::convert::TryFrom<T>
+pub type freemarker::core::NewBuiltinClassResolver::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::core::NewBuiltinClassResolver::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for freemarker::core::NewBuiltinClassResolver where T: core::clone::Clone
+pub type freemarker::core::NewBuiltinClassResolver::Owned = T
+pub fn freemarker::core::NewBuiltinClassResolver::clone_into(&self, &mut T)
+pub fn freemarker::core::NewBuiltinClassResolver::to_owned(&self) -> T
+impl<T> core::any::Any for freemarker::core::NewBuiltinClassResolver where T: 'static + ?core::marker::Sized
+pub fn freemarker::core::NewBuiltinClassResolver::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::core::NewBuiltinClassResolver where T: ?core::marker::Sized
+pub fn freemarker::core::NewBuiltinClassResolver::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::core::NewBuiltinClassResolver where T: ?core::marker::Sized
+pub fn freemarker::core::NewBuiltinClassResolver::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for freemarker::core::NewBuiltinClassResolver where T: core::clone::Clone
+pub unsafe fn freemarker::core::NewBuiltinClassResolver::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for freemarker::core::NewBuiltinClassResolver
+pub fn freemarker::core::NewBuiltinClassResolver::from(T) -> T
 pub enum freemarker::core::OutputFormatKind
 pub freemarker::core::OutputFormatKind::Css
 pub freemarker::core::OutputFormatKind::Html
@@ -2059,6 +2103,45 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::core::Namespace where T: ?cor
 pub fn freemarker::core::Namespace::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::core::Namespace
 pub fn freemarker::core::Namespace::from(T) -> T
+pub struct freemarker::core::OptInClassResolver
+impl freemarker::core::OptInClassResolver
+pub fn freemarker::core::OptInClassResolver::new(alloc::vec::Vec<alloc::string::String>, alloc::vec::Vec<alloc::string::String>) -> Self
+impl core::clone::Clone for freemarker::core::OptInClassResolver
+pub fn freemarker::core::OptInClassResolver::clone(&self) -> freemarker::core::OptInClassResolver
+impl core::cmp::PartialEq for freemarker::core::OptInClassResolver
+pub fn freemarker::core::OptInClassResolver::eq(&self, &freemarker::core::OptInClassResolver) -> bool
+impl core::fmt::Debug for freemarker::core::OptInClassResolver
+pub fn freemarker::core::OptInClassResolver::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for freemarker::core::OptInClassResolver
+impl core::marker::Freeze for freemarker::core::OptInClassResolver
+impl core::marker::Send for freemarker::core::OptInClassResolver
+impl core::marker::Sync for freemarker::core::OptInClassResolver
+impl core::marker::Unpin for freemarker::core::OptInClassResolver
+impl core::marker::UnsafeUnpin for freemarker::core::OptInClassResolver
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::core::OptInClassResolver
+impl core::panic::unwind_safe::UnwindSafe for freemarker::core::OptInClassResolver
+impl<T, U> core::convert::Into<U> for freemarker::core::OptInClassResolver where U: core::convert::From<T>
+pub fn freemarker::core::OptInClassResolver::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::core::OptInClassResolver where U: core::convert::Into<T>
+pub type freemarker::core::OptInClassResolver::Error = core::convert::Infallible
+pub fn freemarker::core::OptInClassResolver::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::core::OptInClassResolver where U: core::convert::TryFrom<T>
+pub type freemarker::core::OptInClassResolver::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::core::OptInClassResolver::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for freemarker::core::OptInClassResolver where T: core::clone::Clone
+pub type freemarker::core::OptInClassResolver::Owned = T
+pub fn freemarker::core::OptInClassResolver::clone_into(&self, &mut T)
+pub fn freemarker::core::OptInClassResolver::to_owned(&self) -> T
+impl<T> core::any::Any for freemarker::core::OptInClassResolver where T: 'static + ?core::marker::Sized
+pub fn freemarker::core::OptInClassResolver::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::core::OptInClassResolver where T: ?core::marker::Sized
+pub fn freemarker::core::OptInClassResolver::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::core::OptInClassResolver where T: ?core::marker::Sized
+pub fn freemarker::core::OptInClassResolver::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for freemarker::core::OptInClassResolver where T: core::clone::Clone
+pub unsafe fn freemarker::core::OptInClassResolver::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for freemarker::core::OptInClassResolver
+pub fn freemarker::core::OptInClassResolver::from(T) -> T
 pub struct freemarker::core::Settings
 pub freemarker::core::Settings::auto_escaping: freemarker::core::AutoEscaping
 pub freemarker::core::Settings::boolean_format: alloc::string::String
@@ -2072,6 +2155,7 @@ pub freemarker::core::Settings::input_encoding: core::option::Option<alloc::stri
 pub freemarker::core::Settings::locale: alloc::string::String
 pub freemarker::core::Settings::localized_lookup: bool
 pub freemarker::core::Settings::lookup_strategy: freemarker::cache::LookupStrategyKind
+pub freemarker::core::Settings::new_builtin_class_resolver: freemarker::core::NewBuiltinClassResolver
 pub freemarker::core::Settings::number_format: alloc::string::String
 pub freemarker::core::Settings::output_encoding: alloc::string::String
 pub freemarker::core::Settings::output_format: freemarker::core::OutputFormatKind
@@ -3185,6 +3269,7 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::utility::FnvHasher where T: ?
 pub fn freemarker::utility::FnvHasher::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::utility::FnvHasher
 pub fn freemarker::utility::FnvHasher::from(T) -> T
+pub fn freemarker::utility::html_enc_legacy(&str) -> alloc::string::String
 pub fn freemarker::utility::html_escape(&str) -> alloc::string::String
 pub fn freemarker::utility::java_trim(&str) -> &str
 pub fn freemarker::utility::xml_escape(&str) -> alloc::string::String

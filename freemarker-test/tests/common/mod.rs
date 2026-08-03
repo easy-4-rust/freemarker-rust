@@ -5,7 +5,9 @@ use bigdecimal::ToPrimitive;
 use freemarker::cache::StringLoader;
 use freemarker::core::{compare_models, CmpOp};
 use freemarker::error::{Result, TemplateError};
-use freemarker::template::{Configuration, TModel, TemplateDirectiveBody, TemplateDirectiveModel};
+use freemarker::template::{
+    Configuration, TModel, TemplateDirectiveBody, TemplateDirectiveModel, Version,
+};
 use freemarker::value::{DateType, DateValue, TNumber};
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -159,17 +161,24 @@ pub fn apply_settings(
         match k.as_str() {
             "locale" => c.settings.locale = v.clone(),
             "incompatible_improvements" => {
-                // 取清单中的具体版本（"min, 2.3.20" / "2.3.21, max" / "min, 2.3.21, max" →
-                // 2.3.20 / 2.3.21 / 2.3.21）：仅影响 IcI 相关语义
-                // （如 ?iso 对 java.sql.Time 偏移显示的 2.3.21 分界，AbstractISOBI :202-212）
-                let v = v
+                // 清单的版本范围（Java TemplateTestSuite.parseVersionList：min→2.3.0、
+                // max→2.3.34、数字→本身；Java 在范围内每个版本各跑一次用例）。本引擎取
+                // **范围最高版本**：引擎未版本化的行为（数字格式化等，格式化 P4）固定为
+                // 2.3.34 语义，仅在该端可复刻；纯旧 ICI 范围（无 max，如 "min, 2.3.20"）
+                // 取范围顶——其 expected 由该 ICI 的引擎已版本化行为生成（?html 2.3.20 /
+                // HashLiteral 重复键 2.3.21 / is_* 2.3.21&2.3.24 / range 2.3.21），
+                // iciIntValue 数据变量同取此版本（TemplateTestCase.java:201）
+                let best = v
                     .split(',')
                     .map(|t| t.trim())
-                    .find(|t| t.chars().next().is_some_and(|c| c.is_ascii_digit()));
-                if let Some(v) = v {
-                    if let Ok(ver) = freemarker::template::Version::parse(v) {
-                        c.settings.incompatible_improvements = ver;
-                    }
+                    .filter_map(|t| match t {
+                        "min" => Some(Version::V2_3_0),
+                        "max" => Some(Version::V2_3_34),
+                        other => Version::parse(other).ok(),
+                    })
+                    .max_by_key(|ver| ver.to_int());
+                if let Some(ver) = best {
+                    c.settings.incompatible_improvements = ver;
                 }
             }
             "url_escaping_charset" => c.settings.url_escaping_charset = v.clone(),
@@ -214,7 +223,17 @@ pub fn apply_settings(
                 // 的字符串形式：rethrow/debug/html_debug/ignore）
                 c.settings.template_exception_handler = v.clone();
             }
-            "new_builtin_class_resolver" => skipped.push("?new 类解析（Java 特有）".to_string()),
+            "new_builtin_class_resolver" => {
+                // Java Configurable.setSetting 的 NEW_BUILTIN_CLASS_RESOLVER 分支
+                // （"unrestricted"/"safer"/"allows_nothing" 精确名 + 分段列表
+                // opt_in 形式）；解析失败 → 记录跳过
+                match freemarker::core::NewBuiltinClassResolver::parse(v) {
+                    Ok(r) => c.settings.new_builtin_class_resolver = r,
+                    Err(e) => {
+                        skipped.push(format!("new_builtin_class_resolver={v:?}（解析失败：{e}）"))
+                    }
+                }
+            }
             other => skipped.push(format!("未识别设置 {other}")),
         }
     }
@@ -366,8 +385,10 @@ pub fn sql_date_model(
 /// 数据模型构造 —— 对应 Java TemplateTestCase.setUp（TemplateTestCase.java:132-440）：
 /// 公共变量 + 按用例名的专用模型。
 /// `case_name` 为完整用例名（含 `[#endTN]` 变体后缀）：变体与 base 共享模板/expected，
-/// 但数据模型角色不同（如 collectionAdapter 变体的非 List 集合 → collection 角色）
-pub fn build_data_model(simple_test_name: &str, case_name: &str) -> TModel {
+/// 但数据模型角色不同（如 collectionAdapter 变体的非 List 集合 → collection 角色）。
+/// `ici_int` 为用例的 incompatible_improvements 整数值（Java TemplateTestCase.java:201：
+/// iciIntValue = conf.getIncompatibleImprovements().intValue()，conf 以用例 ICI 构造）
+pub fn build_data_model(simple_test_name: &str, case_name: &str, ici_int: i64) -> TModel {
     let mut m: IndexMap<String, TModel> = IndexMap::new();
     // 公共变量（TemplateTestCase.java:184-193）
     m.insert(
@@ -390,7 +411,7 @@ pub fn build_data_model(simple_test_name: &str, case_name: &str) -> TModel {
         "testName".to_string(),
         TModel::from_scalar(simple_test_name.to_string()),
     );
-    m.insert("iciIntValue".to_string(), num(2_003_034)); // Configuration(2.3.34).intValue()
+    m.insert("iciIntValue".to_string(), num(ici_int)); // 用例 ICI 的 intValue()
     m.insert(
         "message".to_string(),
         TModel::from_scalar("Hello, world!".to_string()),
