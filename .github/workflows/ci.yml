@@ -146,9 +146,11 @@ jobs:
         #    rustc 时静默失败（空输出）→ 用 1.93 重新编译安装
         # 基线生成环境：`rustup run 1.93.0 cargo public-api`（3707 行）
         run: |
-          rustup toolchain install 1.93.0 --profile minimal
-          export RUSTUP_TOOLCHAIN=1.93.0
-          RUSTFLAGS= cargo +1.93.0 install cargo-public-api --locked --force 2>&1 | tail -1
+          # cargo-public-api 需 nightly（rustdoc JSON）；基线由 nightly-2026-07-28
+          # 生成——固定同日期避免输出漂移。RUSTUP_TOOLCHAIN 覆盖 dtolnay 的
+          # stable；RUSTFLAGS 清空（-D warnings 使 rustdoc 警告变 error）
+          rustup toolchain install nightly-2026-07-28 --profile minimal
+          export RUSTUP_TOOLCHAIN=nightly-2026-07-28
           RUSTFLAGS= cargo public-api -p freemarker > /tmp/api.txt 2>/tmp/api.err \
             || { echo "public-api FAILED"; cat /tmp/api.err; exit 1; }
           echo "lines=$(wc -l < /tmp/api.txt)"
