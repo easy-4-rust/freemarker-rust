@@ -133,6 +133,12 @@ jobs:
         run: cargo llvm-cov --workspace --exclude freemarker-pyo3 --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
+      - name: Check dependency licenses, sources, and duplicates
+        uses: EmbarkStudios/cargo-deny-action@v2
+
+      - name: Check dependency vulnerabilities (cargo-audit)
+        run: cargo audit
+
         uses: codecov/codecov-action@v4
         with:
           files: lcov.info

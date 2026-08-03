@@ -1,0 +1,7 @@
+# cargo-audit 配置：登记已评审并接受的 RUSTSEC 豁免（运行：cargo audit）
+
+[advisories]
+ignore = [
+    # 占位：freemarker-rust 当前无强制不可恢复 advisory；后续逐项添加
+    # 格式："RUSTSEC-YYYY-NNNN"
+]
