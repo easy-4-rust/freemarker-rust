@@ -11,8 +11,7 @@ use std::rc::Rc;
 
 use freemarker::parser::parse;
 use freemarker::template::{
-    Configuration, ObjectWrapper, SimpleObjectWrapper, SimpleScalar, TModel,
-    TemplateMethodModelEx,
+    Configuration, ObjectWrapper, SimpleObjectWrapper, TModel, TemplateMethodModelEx,
 };
 use indexmap::IndexMap;
 
@@ -45,7 +44,9 @@ fn api_builtin_always_errors() {
     let tpl = parse(&cfg, "smoke", "<#assign x = 'hello'?api>").expect("parse");
     let root = TModel::from_hash(IndexMap::default());
     let mut out: Vec<u8> = Vec::new();
-    let err = tpl.process(root, &mut out).expect_err("?api must error (no BeansWrapper)");
+    let err = tpl
+        .process(root, &mut out)
+        .expect_err("?api must error (no BeansWrapper)");
     let msg = format!("{err:?}");
     assert!(
         msg.contains("?api") && msg.contains("SimpleObjectWrapper"),
@@ -139,5 +140,8 @@ fn output_utf8_byte_validity() {
 fn ici_default_is_2_3_34() {
     // v1 固定 ICI 2.3.34（Configuration::version 关联函数暴露 Version 枚举）
     let _cfg = Configuration::new();
-    assert_eq!(Configuration::version(), freemarker::template::Version::V2_3_34);
+    assert_eq!(
+        Configuration::version(),
+        freemarker::template::Version::V2_3_34
+    );
 }

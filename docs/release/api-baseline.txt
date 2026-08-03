@@ -2184,7 +2184,7 @@ pub fn freemarker::error::FlowKind::from(T) -> T
 pub enum freemarker::error::TemplateError
 pub freemarker::error::TemplateError::Flow(freemarker::error::FlowKind)
 pub freemarker::error::TemplateError::InvalidReference
-pub freemarker::error::TemplateError::InvalidReference::ctx: freemarker::error::ErrorCtx
+pub freemarker::error::TemplateError::InvalidReference::ctx: alloc::boxed::Box<freemarker::error::ErrorCtx>
 pub freemarker::error::TemplateError::InvalidReference::name: alloc::string::String
 pub freemarker::error::TemplateError::Io(core::io::error::Error)
 pub freemarker::error::TemplateError::Misc
@@ -2202,7 +2202,7 @@ pub freemarker::error::TemplateError::Stop
 pub freemarker::error::TemplateError::Stop::message: core::option::Option<alloc::string::String>
 pub freemarker::error::TemplateError::TypeMismatch
 pub freemarker::error::TemplateError::TypeMismatch::actual: alloc::string::String
-pub freemarker::error::TemplateError::TypeMismatch::ctx: freemarker::error::ErrorCtx
+pub freemarker::error::TemplateError::TypeMismatch::ctx: alloc::boxed::Box<freemarker::error::ErrorCtx>
 pub freemarker::error::TemplateError::TypeMismatch::expected: &'static str
 impl freemarker::TemplateError
 pub fn freemarker::TemplateError::has_location(&self) -> bool
@@ -3404,7 +3404,7 @@ pub fn freemarker::xml::parse_xml(&str) -> freemarker::Result<freemarker::TModel
 pub enum freemarker::TemplateError
 pub freemarker::TemplateError::Flow(freemarker::error::FlowKind)
 pub freemarker::TemplateError::InvalidReference
-pub freemarker::TemplateError::InvalidReference::ctx: freemarker::error::ErrorCtx
+pub freemarker::TemplateError::InvalidReference::ctx: alloc::boxed::Box<freemarker::error::ErrorCtx>
 pub freemarker::TemplateError::InvalidReference::name: alloc::string::String
 pub freemarker::TemplateError::Io(core::io::error::Error)
 pub freemarker::TemplateError::Misc
@@ -3422,7 +3422,7 @@ pub freemarker::TemplateError::Stop
 pub freemarker::TemplateError::Stop::message: core::option::Option<alloc::string::String>
 pub freemarker::TemplateError::TypeMismatch
 pub freemarker::TemplateError::TypeMismatch::actual: alloc::string::String
-pub freemarker::TemplateError::TypeMismatch::ctx: freemarker::error::ErrorCtx
+pub freemarker::TemplateError::TypeMismatch::ctx: alloc::boxed::Box<freemarker::error::ErrorCtx>
 pub freemarker::TemplateError::TypeMismatch::expected: &'static str
 impl freemarker::TemplateError
 pub fn freemarker::TemplateError::has_location(&self) -> bool

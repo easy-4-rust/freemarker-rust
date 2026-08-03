@@ -54,10 +54,7 @@ fn bench_simple_hello_world(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_simple_loop_100(c: &mut Criterion) {
-    let (cfg, _loader) = setup_config(
-        "loop100",
-        "<#list 1..100 as i>${i}</#list>",
-    );
+    let (cfg, _loader) = setup_config("loop100", "<#list 1..100 as i>${i}</#list>");
     let t = cfg.get_template("loop100").unwrap();
     let root = TModel::from_hash(IndexMap::new());
 
@@ -91,10 +88,7 @@ fn bench_if_else_chain(c: &mut Criterion) {
     let t = cfg.get_template("ifchain").unwrap();
 
     let mut root_map = IndexMap::new();
-    root_map.insert(
-        "x".to_string(),
-        TModel::from_number(TNumber::from_i64(5)),
-    );
+    root_map.insert("x".to_string(), TModel::from_number(TNumber::from_i64(5)));
     let root = TModel::from_hash(root_map);
 
     c.bench_function("if_else_chain", |b| {
@@ -110,8 +104,7 @@ fn bench_if_else_chain(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_macro_call_100(c: &mut Criterion) {
-    let template_text =
-        "<#macro m>hello</#macro><#list 1..100 as i><@m/></#list>";
+    let template_text = "<#macro m>hello</#macro><#list 1..100 as i><@m/></#list>";
     let (cfg, _loader) = setup_config("macro100", template_text);
     let t = cfg.get_template("macro100").unwrap();
     let root = TModel::from_hash(IndexMap::new());

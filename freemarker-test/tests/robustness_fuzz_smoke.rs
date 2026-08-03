@@ -2,13 +2,11 @@
 
 use std::rc::Rc;
 
-use proptest::prelude::*;
 use indexmap::IndexMap;
+use proptest::prelude::*;
 
 use freemarker::parser::parse;
 use freemarker::template::Configuration;
-use freemarker::template::SimpleHash;
-use freemarker::template::SimpleScalar;
 use freemarker::template::TModel;
 
 fn fresh_cfg() -> Rc<Configuration> {
