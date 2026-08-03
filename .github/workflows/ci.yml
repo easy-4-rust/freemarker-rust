@@ -149,7 +149,8 @@ jobs:
           rustup toolchain install 1.93.0 --profile minimal
           export RUSTUP_TOOLCHAIN=1.93.0
           RUSTFLAGS= cargo +1.93.0 install cargo-public-api --locked --force 2>&1 | tail -1
-          RUSTFLAGS= cargo public-api -p freemarker > /tmp/api.txt 2>/tmp/api.err
+          RUSTFLAGS= cargo public-api -p freemarker > /tmp/api.txt 2>/tmp/api.err \
+            || { echo "public-api FAILED"; cat /tmp/api.err; exit 1; }
           echo "lines=$(wc -l < /tmp/api.txt)"
           diff /tmp/api.txt docs/release/api-baseline.txt
 
