@@ -6502,7 +6502,8 @@ mod tests {
     #[test]
     fn java_suite_helloworld() {
         let t = parse_ok(include_str!(concat!(
-            "/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/helloworld.ftl"
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/helloworld.ftl"
         )));
         assert!(matches!(t.root[0].kind, ElementKind::Comment { .. }));
         assert!(
@@ -6512,7 +6513,10 @@ mod tests {
 
     #[test]
     fn java_suite_escapes() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/escapes.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/escapes.ftl"
+        )));
         // <#escape> 块 + <#noescape> 块
         assert!(
             t.root
@@ -6524,55 +6528,82 @@ mod tests {
 
     #[test]
     fn java_suite_if() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/if.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/if.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 
     #[test]
     fn java_suite_boolean() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/boolean.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/boolean.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 
     #[test]
     fn java_suite_comment() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/comment.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/comment.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 
     #[test]
     fn java_suite_lastcharacter() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/lastcharacter.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/lastcharacter.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 
     #[test]
     fn java_suite_default() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/default.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/default.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 
     #[test]
     fn java_suite_localization() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/localization.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/localization.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 
     #[test]
     fn java_suite_boolean_formatting() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/boolean-formatting.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/boolean-formatting.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 
     #[test]
     fn java_suite_include() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/include.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/include.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 
     #[test]
     fn java_suite_import() {
-        let t = parse_ok(include_str!("/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite/templates/import.ftl"));
+        let t = parse_ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../freemarker-test/tests/suite/templates/import.ftl"
+        )));
         assert!(!t.root.is_empty());
     }
 }

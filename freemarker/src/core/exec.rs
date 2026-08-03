@@ -2468,7 +2468,12 @@ mod golden {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    const SUITE_DIR: &str = "/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite";
+    // Java templatesuite 仓库内副本（freemarker-test/tests/suite/：templates/ 134 个
+    // 模板 + expected/ 94 个期望输出；与 Java 仓库逐字节一致，extract_suite.py 提取）
+    const SUITE_DIR: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../freemarker-test/tests/suite"
+    );
 
     fn read(src: &str) -> String {
         std::fs::read_to_string(src).unwrap_or_else(|e| panic!("cannot read {src}: {e}"))

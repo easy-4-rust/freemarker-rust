@@ -20,7 +20,12 @@ import re
 import shutil
 import xml.etree.ElementTree as ET
 
-JAVA_SUITE = "/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite"
+# Java 仓库 templatesuite 路径（开发工具：仅提取时使用，CI 不运行；
+# 可用 FREEMARKER_JAVA_SUITE 环境变量覆盖）
+JAVA_SUITE = os.environ.get(
+    "FREEMARKER_JAVA_SUITE",
+    "/Users/wandl/workspaces/workspace-github/freemarker/freemarker-jython25/src/test/resources/freemarker/test/templatesuite",
+)
 RUST_SUITE = os.path.join(os.path.dirname(__file__), "..", "freemarker", "tests", "suite")
 
 END_TN = "[#endTN]"
