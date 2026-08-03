@@ -116,10 +116,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain (1.93, pinned to baseline toolchain)
-        # cargo-public-api 输出随 rustc 版本漂移（实测 1.97.1 缺 builtins 模块）——
-        # 固定到 api-baseline.txt 的生成版本；升级工具链须重新生成基线
-        uses: dtolnay/rust-toolchain@1.93
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Check dependency licenses, sources, and duplicates
         uses: EmbarkStudios/cargo-deny-action@v2
@@ -137,8 +135,13 @@ jobs:
       - name: Enforce core crate public API baseline (docs/release/api-baseline.txt)
         # 任何未登记的公开 API 变更（增/删/改签名）都会使 diff 非空而失败；
         # 有意的 API 变更须显式更新基线并在 PR 说明。
+        # 注意：cargo-public-api 输出随 rustc 版本漂移（实测 1.97.1 缺 builtins
+        # 模块）——用 +1.93.0 固定到 api-baseline.txt 的生成版本；升级工具链须
+        # 重新生成基线。cargo-audit（audit-check）需较新 rustc，故本 job 用
+        # stable，仅此步骤切 1.93
         run: |
-          cargo public-api -p freemarker 2>/dev/null | diff - docs/release/api-baseline.txt
+          rustup toolchain install 1.93.0 --profile minimal
+          cargo +1.93.0 public-api -p freemarker 2>/dev/null | diff - docs/release/api-baseline.txt
 
   coverage:
     name: Code Coverage
