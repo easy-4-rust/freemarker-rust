@@ -11,6 +11,12 @@ keywords.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[package.metadata.docs.rs]
+# docs.rs 自动构建配置（freemarker crate 上传 crates.io 后自动触发）
+all-features = true
+# rustdoc-args：把方法来源标注显式展示（Java 对应注释已嵌入 ///）
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 thiserror.workspace = true
 regex.workspace = true
