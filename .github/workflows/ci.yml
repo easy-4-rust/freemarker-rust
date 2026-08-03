@@ -143,7 +143,10 @@ jobs:
         # 基线用 `rustup run 1.93.0 cargo public-api` 生成（与 CI 同环境）。
         run: |
           rustup toolchain install 1.93.0 --profile minimal
-          rustup override set 1.93.0
+          # dtolnay/rust-toolchain 设置 RUSTUP_TOOLCHAIN=stable（env 优先级高于
+          # rustup override）——显式覆盖环境变量，使 cargo 与 cargo-public-api
+          # spawn 的 rustc 都解析到 1.93（基线生成版本）
+          export RUSTUP_TOOLCHAIN=1.93.0
           rustc --version
           cargo public-api -p freemarker > /tmp/api.txt 2>/tmp/api.err
           echo "public-api exit=$? lines=$(wc -l < /tmp/api.txt)"
