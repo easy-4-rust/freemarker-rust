@@ -68,6 +68,9 @@ org.w3c.dom/JAXP/DOM 包装 + Jaxen XPath（NodeModel 家族）。Rust 无 DOM/X
 ## freemarker-jython25/src/test（13 文件）
 
 ### jython 特有（2 @Test）—— NOT_APPLICABLE
+- `transforms`（golden suite 用例）：模板依赖 `freemarker.template.utility.JythonRuntime`（jython25 专属）以及 `freemarker.test.templatesuite.models.TransformHashWrapper` 等模型类；Rust 侧无 JythonRuntime 等价（`freemarker-pyo3` 提供 PyO3 桥接，但不在本轮发布范围）。已登记 `freemarker-pyo3/tests/test_golden_suite.py:333` Python 端 SKIP。
+- ObjectBuilderSettingsTest.jythonWrapperTest（JythonWrapper 单例解析）
+- DefaultObjectWrapperTest.testDisabledJythonWrapping（PyString → JythonSequenceModel）
 - ObjectBuilderSettingsTest.jythonWrapperTest（JythonWrapper 单例解析）
 - DefaultObjectWrapperTest.testDisabledJythonWrapping（PyString → JythonSequenceModel）
 
