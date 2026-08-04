@@ -160,6 +160,8 @@ mod parse_time_parameter_bi_error_messages;
 mod parsing_error_messages;
 #[path = "java_ported/rtf_output_format_test.rs"]
 mod rtf_output_format_test;
+#[path = "java_ported/runtime_environment_reporter_test.rs"]
+mod runtime_environment_reporter_test;
 #[path = "java_ported/sep_parsing_bug.rs"]
 mod sep_parsing_bug;
 #[path = "java_ported/sequence_built_in_test.rs"]
