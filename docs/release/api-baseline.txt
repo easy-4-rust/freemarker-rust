@@ -2407,6 +2407,62 @@ impl<T> core::clone::CloneToUninit for freemarker::core::TzSetting where T: core
 pub unsafe fn freemarker::core::TzSetting::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for freemarker::core::TzSetting
 pub fn freemarker::core::TzSetting::from(T) -> T
+pub struct freemarker::core::AddConcatExpression
+pub freemarker::core::AddConcatExpression::left: freemarker::core::Expr
+pub freemarker::core::AddConcatExpression::right: freemarker::core::Expr
+impl freemarker::core::AddConcatExpression
+pub fn freemarker::core::AddConcatExpression::new(freemarker::core::Expr, freemarker::core::Expr) -> Self
+impl core::marker::Freeze for freemarker::core::AddConcatExpression
+impl core::marker::Send for freemarker::core::AddConcatExpression
+impl core::marker::Sync for freemarker::core::AddConcatExpression
+impl core::marker::Unpin for freemarker::core::AddConcatExpression
+impl core::marker::UnsafeUnpin for freemarker::core::AddConcatExpression
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::core::AddConcatExpression
+impl core::panic::unwind_safe::UnwindSafe for freemarker::core::AddConcatExpression
+impl<T, U> core::convert::Into<U> for freemarker::core::AddConcatExpression where U: core::convert::From<T>
+pub fn freemarker::core::AddConcatExpression::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::core::AddConcatExpression where U: core::convert::Into<T>
+pub type freemarker::core::AddConcatExpression::Error = core::convert::Infallible
+pub fn freemarker::core::AddConcatExpression::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::core::AddConcatExpression where U: core::convert::TryFrom<T>
+pub type freemarker::core::AddConcatExpression::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::core::AddConcatExpression::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::core::AddConcatExpression where T: 'static + ?core::marker::Sized
+pub fn freemarker::core::AddConcatExpression::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::core::AddConcatExpression where T: ?core::marker::Sized
+pub fn freemarker::core::AddConcatExpression::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::core::AddConcatExpression where T: ?core::marker::Sized
+pub fn freemarker::core::AddConcatExpression::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::core::AddConcatExpression
+pub fn freemarker::core::AddConcatExpression::from(T) -> T
+pub struct freemarker::core::AndExpression
+pub freemarker::core::AndExpression::left: freemarker::core::Expr
+pub freemarker::core::AndExpression::right: freemarker::core::Expr
+impl freemarker::core::AndExpression
+pub fn freemarker::core::AndExpression::new(freemarker::core::Expr, freemarker::core::Expr) -> Self
+impl core::marker::Freeze for freemarker::core::AndExpression
+impl core::marker::Send for freemarker::core::AndExpression
+impl core::marker::Sync for freemarker::core::AndExpression
+impl core::marker::Unpin for freemarker::core::AndExpression
+impl core::marker::UnsafeUnpin for freemarker::core::AndExpression
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::core::AndExpression
+impl core::panic::unwind_safe::UnwindSafe for freemarker::core::AndExpression
+impl<T, U> core::convert::Into<U> for freemarker::core::AndExpression where U: core::convert::From<T>
+pub fn freemarker::core::AndExpression::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::core::AndExpression where U: core::convert::Into<T>
+pub type freemarker::core::AndExpression::Error = core::convert::Infallible
+pub fn freemarker::core::AndExpression::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::core::AndExpression where U: core::convert::TryFrom<T>
+pub type freemarker::core::AndExpression::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::core::AndExpression::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::core::AndExpression where T: 'static + ?core::marker::Sized
+pub fn freemarker::core::AndExpression::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::core::AndExpression where T: ?core::marker::Sized
+pub fn freemarker::core::AndExpression::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::core::AndExpression where T: ?core::marker::Sized
+pub fn freemarker::core::AndExpression::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::core::AndExpression
+pub fn freemarker::core::AndExpression::from(T) -> T
 pub struct freemarker::core::BigDecimalEngine
 pub freemarker::core::BigDecimalEngine::max_scale: i64
 pub freemarker::core::BigDecimalEngine::min_scale: i64
@@ -2785,6 +2841,34 @@ impl<T> core::clone::CloneToUninit for freemarker::core::OptInClassResolver wher
 pub unsafe fn freemarker::core::OptInClassResolver::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for freemarker::core::OptInClassResolver
 pub fn freemarker::core::OptInClassResolver::from(T) -> T
+pub struct freemarker::core::OrExpression
+pub freemarker::core::OrExpression::left: freemarker::core::Expr
+pub freemarker::core::OrExpression::right: freemarker::core::Expr
+impl freemarker::core::OrExpression
+pub fn freemarker::core::OrExpression::new(freemarker::core::Expr, freemarker::core::Expr) -> Self
+impl core::marker::Freeze for freemarker::core::OrExpression
+impl core::marker::Send for freemarker::core::OrExpression
+impl core::marker::Sync for freemarker::core::OrExpression
+impl core::marker::Unpin for freemarker::core::OrExpression
+impl core::marker::UnsafeUnpin for freemarker::core::OrExpression
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::core::OrExpression
+impl core::panic::unwind_safe::UnwindSafe for freemarker::core::OrExpression
+impl<T, U> core::convert::Into<U> for freemarker::core::OrExpression where U: core::convert::From<T>
+pub fn freemarker::core::OrExpression::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::core::OrExpression where U: core::convert::Into<T>
+pub type freemarker::core::OrExpression::Error = core::convert::Infallible
+pub fn freemarker::core::OrExpression::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::core::OrExpression where U: core::convert::TryFrom<T>
+pub type freemarker::core::OrExpression::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::core::OrExpression::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::core::OrExpression where T: 'static + ?core::marker::Sized
+pub fn freemarker::core::OrExpression::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::core::OrExpression where T: ?core::marker::Sized
+pub fn freemarker::core::OrExpression::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::core::OrExpression where T: ?core::marker::Sized
+pub fn freemarker::core::OrExpression::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::core::OrExpression
+pub fn freemarker::core::OrExpression::from(T) -> T
 pub struct freemarker::core::RangeSpec
 pub freemarker::core::RangeSpec::adaptive: bool
 pub freemarker::core::RangeSpec::affected_by_string_slicing_bug: bool

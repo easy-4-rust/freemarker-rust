@@ -25,7 +25,10 @@ pub use eval_util::{
     target_string,
 };
 pub use exec::{exec, ExecOutcome};
-pub use expression::{BuiltinVar, Expr, ExprKind, RangeKind, StrPart};
+pub use expression::{
+    AddConcatExpression, AndExpression, BuiltinVar, Expr, ExprKind, OrExpression, RangeKind,
+    StrPart,
+};
 pub use macro_def::{MacroDef, MacroParam};
 pub use output_format::{AutoEscaping, OutputFormatKind};
 pub use range_model::RangeSpec;

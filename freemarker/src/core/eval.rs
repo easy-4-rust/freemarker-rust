@@ -84,7 +84,10 @@ fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel>
             let b = model_to_boolean(env, &m)?;
             Ok(TModel::from_boolean(!b))
         }
-        ExprKind::Add(a, b) => eval_add(env, a, b),
+        ExprKind::Add(a, b) => {
+            crate::core::expression::AddConcatExpression::new((**a).clone(), (**b).clone())
+                .eval(env)
+        }
         ExprKind::Sub(a, b) => eval_binary_number(env, a, b, NumOp::Sub),
         ExprKind::Mul(a, b) => eval_binary_number(env, a, b, NumOp::Mul),
         ExprKind::Div(a, b) => eval_binary_number(env, a, b, NumOp::Div),
@@ -95,27 +98,13 @@ fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel>
         ExprKind::Gte(a, b) => eval_compare(env, a, b, CmpOp::Gte),
         ExprKind::Lt(a, b) => eval_compare(env, a, b, CmpOp::Lt),
         ExprKind::Lte(a, b) => eval_compare(env, a, b, CmpOp::Lte),
+        // Java AndExpression / OrExpression（expression/and_expression.rs、
+        // expression/or_expression.rs：短路语义）
         ExprKind::And(a, b) => {
-            // Java AndExpression：短路（lho.evalToBoolean && rho.evalToBoolean）
-            let lm = eval(env, a)?;
-            let l = model_to_boolean(env, &lm)?;
-            if !l {
-                return Ok(TModel::from_boolean(false));
-            }
-            let rm = eval(env, b)?;
-            let r = model_to_boolean(env, &rm)?;
-            Ok(TModel::from_boolean(l && r))
+            crate::core::expression::AndExpression::new((**a).clone(), (**b).clone()).eval(env)
         }
         ExprKind::Or(a, b) => {
-            // Java OrExpression：短路
-            let lm = eval(env, a)?;
-            let l = model_to_boolean(env, &lm)?;
-            if l {
-                return Ok(TModel::from_boolean(true));
-            }
-            let rm = eval(env, b)?;
-            let r = model_to_boolean(env, &rm)?;
-            Ok(TModel::from_boolean(l || r))
+            crate::core::expression::OrExpression::new((**a).clone(), (**b).clone()).eval(env)
         }
         ExprKind::Range { start, end, kind } => eval_range(env, start, end, *kind),
         ExprKind::Default { target, default } => eval_default_to(env, target, default),
@@ -849,68 +838,6 @@ fn eval_call(env: &mut crate::core::Environment, callee: &Expr, args: &[Expr]) -
         crate::core::environment::expr_desc(callee),
         c.type_name
     )))
-}
-
-/// 加法/字符串拼接（Java AddConcatExpression.java:63-134 `_eval`）：
-/// 数字+数字 → BigDecimalEngine.add；序列+序列 → 拼接序列；哈希+哈希 → 拼接哈希；
-/// 其余 → 字符串拼接（数字 canonical、布尔 boolean_format、标量原样）
-fn eval_add(env: &mut crate::core::Environment, a: &Expr, b: &Expr) -> Result<TModel> {
-    let l = eval(env, a)?;
-    let r = eval(env, b)?;
-    if l.is_number() && r.is_number() {
-        let engine = BigDecimalEngine::default();
-        return Ok(TModel::from_number(
-            engine.add(&l.get_number()?, &r.get_number()?)?,
-        ));
-    }
-    if l.is_sequence() && r.is_sequence() {
-        // Java ConcatenatedSequence
-        let ls = l.get_sequence()?;
-        let rs = r.get_sequence()?;
-        let n = ls.size()? + rs.size()?;
-        let mut v = Vec::with_capacity(n);
-        for i in 0..ls.size()? {
-            v.push(ls.get(i)?);
-        }
-        for i in 0..rs.size()? {
-            v.push(rs.get(i)?);
-        }
-        return Ok(TModel::from_sequence(v));
-    }
-    if l.is_hash() && r.is_hash() {
-        // Java ConcatenatedHashEx（AddConcatExpression.java:462-550）：
-        // - get(key)：先右后左（右键覆盖左键）；
-        // - keys()：先左后右，重复键保留首次出现位置（LinkedHashSet 语义）；
-        // - values()：按 keys 顺序取 get 值
-        let lh = l.get_hash()?;
-        let rh = r.get_hash()?;
-        let mut map = IndexMap::new();
-        if let Some(ex) = &l.hash_ex {
-            for key in ex.keys()? {
-                if let Some(v) = lh.get(&key)? {
-                    map.entry(key).or_insert(v);
-                }
-            }
-        }
-        if let Some(ex) = &r.hash_ex {
-            for key in ex.keys()? {
-                if let Some(v) = rh.get(&key)? {
-                    map.entry(key).or_insert(v);
-                }
-            }
-        }
-        // 值取右侧优先（Java ConcatenatedHash.get :470-475）
-        for key in map.keys().cloned().collect::<Vec<_>>() {
-            if let Some(v) = rh.get(&key)? {
-                map.insert(key, v);
-            }
-        }
-        return Ok(TModel::from_hash(map));
-    }
-    // 字符串拼接（Java EvalUtil.coerceModelToStringOrMarkup）
-    let ls = model_to_string(env, &l)?;
-    let rs = model_to_string(env, &r)?;
-    Ok(TModel::from_scalar(ls + &rs))
 }
 
 /// 数值运算（Java ArithmeticExpression.java:48-57 `_eval` → ArithmeticEngine）
