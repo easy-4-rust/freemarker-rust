@@ -78,6 +78,8 @@ mod environment_get_template_variants_test;
 mod error_message_parity;
 #[path = "java_ported/eval_json_built_in_test.rs"]
 mod eval_json_built_in_test;
+#[path = "java_ported/examples_test.rs"]
+mod examples_test;
 #[path = "java_ported/exception_test.rs"]
 mod exception_test;
 #[path = "java_ported/extended_decimal_format_test.rs"]
