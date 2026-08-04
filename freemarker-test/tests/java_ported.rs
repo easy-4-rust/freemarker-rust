@@ -30,6 +30,8 @@ mod c_and_cn_built_in_test;
 mod c_format_template_test;
 #[path = "java_ported/c_template_number_format_test.rs"]
 mod c_template_number_format_test;
+#[path = "java_ported/caller_template_name_test.rs"]
+mod caller_template_name_test;
 #[path = "java_ported/camel_case.rs"]
 mod camel_case;
 #[path = "java_ported/canonical_form.rs"]
@@ -40,6 +42,8 @@ mod capturing_assignment_test;
 mod classic_compatible_test;
 #[path = "java_ported/coercion_to_textual_test.rs"]
 mod coercion_to_textual_test;
+#[path = "java_ported/combined_markup_output_format_test.rs"]
+mod combined_markup_output_format_test;
 #[path = "java_ported/concatenated_sequence_test.rs"]
 mod concatenated_sequence_test;
 #[path = "java_ported/configurable_test.rs"]
@@ -60,10 +64,14 @@ mod date_util_test;
 mod deep_unwrap_test;
 #[path = "java_ported/default_truncate_builtin_algorithm_test.rs"]
 mod default_truncate_builtin_algorithm_test;
+#[path = "java_ported/directive_call_place_test.rs"]
+mod directive_call_place_test;
 #[path = "java_ported/encoding_override.rs"]
 mod encoding_override;
 #[path = "java_ported/end_tag_syntax.rs"]
 mod end_tag_syntax;
+#[path = "java_ported/environment_custom_state_test.rs"]
+mod environment_custom_state_test;
 #[path = "java_ported/environment_get_template_variants_test.rs"]
 mod environment_get_template_variants_test;
 #[path = "java_ported/error_message_parity.rs"]
@@ -88,6 +96,8 @@ mod header_parsing;
 mod html_output_format_test;
 #[path = "java_ported/include_and_import_test.rs"]
 mod include_and_import_test;
+#[path = "java_ported/include_and_import_configurable_layers_test.rs"]
+mod include_and_import_configurable_layers_test;
 #[path = "java_ported/incude_from_nameless_test.rs"]
 mod incude_from_nameless_test;
 #[path = "java_ported/interpolation_syntax.rs"]
@@ -108,6 +118,8 @@ mod lambda_parsing;
 mod lamda_and_escape_test;
 #[path = "java_ported/lazily_generated_collection_test.rs"]
 mod lazily_generated_collection_test;
+#[path = "java_ported/legacy_fm_parser_constructors_test.rs"]
+mod legacy_fm_parser_constructors_test;
 #[path = "java_ported/list_break_continue.rs"]
 mod list_break_continue;
 #[path = "java_ported/list_errors_test.rs"]
@@ -138,6 +150,8 @@ mod number_format_test;
 mod number_util_test;
 #[path = "java_ported/object_builder_settings_test.rs"]
 mod object_builder_settings_test;
+#[path = "java_ported/opt_in_template_class_resolver_test.rs"]
+mod opt_in_template_class_resolver_test;
 #[path = "java_ported/output_format_test.rs"]
 mod output_format_test;
 #[path = "java_ported/parse_time_parameter_bi_error_messages.rs"]
@@ -196,10 +210,14 @@ mod template_model_util_test;
 mod template_name_format_test;
 #[path = "java_ported/template_name_special_variables_test.rs"]
 mod template_name_special_variables_test;
+#[path = "java_ported/template_processing_tracer_test.rs"]
+mod template_processing_tracer_test;
 #[path = "java_ported/template_source_matcher_test.rs"]
 mod template_source_matcher_test;
 #[path = "java_ported/template_transform_model_test.rs"]
 mod template_transform_model_test;
+#[path = "java_ported/thread_interrupting_support_test.rs"]
+mod thread_interrupting_support_test;
 #[path = "java_ported/truncate_built_in_test.rs"]
 mod truncate_built_in_test;
 #[path = "java_ported/type_error_messages.rs"]
