@@ -1,10 +1,9 @@
 //! 模板加载器接口 —— 对应 Java `freemarker.cache.TemplateLoader`
 //! （findTemplateSource/getLastModified/getReader/closeTemplateSource 语义）
-//! `reset_state` 钩子对应 Java 可选的 `StatefulTemplateLoader` 接口
-//! （StatefulTemplateLoader.java）：Java 经 `instanceof` 检查后调用 resetState，
-//! Rust trait 对象无法按接口向下转型——以默认空操作 + 虚分派等价替代
-//! （非有状态加载器不覆写即空操作，与 Java 的 instanceof 跳过语义一致）
+//! `as_stateful` 是 Java `instanceof StatefulTemplateLoader` 检查的等价物
+//! （TemplateCache.clear :645-657；见 stateful_template_loader.rs）
 
+use crate::cache::stateful_template_loader::StatefulTemplateLoader;
 use crate::cache::TemplateSource;
 use crate::error::Result;
 
@@ -26,10 +25,11 @@ pub trait TemplateLoader: Send + Sync {
         Ok(0)
     }
 
-    /// 模板缓存清空回调 —— 对应 Java `StatefulTemplateLoader.resetState`
-    /// （TemplateCache.clear :645-657 在清空存储后对 instanceof
-    /// StatefulTemplateLoader 的加载器调用；Java 可选接口，Rust 用默认空操作
-    /// 保持等价）。有状态加载器（如 MultiLoader，见其 reset_state 的传播语义）
-    /// 覆写此方法重置内部状态。
-    fn reset_state(&self) {}
+    /// 有状态加载器下转型（对应 Java `instanceof StatefulTemplateLoader`，
+    /// TemplateCache.clear :648-649）：实现 StatefulTemplateLoader 的加载器
+    /// 覆写为 `Some(self)`（trait 上转型），其余保持默认 None —— 与 Java
+    /// 可选接口语义一致
+    fn as_stateful(&self) -> Option<&dyn StatefulTemplateLoader> {
+        None
+    }
 }

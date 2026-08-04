@@ -6,7 +6,7 @@ use crate::util::*;
 
 /// Java XHTMLOutputFormat.escapePlainText：& < > " '（' → &#39;，与 HTML 相同）
 fn escape_plain_text(s: &str) -> String {
-    freemarker::utility::html_escape(s)
+    freemarker::template::utility::html_escape(s)
 }
 
 /// Java XHTMLOutputFormat.getMimeType

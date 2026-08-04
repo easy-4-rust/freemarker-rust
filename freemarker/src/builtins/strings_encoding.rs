@@ -17,8 +17,8 @@
 use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, target_string};
 use crate::core::{Environment, Expr};
 use crate::error::Result;
+use crate::template::utility::html_escape;
 use crate::template::TModel;
-use crate::utility::html_escape;
 
 /// ?j_string —— Java `StringUtil.javaStringEnc`（不加引号）：
 /// 转义 `"`、`\`、<0x20（\n\r\f\b\t 或 \u00XX 小写十六进制）
@@ -295,7 +295,7 @@ pub fn esc(env: &mut Environment, target: &Expr, _args: Option<&[Expr]>) -> Resu
         crate::core::OutputFormatKind::Html | crate::core::OutputFormatKind::XHtml => {
             html_escape(&s)
         }
-        crate::core::OutputFormatKind::Xml => crate::utility::xml_escape(&s),
+        crate::core::OutputFormatKind::Xml => crate::template::utility::xml_escape(&s),
         _ => s,
     };
     Ok(Some(markup_model(escaped)))

@@ -6,10 +6,10 @@
 //! - `freemarker::builtins::strings_encoding::js_string_enc(s, json)` ↔
 //!   StringUtil.jsStringEnc(s, JSON兼容与否)（Java:1428 起语义逐字对照；
 //!   ?js_string 用 JAVA_SCRIPT 模式、?json_string 用 JSON 模式）；
-//! - `freemarker::utility::html_escape` ↔ StringUtil.XHTMLEnc（`'`→&#39;；
+//! - `freemarker::template::utility::html_escape` ↔ StringUtil.XHTMLEnc（`'`→&#39;；
 //!   注意 Java HTMLEnc **不**转义 `'`——引擎差异）；
-//! - `freemarker::utility::xml_escape` ↔ StringUtil.XMLEnc（`'`→&apos;）；
-//! - `freemarker::utility::java_trim` ↔ StringUtil.trim（仅 ≤ U+0020）；
+//! - `freemarker::template::utility::xml_escape` ↔ StringUtil.XMLEnc（`'`→&apos;）；
+//! - `freemarker::template::utility::java_trim` ↔ StringUtil.trim（仅 ≤ U+0020）；
 //! - util.rs 的 glob_to_regex ↔ StringUtil.globToRegularExpression。
 // 无对应（注释保留）：FTLStringLiteralEnc/Dec、jQuote/jQuoteNoXSS、
 // XMLEncQAttr/XMLEncNQG、带引号形式的 jsStringEnc(compatibility, quotation)。
@@ -17,7 +17,7 @@
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
 use freemarker::builtins::strings_encoding::js_string_enc;
-use freemarker::utility::{html_escape, java_trim, xml_escape};
+use freemarker::template::utility::{html_escape, java_trim, xml_escape};
 
 /// Java testJavaScriptStringEncV2319：2.3.19 起 jsStringEnc 的控制字符转义
 #[test]

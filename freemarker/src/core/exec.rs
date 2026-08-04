@@ -21,8 +21,8 @@ use crate::core::eval;
 use crate::core::{ArithmeticEngine, AssignOp, CallTarget, Element, ElementKind, OutputFormatKind};
 use crate::error::{FlowKind, Result, TemplateError};
 use crate::span::Span;
+use crate::template::utility::java_trim;
 use crate::template::{TModel, TemplateDirectiveBody};
-use crate::utility::java_trim;
 use crate::value::TNumber;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -708,8 +708,10 @@ fn legacy_auto_escaped(env: &crate::core::Environment, s: &str) -> String {
         return s.to_string();
     }
     match env.settings.output_format {
-        OutputFormatKind::Html | OutputFormatKind::XHtml => crate::utility::html_escape(s),
-        OutputFormatKind::Xml => crate::utility::xml_escape(s),
+        OutputFormatKind::Html | OutputFormatKind::XHtml => {
+            crate::template::utility::html_escape(s)
+        }
+        OutputFormatKind::Xml => crate::template::utility::xml_escape(s),
         _ => s.to_string(),
     }
 }

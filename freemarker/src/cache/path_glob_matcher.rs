@@ -3,7 +3,7 @@
 //! 默认大小写**敏感**；glob 不能以 `/` 开头）
 
 use crate::cache::TemplateSourceMatcher;
-use crate::utility::glob_to_regex;
+use crate::template::utility::glob_to_regex;
 use regex::Regex;
 
 /// 路径 glob 匹配器（对应 PathGlobMatcher.java）

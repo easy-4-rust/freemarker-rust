@@ -3,7 +3,7 @@
 //! 等价于 `**/<glob>` 的路径 glob；默认大小写**敏感**）
 
 use crate::cache::TemplateSourceMatcher;
-use crate::utility::glob_to_regex;
+use crate::template::utility::glob_to_regex;
 use regex::Regex;
 
 /// 文件名 glob 匹配器（对应 FileNameGlobMatcher.java）

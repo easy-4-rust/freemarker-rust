@@ -135,13 +135,14 @@ impl Configuration {
     /// 清空模板缓存 —— 对应 Java `Configuration.clearTemplateCache()`
     /// （→ TemplateCache.clear :645-657：清空存储；若加载器实现
     /// StatefulTemplateLoader 则同步调用其 resetState —— Java 的 instanceof
-    /// 检查在 Rust 侧以 TemplateLoader::reset_state 默认空操作等价替代，
-    /// 此处直接虚分派）
+    /// 检查 → TemplateLoader::as_stateful 下转型）
     pub fn clear_template_cache(&self) {
         if let Ok(mut cache) = self.cache.lock() {
             cache.clear();
         }
-        self.template_loader.reset_state();
+        if let Some(sl) = self.template_loader.as_stateful() {
+            sl.reset_state();
+        }
     }
 
     /// 带局部化回退的取模板 —— 对应 Java `TemplateCache.lookupWithLocalizedThenAcquisitionStrategy`

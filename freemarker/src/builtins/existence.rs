@@ -8,8 +8,8 @@
 
 use crate::core::{Environment, Expr};
 use crate::error::Result;
+use crate::template::utility::java_trim;
 use crate::template::TModel;
-use crate::utility::java_trim;
 
 /// 目标求值为标量（Java BuiltInForString 语义；数字/布尔强制转换）。
 /// 注意：`*_to_null` 是 Java `BuiltInsForExistenceHandling.ExistenceBuiltIn`

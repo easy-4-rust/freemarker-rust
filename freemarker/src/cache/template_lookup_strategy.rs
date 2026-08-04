@@ -1,14 +1,12 @@
 //! 模板查找策略 —— 对应 Java `freemarker.cache.TemplateLookupStrategy`
 //! （Default020300.lookup :101-113 → TemplateCache.lookupWithLocalizedThenAcquisitionStrategy
 //!   :914-942 与 lookupTemplateWithAcquisitionStrategy :740-781）
-//! 本文件同时承载 Rust 侧的 LookupResult 与查找辅助（对应 Java
-//!   TemplateLookupResult / TemplateLookupContext，v1 合并存放以便一文件一 Java 对象）
+//! LookupResult / FindFn 分别见 template_lookup_result.rs / template_lookup_context.rs
+//! （一文件一 Java 对象）
 
-use crate::cache::TemplateSource;
+use crate::cache::template_lookup_context::FindFn;
+use crate::cache::template_lookup_result::LookupResult;
 use crate::error::Result;
-
-/// 模板源查找闭包类型（findTemplateSource 等价；type_complexity 豁免）
-pub type FindFn<'a> = &'a mut dyn FnMut(&str) -> Result<Option<Box<dyn TemplateSource>>>;
 
 /// 查找策略种类（v1 用 enum 表达策略选择；对应 Configuration 的
 ///   templateLookupStrategy 设置，见 docs/07 §2 :63）
@@ -26,21 +24,13 @@ pub trait TemplateLookupStrategy: Send + Sync {
     /// - `locale`：Some 表示启用局部化回退（Java: TemplateCache.java:897-899，
     ///   localizedLookup 关闭时传 None）
     /// - `find`：每次调用对应一次 TemplateLoader.findTemplateSource
-    ///   （acquisition 会多次调用）
+    ///   （acquisition 会多次调用；Java 经 TemplateLookupContext 提供）
     fn lookup(
         &self,
         name: &str,
         locale: Option<&str>,
         find: FindFn<'_>,
     ) -> Result<Option<LookupResult>>;
-}
-
-/// 查找结果（对应 TemplateLookupResult）：命中的源名 + 源
-pub struct LookupResult {
-    /// 实际命中的源名（acquisition/本地化后可能不同于请求名；Java
-    ///   `TemplateLookupResult.from(path, source)` 中的 path）
-    pub source_name: String,
-    pub source: Box<dyn TemplateSource>,
 }
 
 /// Default020300 策略（对应 `TemplateLookupStrategy.DEFAULT_2_3_0`，Java:101-113）
@@ -158,6 +148,7 @@ mod tests {
     use super::*;
     use crate::cache::StringLoader;
     use crate::cache::TemplateLoader;
+    use crate::cache::TemplateSource;
 
     fn strategy_find(
         loader: &StringLoader,

@@ -145,7 +145,7 @@ impl TModel {
     pub fn gpn() -> TModel {
         let empty_seq = Rc::new(SimpleSequence(Vec::new()));
         let empty_hash = Rc::new(SimpleHash(IndexMap::with_hasher(
-            crate::utility::FnvBuildHasher::default(),
+            crate::template::utility::FnvBuildHasher::default(),
         )));
         TModel {
             scalar: Some(Rc::new(SimpleScalar(String::new()))),
@@ -225,7 +225,8 @@ impl TModel {
     pub fn from_hash(v: IndexMap<String, TModel>) -> TModel {
         // 转换到 FNV 哈希（构造期 O(n) 一次性成本；成员访问热路径受益；
         // 插入序保持——indexmap 序由内部向量维持，与哈希器无关）
-        let v: IndexMap<String, TModel, crate::utility::FnvBuildHasher> = v.into_iter().collect();
+        let v: IndexMap<String, TModel, crate::template::utility::FnvBuildHasher> =
+            v.into_iter().collect();
         let h = Rc::new(SimpleHash(v));
         let ex = h.clone();
         TModel {

@@ -558,11 +558,11 @@ pub fn freemarker::cache::ByteArrayTemplateLoader::remove(&self, &str)
 impl core::default::Default for freemarker::cache::ByteArrayTemplateLoader
 pub fn freemarker::cache::ByteArrayTemplateLoader::default() -> Self
 impl freemarker::cache::TemplateLoader for freemarker::cache::ByteArrayTemplateLoader
+pub fn freemarker::cache::ByteArrayTemplateLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::ByteArrayTemplateLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::ByteArrayTemplateLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::ByteArrayTemplateLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::ByteArrayTemplateLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::ByteArrayTemplateLoader::reset_state(&self)
 impl !core::marker::Freeze for freemarker::cache::ByteArrayTemplateLoader
 impl core::marker::Send for freemarker::cache::ByteArrayTemplateLoader
 impl core::marker::Sync for freemarker::cache::ByteArrayTemplateLoader
@@ -621,11 +621,11 @@ pub fn freemarker::cache::ClassTemplateLoader::set_base_path(&self, &str)
 impl core::default::Default for freemarker::cache::ClassTemplateLoader
 pub fn freemarker::cache::ClassTemplateLoader::default() -> Self
 impl freemarker::cache::TemplateLoader for freemarker::cache::ClassTemplateLoader
+pub fn freemarker::cache::ClassTemplateLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::ClassTemplateLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::ClassTemplateLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::ClassTemplateLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::ClassTemplateLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::ClassTemplateLoader::reset_state(&self)
 impl !core::marker::Freeze for freemarker::cache::ClassTemplateLoader
 impl core::marker::Send for freemarker::cache::ClassTemplateLoader
 impl core::marker::Sync for freemarker::cache::ClassTemplateLoader
@@ -741,11 +741,11 @@ impl freemarker::cache::FileLoader
 pub fn freemarker::cache::FileLoader::base_directory(&self) -> &std::path::Path
 pub fn freemarker::cache::FileLoader::new(impl core::convert::Into<std::path::PathBuf>) -> freemarker::Result<Self>
 impl freemarker::cache::TemplateLoader for freemarker::cache::FileLoader
+pub fn freemarker::cache::FileLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::FileLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::FileLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::FileLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::FileLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::FileLoader::reset_state(&self)
 impl core::marker::Freeze for freemarker::cache::FileLoader
 impl core::marker::Send for freemarker::cache::FileLoader
 impl core::marker::Sync for freemarker::cache::FileLoader
@@ -864,6 +864,10 @@ pub fn freemarker::cache::FirstMatchTemplateConfigurationFactory::from(T) -> T
 pub struct freemarker::cache::LookupResult
 pub freemarker::cache::LookupResult::source: alloc::boxed::Box<dyn freemarker::cache::TemplateSource>
 pub freemarker::cache::LookupResult::source_name: alloc::string::String
+impl freemarker::cache::LookupResult
+pub fn freemarker::cache::LookupResult::from(alloc::string::String, alloc::boxed::Box<dyn freemarker::cache::TemplateSource>) -> Self
+pub fn freemarker::cache::LookupResult::is_lookup_succeeded(&self) -> bool
+pub fn freemarker::cache::LookupResult::source_name(&self) -> &str
 impl core::marker::Freeze for freemarker::cache::LookupResult
 impl !core::marker::Send for freemarker::cache::LookupResult
 impl !core::marker::Sync for freemarker::cache::LookupResult
@@ -889,7 +893,7 @@ impl<T> core::convert::From<T> for freemarker::cache::LookupResult
 pub fn freemarker::cache::LookupResult::from(T) -> T
 pub struct freemarker::cache::LookupStrategyDefault020300
 impl freemarker::cache::TemplateLookupStrategy for freemarker::cache::LookupStrategyDefault020300
-pub fn freemarker::cache::LookupStrategyDefault020300::lookup(&self, &str, core::option::Option<&str>, &'_ mut dyn core::ops::function::FnMut(&str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>) -> freemarker::Result<core::option::Option<freemarker::cache::LookupResult>>
+pub fn freemarker::cache::LookupStrategyDefault020300::lookup(&self, &str, core::option::Option<&str>, freemarker::cache::FindFn<'_>) -> freemarker::Result<core::option::Option<freemarker::cache::LookupResult>>
 impl core::marker::Freeze for freemarker::cache::LookupStrategyDefault020300
 impl core::marker::Send for freemarker::cache::LookupStrategyDefault020300
 impl core::marker::Sync for freemarker::cache::LookupStrategyDefault020300
@@ -941,17 +945,54 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::cache::MergingTemplateConfigu
 pub fn freemarker::cache::MergingTemplateConfigurationFactory::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::cache::MergingTemplateConfigurationFactory
 pub fn freemarker::cache::MergingTemplateConfigurationFactory::from(T) -> T
+pub struct freemarker::cache::MruCacheStorage
+impl freemarker::cache::MruCacheStorage
+pub fn freemarker::cache::MruCacheStorage::new(usize, usize) -> Self
+impl core::default::Default for freemarker::cache::MruCacheStorage
+pub fn freemarker::cache::MruCacheStorage::default() -> Self
+impl freemarker::cache::CacheStorage for freemarker::cache::MruCacheStorage
+pub fn freemarker::cache::MruCacheStorage::clear(&mut self)
+pub fn freemarker::cache::MruCacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::MruCacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::MruCacheStorage::remove(&mut self, &str)
+impl freemarker::cache::CacheStorageWithGetSize for freemarker::cache::MruCacheStorage
+pub fn freemarker::cache::MruCacheStorage::get_size(&mut self) -> usize
+impl core::marker::Freeze for freemarker::cache::MruCacheStorage
+impl !core::marker::Send for freemarker::cache::MruCacheStorage
+impl !core::marker::Sync for freemarker::cache::MruCacheStorage
+impl core::marker::Unpin for freemarker::cache::MruCacheStorage
+impl core::marker::UnsafeUnpin for freemarker::cache::MruCacheStorage
+impl !core::panic::unwind_safe::RefUnwindSafe for freemarker::cache::MruCacheStorage
+impl !core::panic::unwind_safe::UnwindSafe for freemarker::cache::MruCacheStorage
+impl<T, U> core::convert::Into<U> for freemarker::cache::MruCacheStorage where U: core::convert::From<T>
+pub fn freemarker::cache::MruCacheStorage::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::cache::MruCacheStorage where U: core::convert::Into<T>
+pub type freemarker::cache::MruCacheStorage::Error = core::convert::Infallible
+pub fn freemarker::cache::MruCacheStorage::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::cache::MruCacheStorage where U: core::convert::TryFrom<T>
+pub type freemarker::cache::MruCacheStorage::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::cache::MruCacheStorage::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::cache::MruCacheStorage where T: 'static + ?core::marker::Sized
+pub fn freemarker::cache::MruCacheStorage::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::cache::MruCacheStorage where T: ?core::marker::Sized
+pub fn freemarker::cache::MruCacheStorage::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::cache::MruCacheStorage where T: ?core::marker::Sized
+pub fn freemarker::cache::MruCacheStorage::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::cache::MruCacheStorage
+pub fn freemarker::cache::MruCacheStorage::from(T) -> T
 pub struct freemarker::cache::MultiLoader
 impl freemarker::cache::MultiLoader
 pub fn freemarker::cache::MultiLoader::is_empty(&self) -> bool
 pub fn freemarker::cache::MultiLoader::len(&self) -> usize
 pub fn freemarker::cache::MultiLoader::new(alloc::vec::Vec<alloc::sync::Arc<dyn freemarker::cache::TemplateLoader>>) -> Self
+impl freemarker::cache::StatefulTemplateLoader for freemarker::cache::MultiLoader
+pub fn freemarker::cache::MultiLoader::reset_state(&self)
 impl freemarker::cache::TemplateLoader for freemarker::cache::MultiLoader
+pub fn freemarker::cache::MultiLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::MultiLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::MultiLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::MultiLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::MultiLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::MultiLoader::reset_state(&self)
 impl core::marker::Freeze for freemarker::cache::MultiLoader
 impl core::marker::Send for freemarker::cache::MultiLoader
 impl core::marker::Sync for freemarker::cache::MultiLoader
@@ -1084,6 +1125,37 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::cache::NotMatcher where T: ?c
 pub fn freemarker::cache::NotMatcher::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::cache::NotMatcher
 pub fn freemarker::cache::NotMatcher::from(T) -> T
+pub struct freemarker::cache::NullCacheStorage
+impl freemarker::cache::CacheStorage for freemarker::cache::NullCacheStorage
+pub fn freemarker::cache::NullCacheStorage::clear(&mut self)
+pub fn freemarker::cache::NullCacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::NullCacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::NullCacheStorage::remove(&mut self, &str)
+impl freemarker::cache::CacheStorageWithGetSize for freemarker::cache::NullCacheStorage
+pub fn freemarker::cache::NullCacheStorage::get_size(&mut self) -> usize
+impl core::marker::Freeze for freemarker::cache::NullCacheStorage
+impl core::marker::Send for freemarker::cache::NullCacheStorage
+impl core::marker::Sync for freemarker::cache::NullCacheStorage
+impl core::marker::Unpin for freemarker::cache::NullCacheStorage
+impl core::marker::UnsafeUnpin for freemarker::cache::NullCacheStorage
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::cache::NullCacheStorage
+impl core::panic::unwind_safe::UnwindSafe for freemarker::cache::NullCacheStorage
+impl<T, U> core::convert::Into<U> for freemarker::cache::NullCacheStorage where U: core::convert::From<T>
+pub fn freemarker::cache::NullCacheStorage::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::cache::NullCacheStorage where U: core::convert::Into<T>
+pub type freemarker::cache::NullCacheStorage::Error = core::convert::Infallible
+pub fn freemarker::cache::NullCacheStorage::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::cache::NullCacheStorage where U: core::convert::TryFrom<T>
+pub type freemarker::cache::NullCacheStorage::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::cache::NullCacheStorage::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::cache::NullCacheStorage where T: 'static + ?core::marker::Sized
+pub fn freemarker::cache::NullCacheStorage::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::cache::NullCacheStorage where T: ?core::marker::Sized
+pub fn freemarker::cache::NullCacheStorage::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::cache::NullCacheStorage where T: ?core::marker::Sized
+pub fn freemarker::cache::NullCacheStorage::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::cache::NullCacheStorage
+pub fn freemarker::cache::NullCacheStorage::from(T) -> T
 pub struct freemarker::cache::OrMatcher
 impl freemarker::cache::OrMatcher
 pub fn freemarker::cache::OrMatcher::new(alloc::vec::Vec<alloc::boxed::Box<dyn freemarker::cache::TemplateSourceMatcher>>) -> Self
@@ -1171,6 +1243,39 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::cache::PathRegexMatcher where
 pub fn freemarker::cache::PathRegexMatcher::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::cache::PathRegexMatcher
 pub fn freemarker::cache::PathRegexMatcher::from(T) -> T
+pub struct freemarker::cache::SoftCacheStorage
+impl core::default::Default for freemarker::cache::SoftCacheStorage
+pub fn freemarker::cache::SoftCacheStorage::default() -> freemarker::cache::SoftCacheStorage
+impl freemarker::cache::CacheStorage for freemarker::cache::SoftCacheStorage
+pub fn freemarker::cache::SoftCacheStorage::clear(&mut self)
+pub fn freemarker::cache::SoftCacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::SoftCacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::SoftCacheStorage::remove(&mut self, &str)
+impl freemarker::cache::CacheStorageWithGetSize for freemarker::cache::SoftCacheStorage
+pub fn freemarker::cache::SoftCacheStorage::get_size(&mut self) -> usize
+impl core::marker::Freeze for freemarker::cache::SoftCacheStorage
+impl !core::marker::Send for freemarker::cache::SoftCacheStorage
+impl !core::marker::Sync for freemarker::cache::SoftCacheStorage
+impl core::marker::Unpin for freemarker::cache::SoftCacheStorage
+impl core::marker::UnsafeUnpin for freemarker::cache::SoftCacheStorage
+impl !core::panic::unwind_safe::RefUnwindSafe for freemarker::cache::SoftCacheStorage
+impl !core::panic::unwind_safe::UnwindSafe for freemarker::cache::SoftCacheStorage
+impl<T, U> core::convert::Into<U> for freemarker::cache::SoftCacheStorage where U: core::convert::From<T>
+pub fn freemarker::cache::SoftCacheStorage::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::cache::SoftCacheStorage where U: core::convert::Into<T>
+pub type freemarker::cache::SoftCacheStorage::Error = core::convert::Infallible
+pub fn freemarker::cache::SoftCacheStorage::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::cache::SoftCacheStorage where U: core::convert::TryFrom<T>
+pub type freemarker::cache::SoftCacheStorage::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::cache::SoftCacheStorage::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::cache::SoftCacheStorage where T: 'static + ?core::marker::Sized
+pub fn freemarker::cache::SoftCacheStorage::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::cache::SoftCacheStorage where T: ?core::marker::Sized
+pub fn freemarker::cache::SoftCacheStorage::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::cache::SoftCacheStorage where T: ?core::marker::Sized
+pub fn freemarker::cache::SoftCacheStorage::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::cache::SoftCacheStorage
+pub fn freemarker::cache::SoftCacheStorage::from(T) -> T
 pub struct freemarker::cache::StringLoader
 impl freemarker::cache::StringLoader
 pub fn freemarker::cache::StringLoader::put(&self, &str, &str)
@@ -1178,11 +1283,11 @@ pub fn freemarker::cache::StringLoader::put_bytes(&self, &str, &[u8])
 impl core::default::Default for freemarker::cache::StringLoader
 pub fn freemarker::cache::StringLoader::default() -> freemarker::cache::StringLoader
 impl freemarker::cache::TemplateLoader for freemarker::cache::StringLoader
+pub fn freemarker::cache::StringLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::StringLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::StringLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::StringLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::StringLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::StringLoader::reset_state(&self)
 impl !core::marker::Freeze for freemarker::cache::StringLoader
 impl core::marker::Send for freemarker::cache::StringLoader
 impl core::marker::Sync for freemarker::cache::StringLoader
@@ -1233,6 +1338,39 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::cache::StringSource where T: 
 pub fn freemarker::cache::StringSource::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::cache::StringSource
 pub fn freemarker::cache::StringSource::from(T) -> T
+pub struct freemarker::cache::StrongCacheStorage
+impl core::default::Default for freemarker::cache::StrongCacheStorage
+pub fn freemarker::cache::StrongCacheStorage::default() -> freemarker::cache::StrongCacheStorage
+impl freemarker::cache::CacheStorage for freemarker::cache::StrongCacheStorage
+pub fn freemarker::cache::StrongCacheStorage::clear(&mut self)
+pub fn freemarker::cache::StrongCacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::StrongCacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::StrongCacheStorage::remove(&mut self, &str)
+impl freemarker::cache::CacheStorageWithGetSize for freemarker::cache::StrongCacheStorage
+pub fn freemarker::cache::StrongCacheStorage::get_size(&mut self) -> usize
+impl core::marker::Freeze for freemarker::cache::StrongCacheStorage
+impl !core::marker::Send for freemarker::cache::StrongCacheStorage
+impl !core::marker::Sync for freemarker::cache::StrongCacheStorage
+impl core::marker::Unpin for freemarker::cache::StrongCacheStorage
+impl core::marker::UnsafeUnpin for freemarker::cache::StrongCacheStorage
+impl !core::panic::unwind_safe::RefUnwindSafe for freemarker::cache::StrongCacheStorage
+impl !core::panic::unwind_safe::UnwindSafe for freemarker::cache::StrongCacheStorage
+impl<T, U> core::convert::Into<U> for freemarker::cache::StrongCacheStorage where U: core::convert::From<T>
+pub fn freemarker::cache::StrongCacheStorage::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::cache::StrongCacheStorage where U: core::convert::Into<T>
+pub type freemarker::cache::StrongCacheStorage::Error = core::convert::Infallible
+pub fn freemarker::cache::StrongCacheStorage::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::cache::StrongCacheStorage where U: core::convert::TryFrom<T>
+pub type freemarker::cache::StrongCacheStorage::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::cache::StrongCacheStorage::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::cache::StrongCacheStorage where T: 'static + ?core::marker::Sized
+pub fn freemarker::cache::StrongCacheStorage::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::cache::StrongCacheStorage where T: ?core::marker::Sized
+pub fn freemarker::cache::StrongCacheStorage::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::cache::StrongCacheStorage where T: ?core::marker::Sized
+pub fn freemarker::cache::StrongCacheStorage::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::cache::StrongCacheStorage
+pub fn freemarker::cache::StrongCacheStorage::from(T) -> T
 pub struct freemarker::cache::TemplateCache
 impl freemarker::cache::TemplateCache
 pub fn freemarker::cache::TemplateCache::clear(&mut self)
@@ -1331,11 +1469,11 @@ pub fn freemarker::cache::URLTemplateLoader::new() -> Self
 impl core::default::Default for freemarker::cache::URLTemplateLoader
 pub fn freemarker::cache::URLTemplateLoader::default() -> Self
 impl freemarker::cache::TemplateLoader for freemarker::cache::URLTemplateLoader
+pub fn freemarker::cache::URLTemplateLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::URLTemplateLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::URLTemplateLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::URLTemplateLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::URLTemplateLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::URLTemplateLoader::reset_state(&self)
 impl core::marker::Freeze for freemarker::cache::URLTemplateLoader
 impl core::marker::Send for freemarker::cache::URLTemplateLoader
 impl core::marker::Sync for freemarker::cache::URLTemplateLoader
@@ -1359,6 +1497,77 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::cache::URLTemplateLoader wher
 pub fn freemarker::cache::URLTemplateLoader::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::cache::URLTemplateLoader
 pub fn freemarker::cache::URLTemplateLoader::from(T) -> T
+pub struct freemarker::cache::URLTemplateSource
+impl freemarker::cache::URLTemplateSource
+pub fn freemarker::cache::URLTemplateSource::new(&str) -> Self
+pub fn freemarker::cache::URLTemplateSource::url(&self) -> &str
+impl freemarker::cache::TemplateSource for freemarker::cache::URLTemplateSource
+pub fn freemarker::cache::URLTemplateSource::as_any(&self) -> core::option::Option<&dyn core::any::Any>
+pub fn freemarker::cache::URLTemplateSource::name(&self) -> alloc::string::String
+impl core::marker::Freeze for freemarker::cache::URLTemplateSource
+impl core::marker::Send for freemarker::cache::URLTemplateSource
+impl core::marker::Sync for freemarker::cache::URLTemplateSource
+impl core::marker::Unpin for freemarker::cache::URLTemplateSource
+impl core::marker::UnsafeUnpin for freemarker::cache::URLTemplateSource
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::cache::URLTemplateSource
+impl core::panic::unwind_safe::UnwindSafe for freemarker::cache::URLTemplateSource
+impl<T, U> core::convert::Into<U> for freemarker::cache::URLTemplateSource where U: core::convert::From<T>
+pub fn freemarker::cache::URLTemplateSource::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::cache::URLTemplateSource where U: core::convert::Into<T>
+pub type freemarker::cache::URLTemplateSource::Error = core::convert::Infallible
+pub fn freemarker::cache::URLTemplateSource::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::cache::URLTemplateSource where U: core::convert::TryFrom<T>
+pub type freemarker::cache::URLTemplateSource::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::cache::URLTemplateSource::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::cache::URLTemplateSource where T: 'static + ?core::marker::Sized
+pub fn freemarker::cache::URLTemplateSource::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::cache::URLTemplateSource where T: ?core::marker::Sized
+pub fn freemarker::cache::URLTemplateSource::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::cache::URLTemplateSource where T: ?core::marker::Sized
+pub fn freemarker::cache::URLTemplateSource::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::cache::URLTemplateSource
+pub fn freemarker::cache::URLTemplateSource::from(T) -> T
+pub trait freemarker::cache::CacheStorage
+pub fn freemarker::cache::CacheStorage::clear(&mut self)
+pub fn freemarker::cache::CacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::CacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::CacheStorage::remove(&mut self, &str)
+impl freemarker::cache::CacheStorage for freemarker::cache::MruCacheStorage
+pub fn freemarker::cache::MruCacheStorage::clear(&mut self)
+pub fn freemarker::cache::MruCacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::MruCacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::MruCacheStorage::remove(&mut self, &str)
+impl freemarker::cache::CacheStorage for freemarker::cache::NullCacheStorage
+pub fn freemarker::cache::NullCacheStorage::clear(&mut self)
+pub fn freemarker::cache::NullCacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::NullCacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::NullCacheStorage::remove(&mut self, &str)
+impl freemarker::cache::CacheStorage for freemarker::cache::SoftCacheStorage
+pub fn freemarker::cache::SoftCacheStorage::clear(&mut self)
+pub fn freemarker::cache::SoftCacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::SoftCacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::SoftCacheStorage::remove(&mut self, &str)
+impl freemarker::cache::CacheStorage for freemarker::cache::StrongCacheStorage
+pub fn freemarker::cache::StrongCacheStorage::clear(&mut self)
+pub fn freemarker::cache::StrongCacheStorage::get(&mut self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::Template>>
+pub fn freemarker::cache::StrongCacheStorage::put(&mut self, &str, alloc::rc::Rc<freemarker::Template>)
+pub fn freemarker::cache::StrongCacheStorage::remove(&mut self, &str)
+pub trait freemarker::cache::CacheStorageWithGetSize: freemarker::cache::CacheStorage
+pub fn freemarker::cache::CacheStorageWithGetSize::get_size(&mut self) -> usize
+impl freemarker::cache::CacheStorageWithGetSize for freemarker::cache::MruCacheStorage
+pub fn freemarker::cache::MruCacheStorage::get_size(&mut self) -> usize
+impl freemarker::cache::CacheStorageWithGetSize for freemarker::cache::NullCacheStorage
+pub fn freemarker::cache::NullCacheStorage::get_size(&mut self) -> usize
+impl freemarker::cache::CacheStorageWithGetSize for freemarker::cache::SoftCacheStorage
+pub fn freemarker::cache::SoftCacheStorage::get_size(&mut self) -> usize
+impl freemarker::cache::CacheStorageWithGetSize for freemarker::cache::StrongCacheStorage
+pub fn freemarker::cache::StrongCacheStorage::get_size(&mut self) -> usize
+pub trait freemarker::cache::ConcurrentCacheStorage: freemarker::cache::CacheStorage
+pub fn freemarker::cache::ConcurrentCacheStorage::is_concurrent(&mut self) -> bool
+pub trait freemarker::cache::StatefulTemplateLoader: freemarker::cache::TemplateLoader
+pub fn freemarker::cache::StatefulTemplateLoader::reset_state(&self)
+impl freemarker::cache::StatefulTemplateLoader for freemarker::cache::MultiLoader
+pub fn freemarker::cache::MultiLoader::reset_state(&self)
 pub trait freemarker::cache::TemplateConfigurationFactory: core::marker::Send + core::marker::Sync
 pub fn freemarker::cache::TemplateConfigurationFactory::get(&self, &str) -> core::result::Result<core::option::Option<alloc::sync::Arc<freemarker::core::TemplateConfiguration>>, freemarker::cache::TemplateConfigurationFactoryException>
 impl freemarker::cache::TemplateConfigurationFactory for freemarker::cache::ConditionalTemplateConfigurationFactory
@@ -1368,51 +1577,51 @@ pub fn freemarker::cache::FirstMatchTemplateConfigurationFactory::get(&self, &st
 impl freemarker::cache::TemplateConfigurationFactory for freemarker::cache::MergingTemplateConfigurationFactory
 pub fn freemarker::cache::MergingTemplateConfigurationFactory::get(&self, &str) -> core::result::Result<core::option::Option<alloc::sync::Arc<freemarker::core::TemplateConfiguration>>, freemarker::cache::TemplateConfigurationFactoryException>
 pub trait freemarker::cache::TemplateLoader: core::marker::Send + core::marker::Sync
+pub fn freemarker::cache::TemplateLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::TemplateLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::TemplateLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::TemplateLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::TemplateLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::TemplateLoader::reset_state(&self)
 impl freemarker::cache::TemplateLoader for freemarker::cache::ByteArrayTemplateLoader
+pub fn freemarker::cache::ByteArrayTemplateLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::ByteArrayTemplateLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::ByteArrayTemplateLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::ByteArrayTemplateLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::ByteArrayTemplateLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::ByteArrayTemplateLoader::reset_state(&self)
 impl freemarker::cache::TemplateLoader for freemarker::cache::ClassTemplateLoader
+pub fn freemarker::cache::ClassTemplateLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::ClassTemplateLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::ClassTemplateLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::ClassTemplateLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::ClassTemplateLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::ClassTemplateLoader::reset_state(&self)
 impl freemarker::cache::TemplateLoader for freemarker::cache::FileLoader
+pub fn freemarker::cache::FileLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::FileLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::FileLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::FileLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::FileLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::FileLoader::reset_state(&self)
 impl freemarker::cache::TemplateLoader for freemarker::cache::MultiLoader
+pub fn freemarker::cache::MultiLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::MultiLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::MultiLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::MultiLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::MultiLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::MultiLoader::reset_state(&self)
 impl freemarker::cache::TemplateLoader for freemarker::cache::StringLoader
+pub fn freemarker::cache::StringLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::StringLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::StringLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::StringLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::StringLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::StringLoader::reset_state(&self)
 impl freemarker::cache::TemplateLoader for freemarker::cache::URLTemplateLoader
+pub fn freemarker::cache::URLTemplateLoader::as_stateful(&self) -> core::option::Option<&dyn freemarker::cache::StatefulTemplateLoader>
 pub fn freemarker::cache::URLTemplateLoader::find(&self, &str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub fn freemarker::cache::URLTemplateLoader::last_modified(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<i64>
 pub fn freemarker::cache::URLTemplateLoader::read(&self, &dyn freemarker::cache::TemplateSource) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::URLTemplateLoader::read_encoded(&self, &dyn freemarker::cache::TemplateSource, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::cache::URLTemplateLoader::reset_state(&self)
 pub trait freemarker::cache::TemplateLookupStrategy: core::marker::Send + core::marker::Sync
-pub fn freemarker::cache::TemplateLookupStrategy::lookup(&self, &str, core::option::Option<&str>, &'_ mut dyn core::ops::function::FnMut(&str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>) -> freemarker::Result<core::option::Option<freemarker::cache::LookupResult>>
+pub fn freemarker::cache::TemplateLookupStrategy::lookup(&self, &str, core::option::Option<&str>, freemarker::cache::FindFn<'_>) -> freemarker::Result<core::option::Option<freemarker::cache::LookupResult>>
 impl freemarker::cache::TemplateLookupStrategy for freemarker::cache::LookupStrategyDefault020300
-pub fn freemarker::cache::LookupStrategyDefault020300::lookup(&self, &str, core::option::Option<&str>, &'_ mut dyn core::ops::function::FnMut(&str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>) -> freemarker::Result<core::option::Option<freemarker::cache::LookupResult>>
+pub fn freemarker::cache::LookupStrategyDefault020300::lookup(&self, &str, core::option::Option<&str>, freemarker::cache::FindFn<'_>) -> freemarker::Result<core::option::Option<freemarker::cache::LookupResult>>
 pub trait freemarker::cache::TemplateNameFormat
 pub fn freemarker::cache::TemplateNameFormat::normalize_root_based_name(&self, &str) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::TemplateNameFormat::to_root_based_name(&self, &str, &str) -> freemarker::Result<alloc::string::String>
@@ -1440,6 +1649,9 @@ pub fn freemarker::cache::MultiSource::name(&self) -> alloc::string::String
 impl freemarker::cache::TemplateSource for freemarker::cache::StringSource
 pub fn freemarker::cache::StringSource::as_any(&self) -> core::option::Option<&dyn core::any::Any>
 pub fn freemarker::cache::StringSource::name(&self) -> alloc::string::String
+impl freemarker::cache::TemplateSource for freemarker::cache::URLTemplateSource
+pub fn freemarker::cache::URLTemplateSource::as_any(&self) -> core::option::Option<&dyn core::any::Any>
+pub fn freemarker::cache::URLTemplateSource::name(&self) -> alloc::string::String
 pub trait freemarker::cache::TemplateSourceMatcher: core::marker::Send + core::marker::Sync
 pub fn freemarker::cache::TemplateSourceMatcher::matches(&self, &str) -> bool
 impl freemarker::cache::TemplateSourceMatcher for freemarker::cache::AndMatcher
@@ -1456,6 +1668,8 @@ impl freemarker::cache::TemplateSourceMatcher for freemarker::cache::PathGlobMat
 pub fn freemarker::cache::PathGlobMatcher::matches(&self, &str) -> bool
 impl freemarker::cache::TemplateSourceMatcher for freemarker::cache::PathRegexMatcher
 pub fn freemarker::cache::PathRegexMatcher::matches(&self, &str) -> bool
+pub fn freemarker::cache::get_class_name_for_to_string(&dyn freemarker::cache::TemplateLoader) -> alloc::string::String
+pub type freemarker::cache::FindFn<'a> = &'a mut dyn core::ops::function::FnMut(&str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub mod freemarker::core
 pub enum freemarker::core::AssignOp
 pub freemarker::core::AssignOp::DivideEq
@@ -3020,6 +3234,42 @@ pub unsafe fn freemarker::span::Span::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for freemarker::span::Span
 pub fn freemarker::span::Span::from(T) -> T
 pub mod freemarker::template
+pub mod freemarker::template::utility
+pub struct freemarker::template::utility::FnvHasher(_)
+impl core::default::Default for freemarker::template::utility::FnvHasher
+pub fn freemarker::template::utility::FnvHasher::default() -> freemarker::template::utility::FnvHasher
+impl core::hash::Hasher for freemarker::template::utility::FnvHasher
+pub fn freemarker::template::utility::FnvHasher::finish(&self) -> u64
+pub fn freemarker::template::utility::FnvHasher::write(&mut self, &[u8])
+impl core::marker::Freeze for freemarker::template::utility::FnvHasher
+impl core::marker::Send for freemarker::template::utility::FnvHasher
+impl core::marker::Sync for freemarker::template::utility::FnvHasher
+impl core::marker::Unpin for freemarker::template::utility::FnvHasher
+impl core::marker::UnsafeUnpin for freemarker::template::utility::FnvHasher
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::FnvHasher
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::FnvHasher
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::FnvHasher where U: core::convert::From<T>
+pub fn freemarker::template::utility::FnvHasher::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::FnvHasher where U: core::convert::Into<T>
+pub type freemarker::template::utility::FnvHasher::Error = core::convert::Infallible
+pub fn freemarker::template::utility::FnvHasher::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::FnvHasher where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::FnvHasher::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::FnvHasher::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::FnvHasher where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::FnvHasher::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::FnvHasher where T: ?core::marker::Sized
+pub fn freemarker::template::utility::FnvHasher::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::FnvHasher where T: ?core::marker::Sized
+pub fn freemarker::template::utility::FnvHasher::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::FnvHasher
+pub fn freemarker::template::utility::FnvHasher::from(T) -> T
+pub fn freemarker::template::utility::glob_to_regex(&str, bool) -> core::result::Result<regex::regex::string::Regex, alloc::string::String>
+pub fn freemarker::template::utility::html_enc_legacy(&str) -> alloc::string::String
+pub fn freemarker::template::utility::html_escape(&str) -> alloc::string::String
+pub fn freemarker::template::utility::java_trim(&str) -> &str
+pub fn freemarker::template::utility::xml_escape(&str) -> alloc::string::String
+pub type freemarker::template::utility::FnvBuildHasher = core::hash::BuildHasherDefault<freemarker::template::utility::FnvHasher>
 pub enum freemarker::template::DynValue
 pub freemarker::template::DynValue::Bool(bool)
 pub freemarker::template::DynValue::Date(freemarker::value::DateValue)
@@ -3326,7 +3576,7 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::template::SimpleDate where T:
 pub fn freemarker::template::SimpleDate::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::template::SimpleDate
 pub fn freemarker::template::SimpleDate::from(T) -> T
-pub struct freemarker::template::SimpleHash(pub indexmap::map::IndexMap<alloc::string::String, freemarker::TModel, freemarker::utility::FnvBuildHasher>)
+pub struct freemarker::template::SimpleHash(pub indexmap::map::IndexMap<alloc::string::String, freemarker::TModel, freemarker::template::utility::FnvBuildHasher>)
 impl freemarker::template::TemplateHashModel for freemarker::template::SimpleHash
 pub fn freemarker::template::SimpleHash::get(&self, &str) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::template::SimpleHash::is_empty(&self) -> freemarker::Result<bool>
@@ -3738,42 +3988,6 @@ pub fn freemarker::template::SimpleSequence::size(&self) -> freemarker::Result<u
 pub trait freemarker::template::TemplateTransformModel
 pub fn freemarker::template::TemplateTransformModel::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
 pub fn freemarker::template::TemplateTransformModel::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
-pub mod freemarker::utility
-pub struct freemarker::utility::FnvHasher(_)
-impl core::default::Default for freemarker::utility::FnvHasher
-pub fn freemarker::utility::FnvHasher::default() -> freemarker::utility::FnvHasher
-impl core::hash::Hasher for freemarker::utility::FnvHasher
-pub fn freemarker::utility::FnvHasher::finish(&self) -> u64
-pub fn freemarker::utility::FnvHasher::write(&mut self, &[u8])
-impl core::marker::Freeze for freemarker::utility::FnvHasher
-impl core::marker::Send for freemarker::utility::FnvHasher
-impl core::marker::Sync for freemarker::utility::FnvHasher
-impl core::marker::Unpin for freemarker::utility::FnvHasher
-impl core::marker::UnsafeUnpin for freemarker::utility::FnvHasher
-impl core::panic::unwind_safe::RefUnwindSafe for freemarker::utility::FnvHasher
-impl core::panic::unwind_safe::UnwindSafe for freemarker::utility::FnvHasher
-impl<T, U> core::convert::Into<U> for freemarker::utility::FnvHasher where U: core::convert::From<T>
-pub fn freemarker::utility::FnvHasher::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for freemarker::utility::FnvHasher where U: core::convert::Into<T>
-pub type freemarker::utility::FnvHasher::Error = core::convert::Infallible
-pub fn freemarker::utility::FnvHasher::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for freemarker::utility::FnvHasher where U: core::convert::TryFrom<T>
-pub type freemarker::utility::FnvHasher::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn freemarker::utility::FnvHasher::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for freemarker::utility::FnvHasher where T: 'static + ?core::marker::Sized
-pub fn freemarker::utility::FnvHasher::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for freemarker::utility::FnvHasher where T: ?core::marker::Sized
-pub fn freemarker::utility::FnvHasher::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for freemarker::utility::FnvHasher where T: ?core::marker::Sized
-pub fn freemarker::utility::FnvHasher::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for freemarker::utility::FnvHasher
-pub fn freemarker::utility::FnvHasher::from(T) -> T
-pub fn freemarker::utility::glob_to_regex(&str, bool) -> core::result::Result<regex::regex::string::Regex, alloc::string::String>
-pub fn freemarker::utility::html_enc_legacy(&str) -> alloc::string::String
-pub fn freemarker::utility::html_escape(&str) -> alloc::string::String
-pub fn freemarker::utility::java_trim(&str) -> &str
-pub fn freemarker::utility::xml_escape(&str) -> alloc::string::String
-pub type freemarker::utility::FnvBuildHasher = core::hash::BuildHasherDefault<freemarker::utility::FnvHasher>
 pub mod freemarker::value
 pub enum freemarker::value::DateType
 pub freemarker::value::DateType::Date

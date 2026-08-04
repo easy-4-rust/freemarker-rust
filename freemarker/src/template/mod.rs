@@ -1,4 +1,5 @@
 //! 对应 Java `freemarker.template` 包：数据模型、配置、模板
+//! （`template/utility/` 对应 Java `freemarker.template.utility` 包——去包名映射）
 
 pub(crate) mod configuration;
 mod dyn_value;
@@ -15,6 +16,8 @@ mod t_model;
 #[allow(clippy::module_inception)] // Template.java → template/template.rs（一文件一对象约定）
 mod template;
 mod template_model;
+/// 对应 Java `freemarker.template.utility` 包（原顶层 utility/ 迁入）
+pub mod utility;
 pub(crate) mod utility_transforms;
 mod version;
 

@@ -14,8 +14,8 @@ use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, target_
 use crate::builtins::strings_regexp::{compile_pattern, parse_flags, FlagSet};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
+use crate::template::utility::java_trim;
 use crate::template::TModel;
-use crate::utility::java_trim;
 
 /// 目标字符串（数字/布尔按输出规则强制转换）
 fn get_string(env: &mut Environment, target: &Expr) -> Result<String> {

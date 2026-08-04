@@ -367,7 +367,7 @@ pub(crate) struct BodyCtx {
 pub struct MacroFrame {
     /// 宏参数 + `<#local>` 变量（Java `Context.localVars`；:414 setLocalVar）
     /// FNV 哈希（热路径查找）
-    pub(crate) locals: RefCell<HashMap<String, TModel, crate::utility::FnvBuildHasher>>,
+    pub(crate) locals: RefCell<HashMap<String, TModel, crate::template::utility::FnvBuildHasher>>,
     /// 调用方 body 元素（`<@m>body</@m>`；`<#nested>` 回插，Java callPlace.getChildBuffer()）
     pub(crate) call_body: Option<Vec<Element>>,
     /// 体参数名列表（`<@m ; a, b>`；`<#nested v1 v2>` 按位置赋给 a、b ——
@@ -429,8 +429,8 @@ pub struct LambdaValue {
 /// 同时实现 TemplateHashModel/Ex → 可作 TModel 值（`<@ns.macro>`、`ns.var`、`?keys` 等）。
 /// 变量/宏表用 FNV 哈希（热路径查找；迭代序无依赖——keys() 已排序）。
 pub struct Namespace {
-    vars: RefCell<HashMap<String, TModel, crate::utility::FnvBuildHasher>>,
-    macros: RefCell<HashMap<String, Rc<MacroValue>, crate::utility::FnvBuildHasher>>,
+    vars: RefCell<HashMap<String, TModel, crate::template::utility::FnvBuildHasher>>,
+    macros: RefCell<HashMap<String, Rc<MacroValue>, crate::template::utility::FnvBuildHasher>>,
     /// 关联模板名（Java `Namespace.getTemplate()` :3470-3478；错误定位/相对 include 基名）
     /// Rc<str>：主/全局命名空间共享同一份（Environment::new 构造期 1 次分配）
     template_name: Rc<str>,
@@ -443,10 +443,10 @@ impl Namespace {
     fn new(template_name: String) -> Self {
         Namespace {
             vars: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             macros: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             template_name: Rc::from(template_name),
             ns_prefixes: RefCell::new(HashMap::new()),
@@ -457,10 +457,10 @@ impl Namespace {
     fn new_shared(template_name: Rc<str>) -> Self {
         Namespace {
             vars: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             macros: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             template_name,
             ns_prefixes: RefCell::new(HashMap::new()),
@@ -676,7 +676,7 @@ impl<'a> Environment<'a> {
             "html_debug" => {
                 // Java HtmlDebugTemplateExceptionHandler：HTML 转义 + 巨型装饰块——
                 // v1 与 debug 同形（消息转义），文档化偏差（docs/09 §6.3）
-                let msg = crate::utility::html_escape(&e.to_user_message());
+                let msg = crate::template::utility::html_escape(&e.to_user_message());
                 let out = format!(
                     "FreeMarker template error (DEBUG mode; use RETHROW in production!):\n\
                      {msg}\n\
@@ -1127,11 +1127,11 @@ impl<'a> Environment<'a> {
                     let next = match state {
                         EscapeState::Html => {
                             let s = model_to_string(self, &cur)?;
-                            TModel::from_scalar(crate::utility::html_escape(&s))
+                            TModel::from_scalar(crate::template::utility::html_escape(&s))
                         }
                         EscapeState::Xml => {
                             let s = model_to_string(self, &cur)?;
-                            TModel::from_scalar(crate::utility::xml_escape(&s))
+                            TModel::from_scalar(crate::template::utility::xml_escape(&s))
                         }
                         // 占位标识符绑定当前值后求值（Java 解析期占位符替换为内层变换结果，
                         // FTL.jj escapedExpression/doEscape）；占位符与真实变量同名时绑定优先，
@@ -1151,9 +1151,9 @@ impl<'a> Environment<'a> {
             // Java AutoEscBlock：按 outputFormat 转义（v1：html/xml；其余格式 P4 TODO）
             match self.settings.output_format {
                 crate::core::OutputFormatKind::Html | crate::core::OutputFormatKind::XHtml => {
-                    Ok(crate::utility::html_escape(&s))
+                    Ok(crate::template::utility::html_escape(&s))
                 }
-                crate::core::OutputFormatKind::Xml => Ok(crate::utility::xml_escape(&s)),
+                crate::core::OutputFormatKind::Xml => Ok(crate::template::utility::xml_escape(&s)),
                 _ => Ok(s),
             }
         } else {
@@ -1244,7 +1244,7 @@ impl<'a> Environment<'a> {
         // Java :848-879：宏帧 + 参数绑定（求值发生在调用方上下文）
         let frame = Rc::new(MacroFrame {
             locals: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             call_body: body,
             body_params,

@@ -4,6 +4,7 @@
 //! v1 差异：Java 默认 sticky（记住上次命中的 loader 优先查询，:41-42/:62-72），
 //! v1 始终按构造顺序查询（等价 sticky=false，Java:233-235 setSticky）
 
+use crate::cache::stateful_template_loader::StatefulTemplateLoader;
 use crate::cache::{TemplateLoader, TemplateSource};
 use crate::error::{Result, TemplateError};
 use std::sync::Arc;
@@ -63,12 +64,21 @@ impl TemplateLoader for MultiLoader {
         multi.loader.last_modified(&*multi.inner)
     }
 
+    /// `instanceof StatefulTemplateLoader`（TemplateLoader::as_stateful 的覆写）
+    fn as_stateful(&self) -> Option<&dyn StatefulTemplateLoader> {
+        Some(self)
+    }
+}
+
+impl StatefulTemplateLoader for MultiLoader {
     /// 对应 `resetState`（Java MultiTemplateLoader.java:115-126）：清空
-    /// sticky/sick 记忆（v1 无 sticky，见文件头注释）并向内部加载器传播
-    /// （Java 的 instanceof 检查：Rust 默认空操作 + 虚分派等价）
+    /// sticky/sick 记忆（v1 无 sticky，见文件头注释）并向内部实现
+    /// StatefulTemplateLoader 的加载器传播（Java instanceof 检查 → as_stateful）
     fn reset_state(&self) {
         for loader in &self.loaders {
-            loader.reset_state();
+            if let Some(sl) = loader.as_stateful() {
+                sl.reset_state();
+            }
         }
     }
 }
@@ -206,9 +216,9 @@ mod tests {
         multi.reset_state();
         assert_eq!(resets.load(Ordering::SeqCst), 2, "两个内部加载器都被重置");
 
-        // 非有状态加载器（未覆写 reset_state）→ 默认空操作
+        // 非有状态加载器（as_stateful 默认 None）→ instanceof 跳过
         let plain = CountingLoader::new(Arc::new(AtomicUsize::new(0)));
-        plain.reset_state(); // 不 panic 即等价 Java instanceof 跳过
+        assert!(plain.as_stateful().is_none());
     }
 
     /// 记录 reset_state 调用次数的有状态加载器（对应 Java 实现
@@ -236,6 +246,12 @@ mod tests {
             self.inner.read(src)
         }
 
+        fn as_stateful(&self) -> Option<&dyn StatefulTemplateLoader> {
+            Some(self)
+        }
+    }
+
+    impl StatefulTemplateLoader for ResetCountingLoader {
         fn reset_state(&self) {
             self.resets.fetch_add(1, Ordering::SeqCst);
         }

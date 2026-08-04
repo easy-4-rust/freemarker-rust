@@ -17,10 +17,10 @@ use crate::core::{
 };
 use crate::error::{Result, TemplateError};
 use crate::span::Span;
+use crate::template::utility::java_trim;
 use crate::template::{
     TModel, TemplateCollectionModel, TemplateHashModel, TemplateHashModelEx, TemplateSequenceModel,
 };
-use crate::utility::java_trim;
 use crate::value::{DateType, DateValue, TNumber};
 use bigdecimal::ToPrimitive;
 use indexmap::IndexMap;
@@ -1848,16 +1848,16 @@ fn builtin_impl(
             let ici = env.settings.incompatible_improvements.to_int();
             str_builtin(env, target, move |s| {
                 if ici < 2_003_020 {
-                    crate::utility::html_enc_legacy(s)
+                    crate::template::utility::html_enc_legacy(s)
                 } else {
-                    crate::utility::html_escape(s)
+                    crate::template::utility::html_escape(s)
                 }
             })
         }
         "xml" => {
             // Java FTL.jj :2230-2238 BuiltInBannedWhenAutoEscaping（同上）
             check_legacy_escaping_ban(env, name)?;
-            str_builtin(env, target, crate::utility::xml_escape)
+            str_builtin(env, target, crate::template::utility::xml_escape)
         }
         "contains" => {
             let arg = arg_expr(args, 0, "?contains requires one argument")?;
