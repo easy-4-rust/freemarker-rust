@@ -51,139 +51,77 @@ pub enum TemplateError {
 impl TemplateError {
     /// 附加指令栈（`----\nFTL stack trace ...` 段；渲染层 attach 时调用，
     /// 只附加一次——消息已含 "FTL stack trace" 则跳过）
-    pub fn with_stack(mut self, stack: Vec<crate::error::StackFrame>) -> Self {
-        let section = render_ftl_stack_section(&stack);
-        let Some(section) = section else {
-            return self;
-        };
-        match &mut self {
-            TemplateError::InvalidReference { ctx, .. }
-            | TemplateError::TypeMismatch { ctx, .. } => {
-                if ctx.instruction_stack.is_empty() {
-                    ctx.instruction_stack = stack;
-                }
-            }
-            TemplateError::Misc { message }
-            | TemplateError::Parse { message, .. }
-            | TemplateError::Model { message } => {
-                if !message.contains("FTL stack trace") {
-                    message.push_str(&section);
-                }
-            }
-            TemplateError::Stop { message } => {
-                let msg = message.get_or_insert_with(String::new);
-                if !msg.contains("FTL stack trace") {
-                    // Java StopException 无消息 → 消息体 "[No error description was
-                    // available.]"（含栈时同样前置该文本，jar 实测 stop_plain）
-                    if msg.is_empty() {
-                        msg.push_str("[No error description was available.]");
-                    }
-                    msg.push_str(&section);
-                }
-            }
-            TemplateError::NotFound { .. } => {}
-            TemplateError::Flow(_) | TemplateError::Io(_) => {}
-        }
-        self
+    /// 附加指令栈（Java TemplateException 层级；实现见
+    /// error/template_exception.rs::with_stack）
+    pub fn with_stack(self, stack: Vec<crate::error::StackFrame>) -> Self {
+        crate::error::template_exception::with_stack(self, stack)
     }
 
+    /// 变量缺失（Java InvalidReferenceException；实现见
+    /// error/invalid_reference_exception.rs::new_instance）
     pub fn invalid_reference(name: impl Into<String>) -> Self {
-        TemplateError::InvalidReference {
-            name: name.into(),
-            ctx: Box::new(ErrorCtx::default()),
-        }
+        crate::error::invalid_reference_exception::new_instance(name)
     }
 
     /// 带 blame 表达式位置的变量缺失（Java `InvalidReferenceException.getInstance(blamed, env)`；
     /// 渲染层未提供位置时以元素位置回退）
     pub fn invalid_reference_at(name: impl Into<String>, span: Span) -> Self {
-        TemplateError::InvalidReference {
-            name: name.into(),
-            ctx: Box::new(ErrorCtx {
-                span,
-                ..ErrorCtx::default()
-            }),
-        }
+        crate::error::invalid_reference_exception::new_instance_at(name, span)
     }
 
-    /// 附加点链缺失 Tip（Java Dot._eval 的 `newInvalidReferenceException`：
-    /// "It's the step after the last dot that caused this error, not those before it."）
-    pub fn with_dot_tip(mut self) -> Self {
-        if let TemplateError::InvalidReference { ctx, .. } = &mut self {
-            ctx.extra_tip = Some(
-                "It's the step after the last dot that caused this error, not those before it."
-                    .to_string(),
-            );
-        }
-        self
+    /// 附加点链缺失 Tip（Java Dot._eval 的 `newInvalidReferenceException`）
+    pub fn with_dot_tip(self) -> Self {
+        crate::error::invalid_reference_exception::with_dot_tip(self)
     }
 
+    /// 类型不匹配（Java UnexpectedTypeException 族；实现见
+    /// error/unexpected_type_exception.rs）
     pub fn type_mismatch(expected: &'static str, actual: impl Into<String>) -> Self {
-        TemplateError::TypeMismatch {
-            expected,
-            actual: actual.into(),
-            ctx: Box::new(ErrorCtx::default()),
-        }
+        crate::error::unexpected_type_exception::new_type_mismatch(expected, actual)
     }
 
     /// 带 blame 表达式位置的类型不匹配
     pub fn type_mismatch_at(expected: &'static str, actual: impl Into<String>, span: Span) -> Self {
-        TemplateError::TypeMismatch {
-            expected,
-            actual: actual.into(),
-            ctx: Box::new(ErrorCtx {
-                span,
-                ..ErrorCtx::default()
-            }),
-        }
+        crate::error::unexpected_type_exception::new_type_mismatch_at(expected, actual, span)
     }
 
-    /// 附加 blamer 前缀与 blame 表达式（Java `_ErrorDescriptionBuilder.blame(blamed)`
-    /// + `showBlamer(true)` 的 `For "{nodeTypeSymbol}" {role}: ` 段与 `==> {expr}` 行）
-    pub fn with_blame(mut self, node_type_symbol: &str, role: &str, blamed_expr: &str) -> Self {
-        if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
-            ctx.blamer = Some(format!("For \"{node_type_symbol}\" {role}: "));
-            ctx.blamed_expr = Some(blamed_expr.to_string());
-        }
-        self
+    /// 附加 blamer 前缀与 blame 表达式（Java `_ErrorDescriptionBuilder.blame(blamed)`）
+    pub fn with_blame(self, node_type_symbol: &str, role: &str, blamed_expr: &str) -> Self {
+        crate::error::unexpected_type_exception::with_blame(
+            self,
+            node_type_symbol,
+            role,
+            blamed_expr,
+        )
     }
 
-    /// 附加 blamer + blame 表达式 + 位置（Java blame(blamed) 的 blamed.getStartLocation；
-    /// eval 各操作数/内建错误构造用——`==> {blamed}  [in template ... at line L, column C]`）
+    /// 附加 blamer + blame 表达式 + 位置
     pub fn with_blame_at(
-        mut self,
+        self,
         node_type_symbol: &str,
         role: &str,
         blamed_expr: &str,
         template_name: &str,
         span: Span,
     ) -> Self {
-        if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
-            ctx.blamer = Some(format!("For \"{node_type_symbol}\" {role}: "));
-            ctx.blamed_expr = Some(blamed_expr.to_string());
-            ctx.span = span;
-            ctx.template_name = Some(template_name.to_string());
-        }
-        self
+        crate::error::unexpected_type_exception::with_blame_at(
+            self,
+            node_type_symbol,
+            role,
+            blamed_expr,
+            template_name,
+            span,
+        )
     }
 
-    /// 附加赋值目标变量（Java `UnexpectedTypeException(blamedAssignmentTargetVarName, ...)`；
-    /// 与 blame 表达式互斥——消息以 "assignment target variable \"x\"" 代替 "this"，
-    /// 且结尾用 `.` 而非 `:`）
-    pub fn with_assignment_target(mut self, target: &str) -> Self {
-        if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
-            ctx.assignment_target = Some(format!("\"{target}\""));
-        }
-        self
+    /// 附加赋值目标变量（Java `UnexpectedTypeException(blamedAssignmentTargetVarName, ...)`）
+    pub fn with_assignment_target(self, target: &str) -> Self {
+        crate::error::unexpected_type_exception::with_assignment_target(self, target)
     }
 
-    /// 附加 Tip（Java `_ErrorDescriptionBuilder.tip(...)`；TypeMismatch 消息的
-    /// `\n\n----\nTip: ...\n----` 段——数字键哈希目标 / 集合目标等场景）
-    pub fn with_tip(mut self, tip: &str) -> Self {
-        if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
-            ctx.extra_tip = Some(tip.to_string());
-        }
-        self
+    /// 附加 Tip（Java `_ErrorDescriptionBuilder.tip(...)`）
+    pub fn with_tip(self, tip: &str) -> Self {
+        crate::error::unexpected_type_exception::with_tip(self, tip)
     }
 
     /// 附加 blame 位置（模板名 + 表达式起始行列；Java `Expression.getStartLocation` +
@@ -218,25 +156,17 @@ impl TemplateError {
         }
     }
 
-    /// 覆盖期望类型描述（Java `unexpectedTypeErrorDescription` 的 expectedTypesDesc 的
-    /// a/an 形式；默认按 expected 键映射，需要特定措辞的调用点覆盖）
-    pub fn with_expected_phrase(mut self, phrase: &str) -> Self {
-        if let TemplateError::TypeMismatch { ctx, .. } = &mut self {
-            ctx.expected_phrase = Some(phrase.to_string());
-        }
-        self
+    /// 覆盖期望类型描述（Java `unexpectedTypeErrorDescription` 的 expectedTypesDesc）
+    pub fn with_expected_phrase(self, phrase: &str) -> Self {
+        crate::error::unexpected_type_exception::with_expected_phrase(self, phrase)
     }
 
+    /// 通用运行时错误（Java _MiscTemplateException；实现见
+    /// error/_misc_template_exception.rs::new）
     pub fn misc(message: impl Into<String>) -> Self {
-        TemplateError::Misc {
-            message: message.into(),
-        }
+        crate::error::_misc_template_exception::new(message)
     }
 
-    /// 生成与 Java 版对齐的错误消息文本。
-    /// 结构（TemplateException.getMessage()，jar 实测）：
-    /// `{description}{tips}{FTL stack trace 段}`；
-    /// description 含 blame 表达式与其位置（如 `==> missing  [in template ...]`）。
     pub fn to_user_message(&self) -> String {
         match self {
             TemplateError::InvalidReference { name, ctx } => {
@@ -325,37 +255,18 @@ impl TemplateError {
 
 /// Java InvalidReferenceException 的提示段（InvalidReferenceException.java，
 /// `Tip:` 字面，jar 实测逐字）
-pub(crate) const INVALID_REFERENCE_TIP: &str = "If the failing expression is known to legally refer to something that's sometimes null or missing, either specify a default value like myOptionalVar!myDefault, or use <#if myOptionalVar??>when-present<#else>when-missing</#if>. (These only cover the last step of the expression; to cover the whole expression, use parenthesis: (myOptionalVar.foo)!myDefault, (myOptionalVar.foo)??";
+pub(crate) const INVALID_REFERENCE_TIP: &str =
+    crate::error::invalid_reference_exception::INVALID_REFERENCE_TIP;
 
 /// 期望类型描述的 a/an 形式（Java `unexpectedTypeErrorDescription` 的 expectedTypesDesc；
-/// 各调用点措辞见 UnexpectedTypeException 子类与 EvalUtil）
+/// 实现见 error/unexpected_type_exception.rs）
 fn expected_phrase_for(expected: &'static str) -> String {
-    match expected {
-        "number" => "a number".to_string(),
-        "boolean" => "a boolean".to_string(),
-        "hash" => "a hash".to_string(),
-        "sequence" => "a sequence".to_string(),
-        "string" => "a string".to_string(),
-        // Java EvalUtil.coerceModelToStringOrMarkup 的 expectedTypesDesc
-        // （upper_case 等字符串类内建；插值内容在 exec.rs 覆盖为含 "template output" 变体）
-        "string-like value" => {
-            "a string or something automatically convertible to string (number, date or boolean)"
-                .to_string()
-        }
-        "method" => "a method".to_string(),
-        "transform" => "a transform".to_string(),
-        other => format!("a {other}"),
-    }
+    crate::error::unexpected_type_exception::expected_phrase_for(expected)
 }
 
-/// `_DelayedAOrAn`：按首字母元音判定 a/an
+/// `_DelayedAOrAn`：按首字母元音判定 a/an（实现见 error/unexpected_type_exception.rs）
 fn a_or_an(type_name: &str) -> String {
-    let first = type_name.chars().next().unwrap_or('x');
-    if "aeiouAEIOU".contains(first) {
-        format!("an {type_name}")
-    } else {
-        format!("a {type_name}")
-    }
+    crate::error::unexpected_type_exception::a_or_an(type_name)
 }
 
 /// Tips 段（Java `_ErrorDescriptionBuilder.toString` :134-164）：
