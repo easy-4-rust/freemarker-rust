@@ -14,13 +14,11 @@
 //! - OutputFormat → OutputFormatBlock；Setting → PropertySetting.java:136
 //! - Comment → Comment；FtlHeader/RawText/TrimLineStart/NoTrimLineStart → 解析期语义
 
-use crate::core::environment::{expr_desc, model_to_string, LocalEntry, LoopCtx, RunSignal};
+use crate::core::environment::{expr_desc, model_to_string, LocalEntry, RunSignal};
 use crate::core::eval;
 use crate::core::{CallTarget, Element, ElementKind, OutputFormatKind};
 use crate::error::{FlowKind, Result, TemplateError};
-use crate::span::Span;
 use crate::template::{TModel, TemplateDirectiveBody};
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -83,14 +81,8 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             _ => crate::core::dollar_variable::DollarVariable::new(expr.clone()).exec(env),
         },
         ElementKind::If { cond, then, else_ } => {
-            // Java IfBlock.accept :43-61：条件求布尔（modelToBoolean——classic 兼容
-            // 模式下缺失/空值 → false）；then/else 子块。
-            // elseif 链扁平化下钻：else 分支为单个 If 元素时（`<#elseif>`/`<#else>`
-            // 内嵌 `<#if>` 结构同形）沿链求值，不克隆未命中分支——热路径
-            // （长 elseif 链）避免每次条件失败都深克隆剩余整条链。
-            // 条件求值错误按各 case 自身 span 附加位置（run_loop 的 attach_location
-            // 检测到已有位置后不会重复附加，与逐元素执行时的错误定位一致）。
-            exec_if(env, el.span, cond, then, else_)
+            crate::core::if_block::IfBlock::new(cond.clone(), then.clone(), else_.clone(), el.span)
+                .exec(env)
         }
         ElementKind::List {
             seq,
@@ -98,9 +90,18 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             var2,
             body,
             else_,
-        } => exec_list(env, seq, var, var2, body, else_),
-        ElementKind::Items { var, var2, body } => exec_items(env, var, var2, body),
-        ElementKind::Sep { body } => exec_sep(env, body),
+        } => crate::core::iterator_block::IteratorBlock::new(
+            seq.clone(),
+            var.clone(),
+            var2.clone(),
+            body.clone(),
+            else_.clone(),
+        )
+        .exec(env),
+        ElementKind::Items { var, var2, body } => {
+            crate::core::items::Items::new(var.clone(), var2.clone(), body.clone()).exec(env)
+        }
+        ElementKind::Sep { body } => crate::core::sep::Sep::new(body.clone()).exec(env),
         ElementKind::Assignments(els) => {
             crate::core::assignment_instruction::AssignmentInstruction::new(els.clone()).exec(env)
         }
@@ -178,7 +179,13 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             cases,
             default,
             default_pos,
-        } => exec_switch(env, expr, cases, default, default_pos),
+        } => crate::core::switch_block::SwitchBlock::new(
+            expr.clone(),
+            cases.clone(),
+            default.clone(),
+            *default_pos,
+        )
+        .exec(env),
         ElementKind::Attempt { try_, recover } => {
             crate::core::attempt_block::AttemptBlock::new(try_.clone(), recover.clone()).exec(env)
         }
@@ -330,69 +337,6 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
 /// `span`：当前 case 的源码位置（`<#elseif>` 下钻时更新为各 case 自身 span）
 /// `<#if>` 条件类型错误 → Java `For "#if" condition: ... ==> {cond}` 形式
 /// （NonBooleanException 的 blamer/blame/位置）
-fn blame_if_condition(
-    e: TemplateError,
-    env: &mut crate::core::Environment,
-    cond: &crate::core::Expr,
-) -> TemplateError {
-    if let TemplateError::TypeMismatch { ctx, .. } = &e {
-        if ctx.blamer.is_none() {
-            return e.with_blame_at(
-                "#if",
-                "condition",
-                &crate::core::environment::expr_desc(cond),
-                &env.current_template_name,
-                cond.span,
-            );
-        }
-    }
-    crate::core::environment::attach_location(e, &env.current_template_name, cond.span)
-}
-
-fn exec_if(
-    env: &mut crate::core::Environment,
-    span: Span,
-    cond: &crate::core::Expr,
-    then: &[Element],
-    else_: &Option<Vec<Element>>,
-) -> Result<ExecOutcome> {
-    let mut cur_span = span;
-    let mut cond = cond;
-    let mut then = then;
-    let mut else_ = else_;
-    loop {
-        let cm = eval::eval(env, cond).map_err(|e| {
-            crate::core::environment::attach_location(e, &env.current_template_name, cur_span)
-        })?;
-        // Java IfBlock.accept → condition.evalToBoolean：条件类型错误 blame 条件表达式
-        // —— `For "#if" condition: Expected a boolean, but this has evaluated to a
-        // {type}: ==> {cond}`（位置 = 条件表达式起始）
-        let b = eval::model_to_boolean(env, &cm).map_err(|e| blame_if_condition(e, env, cond))?;
-        if b {
-            return Ok(ExecOutcome::Next(then.to_vec()));
-        }
-        match else_ {
-            Some(v) if v.len() == 1 => {
-                if let ElementKind::If {
-                    cond: c2,
-                    then: t2,
-                    else_: e2,
-                } = &v[0].kind
-                {
-                    cur_span = v[0].span;
-                    cond = c2;
-                    then = t2;
-                    else_ = e2;
-                    continue;
-                }
-                return Ok(ExecOutcome::Next(v.clone()));
-            }
-            Some(v) => return Ok(ExecOutcome::Next(v.clone())),
-            None => return Ok(ExecOutcome::Done),
-        }
-    }
-}
-
 /// 所有权版指令执行 —— run_slice 的 mini 栈路径使用：命中分支/调用 body
 /// 直接移动（零克隆）。非热路径 variant 委托 exec(&Element)（借用语义一致）。
 pub(crate) fn exec_owned(env: &mut crate::core::Environment, el: Element) -> Result<ExecOutcome> {
@@ -464,257 +408,6 @@ pub(crate) fn exec_owned(env: &mut crate::core::Environment, el: Element) -> Res
             body_params,
         } => exec_call_impl(env, &callee, &args, body, body_params, span),
         other => exec(env, &Element { kind: other, span }),
-    }
-}
-
-/// `<#list>` —— 对应 Java `IteratorBlock.accept`（:98-111）+ IterationContext
-/// （:190-468）+ `visitIteratorBlock`（Environment.java:3465-3476）：
-/// - 无 `#items`：body 逐项循环（循环变量可见）；`<#sep>` 在两项之间渲染（hasNext 判定）；
-/// - 有 `#items`：body 执行一次（循环变量不可见）；items 块逐项循环；sep 在两项之间渲染
-///   （解析器把 sep 放在 items 之后——本实现按"两项之间"语义处理，注释见 grammar.rs）；
-/// - 空序列：`<#else>` 执行（无循环变量）。
-///   循环变量为 null 项时按 fallbackOnNullLoopVariable 设置回退（IteratorBlock.java:368-376）。
-///
-/// `<#list>` —— 对应 Java `IteratorBlock.accept`（:98-111）+ `IterationContext`
-/// （IteratorBlock.java:190-468）+ `visitIteratorBlock`（Environment.java:3465-3476）：
-/// - `as var`：body 逐项循环（循环变量可见）；
-/// - 无 `as`：body 执行一次（循环变量不可见），`<#items>` 就地元素在到达时
-///   逐项驱动迭代（Java Items.accept → loopForItemsElement，Items.java:40-48）；
-/// - `<#sep>` 就地元素：当前迭代 hasNext 时渲染（Sep.java:35-47）；
-/// - `as k, v`：hashListing —— 遍历 TemplateHashModelEx 键值对（k=键、v=值）；
-/// - 空序列：`<#else>` 执行（无循环变量）。
-///   循环变量为 null 项时按 fallbackOnNullLoopVariable 设置回退（IteratorBlock.java:368-376）。
-fn exec_list(
-    env: &mut crate::core::Environment,
-    seq_expr: &crate::core::Expr,
-    var: &str,
-    var2: &Option<String>,
-    body: &[Element],
-    else_: &Option<Vec<Element>>,
-) -> Result<ExecOutcome> {
-    // Java acceptWithResult :97-102：列表源 null → classic 兼容模式视为空序列
-    // （Constants.EMPTY_SEQUENCE）；strict → assertNonNull（本引擎解析层已抛）
-    let listed = eval::eval(env, seq_expr)?;
-    let listed = if listed.is_nothing() && env.settings.classic_compatible {
-        TModel::from_sequence(Vec::new())
-    } else {
-        listed
-    };
-    // 列出模式（Java FTL.jj List :2808-2812 与 Items :2943-2953：iterCtx.hashListing
-    // 由 `<#list ... as k, v>` 或嵌套 `<#items as k, v>` 置位——`<#list hash>`
-    // 无循环变量 + `<#items as k, v>` 同样按键/值对列出，listhash 用例第 40-44 行）
-    let hash_listing = var2.is_some()
-        || (var.is_empty()
-            && body
-                .iter()
-                .any(|el| matches!(&el.kind, ElementKind::Items { var2: Some(_), .. })));
-    let mut items: crate::core::environment::PendingItems =
-        materialize_list_items(env, &listed, hash_listing)?;
-    if !items.has_next()? {
-        // Java ListElseContainer：空 → else（无循环变量）
-        if let Some(e) = else_ {
-            return Ok(ExecOutcome::Next(e.clone()));
-        }
-        return Ok(ExecOutcome::Done);
-    }
-    // 单个迭代上下文贯穿整个列表（Java IterationContext 单对象模型）
-    let lc = Rc::new(RefCell::new(LoopCtx {
-        var_name: var.to_string(),
-        var2_name: var2.clone(),
-        value: None,
-        key: None,
-        index: 0,
-        has_next: false,
-        pending: items,
-        items_entered: false,
-    }));
-    env.push_local(LocalEntry::Loop(lc.clone()));
-    let r = if !var.is_empty() {
-        // Java executedNestedContentForCollOrSeqListing 的 loopVar1Name != null 分支
-        run_loop_iterations(env, &lc, body)
-    } else {
-        // Java：body 执行一次；#items 元素驱动迭代；break/continue 上传由外层捕获
-        match env.run(body) {
-            Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
-            Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
-            Err(e) => Err(e),
-        }
-    };
-    env.pop_local();
-    r
-}
-
-/// 列表源 → 待迭代项（Java IteratorBlock.acceptWithResult :278-344）：
-/// hashListing → TemplateHashModelEx 键值对（物化，:327-431）；
-/// TemplateCollectionModel 优先（惰性迭代器，:278-308，Java 对 `(4..)` 等无限源
-/// 同样走迭代器）；其次 TemplateSequenceModel（size/get 物化，:310-322）；
-/// 其余 → NonSequenceOrCollectionException / NonExtendedHashException
-fn materialize_list_items(
-    env: &mut crate::core::Environment,
-    listed: &TModel,
-    hash_listing: bool,
-) -> Result<crate::core::environment::PendingItems> {
-    if hash_listing {
-        // Java executedNestedContentForHashListing（:327-431）
-        let ex = listed.hash_ex.clone().ok_or_else(|| {
-            TemplateError::misc(format!(
-                "The value you try to list is a {}, thus you must specify only one loop variable after the \"as\" (there's no separate key and value).",
-                listed.type_name
-            ))
-        })?;
-        let mut out = std::collections::VecDeque::new();
-        // entries()（Java TemplateHashModelEx2.keyValuePairsIterator，:327-431）：
-        // 常规哈希与 keys+get 等价；legacy HashLiteral（重复键）输出原始键值对
-        for (key, value) in ex.entries()? {
-            out.push_back(crate::core::environment::LoopItem {
-                key: Some(TModel::from_scalar(key)),
-                value: Some(value),
-            });
-        }
-        return Ok(crate::core::environment::PendingItems::eager(out));
-    }
-    // 有界范围快路径（Java RangeModel 迭代器 O(1) 前视——has_next 不构造下一项值；
-    // 仅限有界范围：无界（`4..`）保持惰性迭代器路径，ICI < 2.3.21 的
-    // NonListableRightUnboundedRange（迭代为空）不受影响）
-    if let Some(rs) = &listed.range {
-        if !rs.unbounded {
-            return Ok(crate::core::environment::PendingItems::range(
-                crate::core::environment::RangeIterState {
-                    start: rs.start,
-                    index: 0,
-                    cap: rs.count,
-                    ascending: rs.ascending,
-                },
-            ));
-        }
-    }
-    // Java IteratorBlock.java:278：TemplateCollectionModel 优先 → 惰性迭代器
-    if let Some(c) = &listed.collection {
-        let iter = c.iterator()?;
-        return Ok(crate::core::environment::PendingItems::lazy(Box::new(
-            iter.map(|r| {
-                r.map(|v| crate::core::environment::LoopItem {
-                    key: None,
-                    value: Some(v),
-                })
-            }),
-        )));
-    }
-    // Java IteratorBlock.java:310：TemplateSequenceModel → size/get 物化
-    if let Some(s) = &listed.sequence {
-        let size = s.size()?;
-        let mut out = std::collections::VecDeque::new();
-        for i in 0..size {
-            let v = s.get(i)?;
-            out.push_back(crate::core::environment::LoopItem {
-                key: None,
-                value: Some(v),
-            });
-        }
-        return Ok(crate::core::environment::PendingItems::eager(out));
-    }
-    // Java IteratorBlock.java:335-352：classic 兼容模式下非序列/集合值 → 单次迭代，
-    // 循环变量绑定该值本身（2.1 经典语义，`<#list 'a' as x>` → x = "a" 执行一次）
-    if env.settings.classic_compatible {
-        return Ok(crate::core::environment::PendingItems::eager(
-            std::collections::VecDeque::from([crate::core::environment::LoopItem {
-                key: None,
-                value: Some(listed.clone()),
-            }]),
-        ));
-    }
-    // Java NonSequenceOrCollectionException（v1 消息简化）
-    let _ = env;
-    Err(TemplateError::misc(format!(
-        "The value you try to list is a {}; it must be a sequence or collection.",
-        listed.type_name
-    )))
-}
-
-/// 迭代驱动：逐项取 pending 队首，绑定循环变量并执行块（Java IterationContext
-/// 的 do-while 循环，:270-325；break 停、continue 续、Returned 上传；
-/// 集合源惰性拉取——前视 has_next 由 PendingItems 完成）
-fn run_loop_iterations(
-    env: &mut crate::core::Environment,
-    lc: &Rc<RefCell<LoopCtx>>,
-    block: &[Element],
-) -> Result<ExecOutcome> {
-    loop {
-        // 单次借用完成 pop + 循环变量绑定 + has_next 前视（热路径减少 RefCell 借用）
-        let item_pending = {
-            let mut c = lc.borrow_mut();
-            match c.pending.pop()? {
-                Some(i) => {
-                    c.key = i.key.clone();
-                    c.value = i.value;
-                    c.has_next = c.pending.has_next()?;
-                    true
-                }
-                None => false,
-            }
-        };
-        if !item_pending {
-            break;
-        }
-        match env.run(block) {
-            Ok(RunSignal::Completed) => {}
-            Ok(RunSignal::Returned(v)) => return Ok(ExecOutcome::ReturnValue(v)),
-            Err(TemplateError::Flow(FlowKind::Break)) => break,
-            Err(TemplateError::Flow(FlowKind::Continue)) => {
-                lc.borrow_mut().index += 1;
-                continue;
-            }
-            Err(e) => return Err(e),
-        }
-        lc.borrow_mut().index += 1;
-    }
-    Ok(ExecOutcome::Done)
-}
-
-/// `<#items>` —— 对应 Java `Items.accept`（Items.java:40-48）→ `loopForItemsElement`
-/// （IteratorBlock.java:230-250）：绑定循环变量名后逐项驱动 items body；
-/// 结束恢复 var_name（Java finally 语义）。
-fn exec_items(
-    env: &mut crate::core::Environment,
-    var: &str,
-    var2: &Option<String>,
-    body: &[Element],
-) -> Result<ExecOutcome> {
-    let lc = env
-        .get_loop_context(None)
-        .ok_or_else(|| TemplateError::misc("#items without iteration in context"))?;
-    {
-        let mut c = lc.borrow_mut();
-        if c.items_entered {
-            return Err(TemplateError::misc(
-                "The #items directive was already entered earlier for this listing.",
-            ));
-        }
-        c.items_entered = true;
-        c.var_name = var.to_string();
-        c.var2_name = var2.clone();
-    }
-    let r = run_loop_iterations(env, &lc, body);
-    {
-        let mut c = lc.borrow_mut();
-        c.var_name.clear();
-        c.var2_name = None;
-    }
-    r
-}
-
-/// `<#sep>` —— 对应 Java `Sep.accept`（Sep.java:35-47）：当前迭代 hasNext 时渲染 body
-fn exec_sep(env: &mut crate::core::Environment, body: &[Element]) -> Result<ExecOutcome> {
-    let lc = env
-        .get_loop_context(None)
-        .ok_or_else(|| TemplateError::misc("#sep without iteration in context"))?;
-    if !lc.borrow().has_next {
-        return Ok(ExecOutcome::Done);
-    }
-    match env.run(body) {
-        Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
-        Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
-        Err(e) => Err(e),
     }
 }
 
@@ -1018,86 +711,6 @@ fn exec_nested(
 /// 目标求值一次；逐个 case 以 `==` 语义比较（EvalUtil.compare，:66-71）；
 /// 匹配后 fall-through 执行后续 case 与 default；未匹配 → default；
 /// case 体内的 break/continue 被捕获并当作 break（:108-115 Java 注释确认的怪癖）。
-fn exec_switch(
-    env: &mut crate::core::Environment,
-    expr: &crate::core::Expr,
-    cases: &[crate::core::CaseDef],
-    default: &Option<Vec<Element>>,
-    default_pos: &Option<usize>,
-) -> Result<ExecOutcome> {
-    let searched = eval::eval(env, expr)?;
-    let mut matched: Option<usize> = None;
-    for (i, c) in cases.iter().enumerate() {
-        let v = eval::eval(env, &c.value)?;
-        if eval::compare_models(env, &searched, &v, eval::CmpOp::Eq)? {
-            matched = Some(i);
-            break;
-        }
-    }
-    let mut r = ExecOutcome::Done;
-    let mut stopped_by_flow = false;
-    match matched {
-        Some(start) => {
-            // Java SwitchBlock.accept：子块按源码序 fall-through（default 也按源码位参与）。
-            // default 之前的 case 下标直接映射源码位；default 之后的 case 源码位 +1。
-            let source_start = match default_pos {
-                Some(dp) if *dp <= start => start + 1,
-                _ => start,
-            };
-            let mut src_idx = source_start;
-            loop {
-                // 源码序取下一个子块：default 在 default_pos 位
-                let block: &[Element] = match default_pos {
-                    Some(dp) if *dp == src_idx => {
-                        if let Some(d) = default {
-                            d
-                        } else {
-                            break;
-                        }
-                    }
-                    _ => {
-                        let case_idx = match default_pos {
-                            Some(dp) if *dp < src_idx => src_idx - 1,
-                            _ => src_idx,
-                        };
-                        match cases.get(case_idx) {
-                            Some(c) => &c.body,
-                            None => break,
-                        }
-                    }
-                };
-                match env.run(block) {
-                    Ok(RunSignal::Completed) => {}
-                    Ok(RunSignal::Returned(v)) => {
-                        r = ExecOutcome::ReturnValue(v);
-                        break;
-                    }
-                    // Java SwitchBlock :108-115：break/continue 均视为 break
-                    Err(TemplateError::Flow(_)) => {
-                        stopped_by_flow = true;
-                        break;
-                    }
-                    Err(e) => return Err(e),
-                }
-                src_idx += 1;
-            }
-            let _ = stopped_by_flow;
-        }
-        None => {
-            // 未匹配：仅执行 default（Java legacy 怪癖：default 不后落到后续 case）
-            if let Some(d) = default {
-                match env.run(d) {
-                    Ok(RunSignal::Completed) => {}
-                    Ok(RunSignal::Returned(v)) => r = ExecOutcome::ReturnValue(v),
-                    Err(TemplateError::Flow(_)) => {}
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-    }
-    Ok(r)
-}
-
 /// `<#attempt>/<#recover>` —— 对应 Java `Environment.visitAttemptRecover`（:3542-3573）：
 /// try 输出捕获；错误（非 Flow/Return——Java 中它们是 RuntimeException 不被捕获）→ 丢弃
 /// 输出并执行 recover；attemptExceptionReporter v1 忽略。
