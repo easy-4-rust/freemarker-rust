@@ -48,11 +48,8 @@ const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 pub fn render(template: &Template, root: TModel, out: &mut dyn Write) -> Result<()> {
     let mut env = Environment::new(template, root, out);
     // Java Environment.process :322 doAutoImportsAndIncludes → Configuration
-    // doAutoImports（Configuration.java:3680-3685）：autoImports（ns → 模板路径）
-    // 在每次渲染前 importLib
-    for (ns, path) in &template.configuration.auto_imports {
-        env.import_lib(path, ns)?;
-    }
+    // doAutoImports/doAutoIncludes（Configuration.java:3679-3748）在 process()
+    // 内执行（三层 auto import/include 合并，见 do_auto_imports_and_includes）
     env.process()
 }
 
@@ -106,6 +103,14 @@ pub struct Environment<'a> {
     auto_escape: bool,
     /// 当前模板名（include/import 执行时切换；Java getCurrentTemplate :257-267；错误定位用）
     pub(crate) current_template_name: String,
+    /// 词法模板名 —— 对应 Java `getCurrentTemplate()`（Environment.java:257-267：
+    /// instructionStack 栈顶元素的 template 字段 = 当前词法所在模板）。与
+    /// `current_template_name`（运行期当前模板，仅 include/import 切换）不同：
+    /// 宏/函数体内词法模板 = **宏定义所在模板**（Java 各元素解析期绑定的 template），
+    /// `<#nested>` 回插时 = 调用点模板。`.caller_template_name`
+    /// （BuiltinVariable.java:264-267）与 `?absolute_template_name` 的标量基准
+    /// （BuiltInsForStringsMisc.java:165-167 getTemplate().getName()）依赖它。
+    pub(crate) lexical_template_name: String,
     /// 当前模板的 ns_prefixes（`<#ftl ns_prefixes=...>`；include 沿用主模板、
     /// import 用库模板自己的——Java currentNamespace.getTemplate().getNamespaceForPrefix）
     current_ns_prefixes: HashMap<String, String>,
@@ -137,6 +142,28 @@ pub struct Environment<'a> {
     /// 沿父元素链找最近 Macro 元素的等价物；宏体执行时置名、`<#nested>` 回插时
     /// 恢复调用方值）
     pub(crate) current_macro_name: Option<String>,
+    // -----------------------------------------------------------------------
+    // 三层 auto import/include 分层（Java Configurable 继承链：
+    // Configuration → Template → Environment；Environment.java:322 process 前
+    // doAutoImportsAndIncludes → Configuration.java:3679-3748）：
+    // -----------------------------------------------------------------------
+    /// 本环境（env）层 auto imports（Java `Environment.addAutoImport` ——
+    /// Configurable.autoImports 在 env 层自有表；getAutoImportsWithoutFallback）
+    pub(crate) env_auto_imports: Vec<(String, String)>,
+    /// 本环境（env）层 auto includes（Java `Environment.addAutoInclude`）
+    pub(crate) env_auto_includes: Vec<String>,
+    /// 主模板（t）层 auto imports —— Environment 构造时从
+    /// `template.template_configuration` 复制（Java：TemplateConfiguration.apply
+    /// 在模板加载时把 tc.autoImports 合并进 Template 对象，
+    /// TemplateConfiguration.java:399-402 + TemplateCache.java:583；
+    /// t.getAutoImportsWithoutFallback()）
+    pub(crate) t_auto_imports: Vec<(String, String)>,
+    /// 主模板（t）层 auto includes（Java t.getAutoIncludesWithoutFallback()）
+    pub(crate) t_auto_includes: Vec<String>,
+    /// custom state 表 —— 对应 Java `Environment.customStateVariables`
+    /// （Environment.java:3405-3446：IdentityHashMap<Object,Object>；
+    /// 键 identity 语义 Rust 侧用 String；值可为 null → Option 槽位）
+    pub(crate) custom_state: RefCell<HashMap<String, Option<TModel>>>,
 }
 
 /// run 循环结束信号（`<#return>` 专用；Java ReturnInstruction.Return）。
@@ -577,6 +604,15 @@ impl<'a> Environment<'a> {
             crate::core::AutoEscaping::Off => false,
             crate::core::AutoEscaping::Default => base_settings.output_format.is_markup(),
         };
+        // t 层 auto import/include —— Java TemplateConfiguration.apply 在模板
+        // 加载时合并进 Template 对象（TemplateConfiguration.java:399-402）；
+        // Rust 侧 tc 挂于 template.template_configuration，构造时复制为
+        // doAutoImportsAndIncludes 的 t 层数据（Configuration.java:3691/3721
+        // t.getAutoImportsWithoutFallback()）
+        let (t_auto_imports, t_auto_includes) = match &template.template_configuration {
+            Some(tc) => (tc.auto_imports.clone(), tc.auto_includes.clone()),
+            None => (Vec::new(), Vec::new()),
+        };
         Environment {
             template,
             root,
@@ -600,12 +636,18 @@ impl<'a> Environment<'a> {
             escapes: Vec::new(),
             auto_escape,
             current_template_name: template.name.clone(),
+            lexical_template_name: template.name.clone(),
             current_ns_prefixes: template.ns_prefixes.clone(),
             recovered_errors: Vec::new(),
             number_fmt_cache: RefCell::new(None),
             instruction_stack: Vec::new(),
             stack_shown: Vec::new(),
             current_macro_name: None,
+            env_auto_imports: Vec::new(),
+            env_auto_includes: Vec::new(),
+            t_auto_imports,
+            t_auto_includes,
+            custom_state: RefCell::new(HashMap::new()),
         }
     }
 
@@ -624,6 +666,9 @@ impl<'a> Environment<'a> {
         if !self.root.is_hash() {
             return Err(TemplateError::misc("The data model must be a hash"));
         }
+        // Java Environment.process :322：渲染主模板前先执行三层
+        // autoImports/autoIncludes（Configuration.doAutoImportsAndIncludes）
+        self.do_auto_imports_and_includes()?;
         // 引用拷贝技巧：先复制 &Template 引用再借 root，避免整棵根元素树深克隆
         // （run 零克隆执行，见 run_slice）
         let t = self.template;
@@ -1494,13 +1539,16 @@ impl<'a> Environment<'a> {
             register_macro(&cur_ns, name, def);
         }
         let prev_name = self.current_template_name.clone();
+        let prev_lexical = self.lexical_template_name.clone();
         let prev_ns_prefixes = self.current_ns_prefixes.clone();
         self.current_template_name = included.name.clone();
+        self.lexical_template_name = included.name.clone();
         // Java include：currentNamespace 不变 → ns_prefixes 沿用主模板（不切换）
         self.include_stack.push(included.name.clone());
         let r = self.run(&included.root);
         self.include_stack.pop();
         self.current_template_name = prev_name;
+        self.lexical_template_name = prev_lexical;
         self.current_ns_prefixes = prev_ns_prefixes;
         match r {
             Ok(RunSignal::Completed) => Ok(()),
@@ -1512,9 +1560,18 @@ impl<'a> Environment<'a> {
     }
 
     /// `<#import path as ns>`（Java LibraryLoad.accept → importLib :3232-3290）。
-    /// v1 立即初始化命名空间（懒初始化 LazilyInitializedNamespace :3524-3593 语义：
-    /// 首次访问才 get_template 并注册宏——P4 优化项，v1 直接执行等价结果）。
+    /// 惰性开关取 lazyImports 设置（Java importLib(String,String) :3168-3170 →
+    /// importLib(name, ns, getLazyImports())）。
     pub fn import_lib(&mut self, path: &str, ns_var: &str) -> Result<()> {
+        let lazy = self.settings.lazy_imports;
+        self.import_lib_explicit(path, ns_var, lazy)
+    }
+
+    /// 指定惰性与否的 import —— 对应 Java `importLib(String, String, boolean)`
+    /// （Environment.java:3194-3207）：lazy → 只建 LazilyInitializedNamespace
+    /// 占位并绑定变量，不查模板；eager → 立即 getTemplateForImporting +
+    /// initializeImportLibNamespace。
+    pub fn import_lib_explicit(&mut self, path: &str, ns_var: &str, lazy: bool) -> Result<()> {
         // Java importLib（:3232-3290）：toFullTemplateName 后按模板名格式规范化
         // （"/import_lib.ftl" 与 "import_lib.ftl" 是同一模板——loadedLibs 缓存键一致）
         let resolved = self.resolve_template_name(path);
@@ -1523,6 +1580,15 @@ impl<'a> Environment<'a> {
             .unwrap_or(resolved);
         let ns = if let Some(existing) = self.loaded_libs.get(&full) {
             existing.clone()
+        } else if lazy {
+            // Java :3202-3206 lazy 分支：不触发模板查找（TemplateLookupStrategy
+            // 可能昂贵），只建 LazilyInitializedNamespace 占位（Environment.java
+            // :3501-3513；快照 locale/encoding）。v1 占位后不加载——首次访问才
+            // ensureInitialized 的按需初始化需 env 回引，登记文档化偏差
+            // （include_and_import_configurable_layers_test.rs 头注）。
+            let ns = Rc::new(Namespace::new(full.clone()));
+            self.loaded_libs.insert(full, ns.clone());
+            ns
         } else {
             let locale = self.settings.locale.clone();
             let t = self
@@ -2734,6 +2800,157 @@ fn acquisition_candidates(full: &str) -> Vec<String> {
         l -= 1; // Java：basePath.lastIndexOf(SLASH, l-2)+1 → 段级等价于去尾段
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// 新增区域：custom state API 与三层 auto import/include 分层
+// （Java Environment.setCustomState/getCustomState :3405-3446；
+//  doAutoImportsAndIncludes → Configuration.java:3679-3748）
+// ---------------------------------------------------------------------------
+
+impl<'a> Environment<'a> {
+    /// 读取 custom state —— 对应 Java `Environment.getCustomState(Object)`
+    /// （Environment.java:3413-3420：表未建或键缺失或存 null → null）
+    pub fn get_custom_state(&self, key: &str) -> Option<TModel> {
+        self.custom_state.borrow().get(key).and_then(|v| v.clone())
+    }
+
+    /// 写入 custom state —— 对应 Java `Environment.setCustomState(Object, Object)`
+    /// （Environment.java:3436-3446：返回旧值（缺失/null 均 null）；值可为 null——
+    /// 模板数字/日期格式工厂等可插拔对象的 Environment 级状态（如缓存）。
+    /// Java 键按对象 identity，Rust 侧键为 String）
+    pub fn set_custom_state(&mut self, key: &str, value: Option<TModel>) -> Option<TModel> {
+        // 旧值为 Option<Option<TModel>>：键缺失 → None；键存在 → Some(旧存值)。
+        // flatten 后：缺失或旧存 null → None（Java put 返回 null），等价
+        // getCustomState 的 null-for-both 语义
+        self.custom_state
+            .borrow_mut()
+            .insert(key.to_string(), value)
+            .flatten()
+    }
+
+    /// 环境层添加 auto import —— 对应 Java `Environment.addAutoImport(String, String)`
+    /// （Configurable.java:1944-1960：同名先移除再追加——移到插入序末尾）
+    pub fn add_auto_import(&mut self, namespace_var_name: &str, template_name: &str) {
+        self.env_auto_imports
+            .retain(|(n, _)| n != namespace_var_name);
+        self.env_auto_imports
+            .push((namespace_var_name.to_string(), template_name.to_string()));
+    }
+
+    /// 环境层移除 auto import —— 对应 Java `Environment.removeAutoImport`
+    /// （Configurable.java:1966-1974）
+    pub fn remove_auto_import(&mut self, namespace_var_name: &str) {
+        self.env_auto_imports
+            .retain(|(n, _)| n != namespace_var_name);
+    }
+
+    /// 环境层添加 auto include —— 对应 Java `Environment.addAutoInclude(String)`
+    /// （Configurable.java:2083-2096 → :2098-2112：同层去重——先移除再追加）
+    pub fn add_auto_include(&mut self, template_name: &str) {
+        self.env_auto_includes.retain(|n| n != template_name);
+        self.env_auto_includes.push(template_name.to_string());
+    }
+
+    /// 环境层移除 auto include —— 对应 Java `Environment.removeAutoInclude`
+    /// （Configurable.java:2175-2186）
+    pub fn remove_auto_include(&mut self, template_name: &str) {
+        self.env_auto_includes.retain(|n| n != template_name);
+    }
+
+    /// 设置 lazyImports —— 对应 Java `Environment.setLazyImports(boolean)`
+    /// （Configurable.java:1882-1889；`<#import>` 指令与 lazyAutoImports 未设置时
+    /// auto imports 的惰性开关）
+    pub fn set_lazy_imports(&mut self, lazy: bool) {
+        self.settings.to_mut().lazy_imports = lazy;
+    }
+
+    /// 设置 lazyAutoImports —— 对应 Java `Environment.setLazyAutoImports(Boolean)`
+    /// （Configurable.java:1912-1920；None = 未设置 → 回退 lazyImports）
+    pub fn set_lazy_auto_imports(&mut self, lazy: Option<bool>) {
+        self.settings.to_mut().lazy_auto_imports = lazy;
+    }
+
+    /// lazyImports 读数 —— 对应 Java `Environment.getLazyImports()`
+    /// （Configurable.java:1852-1854）
+    pub fn get_lazy_imports(&self) -> bool {
+        self.settings.lazy_imports
+    }
+
+    /// lazyAutoImports 读数 —— 对应 Java `Environment.getLazyAutoImports()`
+    /// （Configurable.java:1900-1904；None = 未设置）
+    pub fn get_lazy_auto_imports(&self) -> Option<bool> {
+        self.settings.lazy_auto_imports
+    }
+
+    /// 渲染前执行三层 auto imports/includes —— 对应 Java
+    /// `Configuration.doAutoImportsAndIncludes(env)`（Configuration.java:3679-3748；
+    /// Environment.process :322 调用）：cfg 层（父）→ t 层（主模板）→ env 层（子），
+    /// 低层同名被高层覆盖（cfg 层跳过 t/env 已有名字，t 层跳过 env 已有名字）。
+    /// auto imports 的惰性开关：
+    /// `env.getLazyAutoImports() ?? env.getLazyImports()`（Configuration.java:3690-3692；
+    /// Java 的三级回退链 env → template → cfg 以 Environment::new 合并后的
+    /// settings 等价）。
+    pub fn do_auto_imports_and_includes(&mut self) -> Result<()> {
+        let cfg_auto_imports = self.template.configuration.auto_imports.clone();
+        let cfg_auto_includes = self.template.configuration.auto_includes.clone();
+        let t_auto_imports = self.t_auto_imports.clone();
+        let t_auto_includes = self.t_auto_includes.clone();
+        let env_auto_imports = self.env_auto_imports.clone();
+        let env_auto_includes = self.env_auto_includes.clone();
+        let lazy_auto = self
+            .settings
+            .lazy_auto_imports
+            .unwrap_or(self.settings.lazy_imports);
+        // doAutoImports（Configuration.java:3687-3713）：按层 importLib，
+        // 低层跳过高层已有 ns 名
+        for (ns, path) in &cfg_auto_imports {
+            if !t_auto_imports.iter().any(|(n, _)| n == ns)
+                && !env_auto_imports.iter().any(|(n, _)| n == ns)
+            {
+                self.import_lib_explicit(path, ns, lazy_auto)?;
+            }
+        }
+        for (ns, path) in &t_auto_imports {
+            if !env_auto_imports.iter().any(|(n, _)| n == ns) {
+                self.import_lib_explicit(path, ns, lazy_auto)?;
+            }
+        }
+        for (ns, path) in &env_auto_imports {
+            self.import_lib_explicit(path, ns, lazy_auto)?;
+        }
+        // doAutoIncludes（Configuration.java:3715-3742）：按层 include
+        // （env.include(getTemplate(templateName, env.getLocale()))，:3736-3741）
+        let locale = self.settings.locale.clone();
+        for name in &cfg_auto_includes {
+            if !t_auto_includes.iter().any(|n| n == name)
+                && !env_auto_includes.iter().any(|n| n == name)
+            {
+                let t = self
+                    .template
+                    .configuration
+                    .get_template_localized(name, Some(&locale))?;
+                self.include_template(&t)?;
+            }
+        }
+        for name in &t_auto_includes {
+            if !env_auto_includes.iter().any(|n| n == name) {
+                let t = self
+                    .template
+                    .configuration
+                    .get_template_localized(name, Some(&locale))?;
+                self.include_template(&t)?;
+            }
+        }
+        for name in &env_auto_includes {
+            let t = self
+                .template
+                .configuration
+                .get_template_localized(name, Some(&locale))?;
+            self.include_template(&t)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
