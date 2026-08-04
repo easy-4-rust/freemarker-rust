@@ -22,7 +22,6 @@ use crate::core::{ArithmeticEngine, AssignOp, CallTarget, Element, ElementKind, 
 use crate::error::{FlowKind, Result, TemplateError};
 use crate::span::Span;
 use crate::template::{TModel, TemplateDirectiveBody};
-use crate::value::TNumber;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -52,84 +51,38 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             text,
             strip_before,
             strip_after,
-            ..
-        } => {
-            // Java TextBlock.accept :65-70；裁剪语义对应 postParseCleanup :140-167：
-            // opening/trailing 两段在原始文本上独立计算，取其中间段
-            // （顺序执行会导致纯空白文本 "\n  " 残留，见 TextBlock.java:148-167）
-            let t = strip_text(text, *strip_before, *strip_after, env);
-            env.emit(t)?;
-            Ok(ExecOutcome::Done)
-        }
+            orig_end_line,
+        } => crate::core::text_block::TextBlock::new(
+            text.clone(),
+            *strip_before,
+            *strip_after,
+            *orig_end_line,
+            false,
+        )
+        .exec(env),
         ElementKind::NoParse {
             text,
             strip_before,
             strip_after,
-            ..
-        } => {
-            // Java：<#noparse> 是 unparsed 标记的 TextBlock（TextBlock.java:31-33），
-            // postParseCleanup 与普通文本走同一剥离规则（noparse 用例）
-            let t = strip_text(text, *strip_before, *strip_after, env);
-            env.emit(t)?;
-            Ok(ExecOutcome::Done)
-        }
+            orig_end_line,
+        } => crate::core::text_block::TextBlock::new(
+            text.clone(),
+            *strip_before,
+            *strip_after,
+            *orig_end_line,
+            true,
+        )
+        .exec(env),
         ElementKind::Interpolation {
             expr,
             legacy_min_frac,
             legacy_max_frac,
         } => match (legacy_min_frac, legacy_max_frac) {
-            // 旧式 `#{expr[ ; mNMN]}`（Java NumericalOutput.accept：
-            // evalToNumber → NumberFormat(min, max, grouping=false) 输出；
-            // 不经过 <#escape> 栈，仅 autoesc/outputFormat 转义）
             (Some(min), Some(max)) => {
-                let n = eval::eval(env, expr)?.get_number()?;
-                let s = legacy_number_format(&n, *min, *max, &env.settings.locale);
-                env.emit(&legacy_auto_escaped(env, &s))?;
-                Ok(ExecOutcome::Done)
+                crate::core::dollar_variable::NumericalOutput::new(expr.clone(), *min, *max)
+                    .exec(env)
             }
-            // Java DollarVariable：求值 → 转义 → 输出字符串 → 写出
-            // （P4：转义表达式接收插值模型而非字符串——嵌套 escape 组合与
-            // `<#escape x as h[x]>` 数字索引需要原值，见 environment.rs apply_escape）
-            _ => {
-                let m = eval::eval(env, expr)?;
-                if m.is_nothing() {
-                    // Java DollarVariable.accept → EvalUtil.coerceModelToTextualCommon →
-                    // coerceModelToTextualCommon（EvalUtil.java:486-489）：classic 兼容
-                    // 模式回退空串；strict → InvalidReferenceException.getInstance(blamed,
-                    // env)——blamed = 整个插值表达式（位置 = 表达式起始），且 blamed 为
-                    // Dot/DynamicKeyName 时附 "It's the step after the last dot..." Tip
-                    // （InvalidReferenceException.java:110-158，jar 实测 missing_var_nested）
-                    if env.settings.classic_compatible {
-                        return Ok(ExecOutcome::Done);
-                    }
-                    let mut e = TemplateError::invalid_reference_at(
-                        crate::core::environment::expr_desc(expr),
-                        expr.span,
-                    );
-                    if let TemplateError::InvalidReference { ctx, .. } = &mut e {
-                        if ctx.template_name.is_none() {
-                            ctx.template_name = Some(env.current_template_name.clone());
-                        }
-                    }
-                    if matches!(
-                        expr.kind,
-                        crate::core::ExprKind::Dot { .. } | crate::core::ExprKind::DynKey { .. }
-                    ) {
-                        e = e.with_dot_tip();
-                    }
-                    return Err(e);
-                }
-                // Java DollarVariable.calculateInterpolatedStringOrMarkup：
-                // 内容类型错误 blame 插值表达式——`For "${...}" content: Expected a
-                // string or something automatically convertible to string (number, date
-                // or boolean), or "template output" , but this has evaluated to a {type}:
-                // ==> {expr}`（位置 = 表达式起始）
-                let s = env
-                    .apply_escape(&m)
-                    .map_err(|e| blame_interpolation_content(e, env, expr))?;
-                env.emit(&s)?;
-                Ok(ExecOutcome::Done)
-            }
+            _ => crate::core::dollar_variable::DollarVariable::new(expr.clone()).exec(env),
         },
         ElementKind::If { cond, then, else_ } => {
             // Java IfBlock.accept :43-61：条件求布尔（modelToBoolean——classic 兼容
@@ -616,74 +569,9 @@ pub(crate) fn exec_owned(env: &mut crate::core::Environment, el: Element) -> Res
 /// （NumericalOutput.java:84-112）：`NumberFormat.getNumberInstance(locale)` +
 /// setMinimum/MaximumFractionDigits + setGroupingUsed(false)；NumberFormat 默认舍入为
 /// HALF_EVEN；超出 max 的位舍入、不足 min 的位补零、超出 min 的尾零剥除。
-fn legacy_number_format(n: &TNumber, min_frac: u32, max_frac: u32, locale: &str) -> String {
-    use bigdecimal::RoundingMode;
-    match n {
-        TNumber::Float(f) if f.is_nan() || f.is_infinite() => {
-            // Java NumberFormat.format：NaN → "NaN"，±∞ → "∞"
-            return if f.is_nan() {
-                "NaN".to_string()
-            } else {
-                "\u{221E}".to_string()
-            };
-        }
-        TNumber::Double(d) if d.is_nan() || d.is_infinite() => {
-            return if d.is_nan() {
-                "NaN".to_string()
-            } else {
-                "\u{221E}".to_string()
-            };
-        }
-        _ => {}
-    }
-    let rounded = n
-        .as_big_decimal()
-        .with_scale_round(max_frac as i64, RoundingMode::HalfEven);
-    let mut s = rounded.to_plain_string();
-    // 剥除超出 min_frac 的尾部零（Java NumberFormat 不输出多余尾零；
-    // with_scale_round 已保证小数位 = max_frac ≥ min_frac，只需剥零）
-    if let Some(dot) = s.find('.') {
-        let mut frac_end = s.len();
-        while frac_end - dot - 1 > min_frac as usize && s.as_bytes()[frac_end - 1] == b'0' {
-            frac_end -= 1;
-        }
-        if frac_end - dot - 1 == 0 {
-            s.truncate(dot); // 小数全零 → 去掉小数点（"2.00" → "2"）
-        } else {
-            s.truncate(frac_end);
-        }
-    }
-    // Locale 感知的小数点替换：fr_FR 等欧洲 locale 用 ',' 作小数点
-    // （Java NumberFormat.getNumberInstance(locale) 的行为；
-    //  与 format.rs decimal_separator/group_separator 一致）
-    let dec_sep = match locale.split('_').next().unwrap_or("en") {
-        "fr" | "de" | "es" | "tr" | "it" | "pt" | "nl" | "sv" | "cs" | "pl" | "hu" | "ro"
-        | "ru" | "uk" | "bg" | "el" | "fi" | "da" | "no" | "sk" | "sl" | "hr" | "lt" | "lv"
-        | "et" | "id" | "vi" | "th" => ',',
-        _ => '.',
-    };
-    if dec_sep != '.' {
-        s = s.replace('.', &dec_sep.to_string());
-    }
-    s
-}
-
 /// 旧式 `#{...}` 的自动转义 —— 对应 Java NumericalOutput 的 autoEscOF
 /// （NumericalOutput.java:41-43：autoEscaping && outputFormat 为 MarkupOutputFormat；
 /// 不经过 `<#escape>` 栈 —— StringOutput 的 escapedExpression 仅用于 `${...}`）
-fn legacy_auto_escaped(env: &crate::core::Environment, s: &str) -> String {
-    if !env.is_auto_escape() {
-        return s.to_string();
-    }
-    match env.settings.output_format {
-        OutputFormatKind::Html | OutputFormatKind::XHtml => {
-            crate::template::utility::html_escape(s)
-        }
-        OutputFormatKind::Xml => crate::template::utility::xml_escape(s),
-        _ => s.to_string(),
-    }
-}
-
 /// 赋值 —— 对应 Java `Assignment.accept`（Assignment.java:80-168）：
 /// `=` 直接赋值（缺失 → InvalidReference）；`+=` 先取旧值再字符串拼接/数值相加
 /// （AddConcatExpression._eval）；`-=`/`*=`/`/=`/`%=` 数值运算（ArithmeticExpression._eval）；
@@ -1721,29 +1609,6 @@ fn exec_attempt(
 /// 插值内容类型错误 → Java `For "${...}" content: ... ==> {expr}` 形式
 /// （DollarVariable 的 coerceModelToStringOrMarkup blame；期望措辞含
 /// `or "template output" ` 段——Java 消息中该段后紧跟逗号，jar 实测逐字）
-fn blame_interpolation_content(
-    e: TemplateError,
-    env: &mut crate::core::Environment,
-    expr: &crate::core::Expr,
-) -> TemplateError {
-    if let TemplateError::TypeMismatch { ctx, .. } = &e {
-        if ctx.blamer.is_none() {
-            return e
-                .with_expected_phrase(
-                    "a string or something automatically convertible to string (number, date or boolean), or \"template output\" ",
-                )
-                .with_blame_at(
-                    "${...}",
-                    "content",
-                    &crate::core::environment::expr_desc(expr),
-                    &env.current_template_name,
-                    expr.span,
-                );
-        }
-    }
-    crate::core::environment::attach_location(e, &env.current_template_name, expr.span)
-}
-
 pub(crate) fn exec_setting(
     env: &mut crate::core::Environment,
     key: &str,
@@ -1895,7 +1760,7 @@ fn last_newline_start(s: &str) -> usize {
 /// 文本可能已无换行（如 "\n  " → "  "）——无换行时整段剥除
 /// （Java trailingCharsToStrip：lastNewlineIndex==-1 && beginColumn==1 → 整段，
 ///  TextBlock.java:294-297；全空白文本才可能带此标记）。
-fn strip_text<'a>(
+pub(crate) fn strip_text<'a>(
     text: &'a str,
     strip_before: bool,
     strip_after: bool,

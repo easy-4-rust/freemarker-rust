@@ -5,6 +5,7 @@ mod break_instruction;
 mod comment;
 mod configurable;
 mod continue_instruction;
+mod dollar_variable;
 pub(crate) mod environment;
 pub(crate) mod eval;
 pub(crate) mod eval_util;
@@ -24,6 +25,7 @@ mod stop_instruction;
 mod template_class_resolver;
 mod template_configuration;
 mod template_element;
+mod text_block;
 mod trim_instruction;
 
 pub use arithmetic_engine::{ArithmeticEngine, BigDecimalEngine};
