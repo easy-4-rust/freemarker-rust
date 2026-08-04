@@ -86,7 +86,7 @@ pub struct TModel {
     /// 变换模型角色（对应 Java TemplateTransformModel；`<#transform>` 目标）
     pub transform: Option<Rc<dyn TemplateTransformModel>>,
     /// 范围模型标记（对应 Java `RangeModel`；`seq[range]` 切片键类型判定）
-    pub range: Option<Rc<crate::template::RangeSpec>>,
+    pub range: Option<Rc<crate::core::RangeSpec>>,
     pub node: Option<Rc<dyn TemplateNodeModel>>,
     /// 节点哈希角色（对应 Java NodeModel 的 TemplateHashModel；`doc.foo`/`doc['//x']` 访问）。
     /// 与 `hash` 槽位分开：get 需要 Environment 解析 ns_prefixes（Java 线程局部

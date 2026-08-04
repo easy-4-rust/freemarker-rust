@@ -674,7 +674,7 @@ fn eval_dyn_key(env: &mut crate::core::Environment, target: &Expr, key: &Expr) -
 /// （"Decreasing ranges aren't allowed for slicing strings"）。
 fn slice_with_range(
     t: &TModel,
-    r: &crate::template::RangeSpec,
+    r: &crate::core::RangeSpec,
     _td: &str,
     _kd: &str,
 ) -> Result<TModel> {
@@ -1227,7 +1227,7 @@ fn eval_range(
                 }
             };
             let mut m = bounded_range_model(s_i, count, ascending);
-            m.range = Some(std::rc::Rc::new(crate::template::RangeSpec {
+            m.range = Some(std::rc::Rc::new(crate::core::RangeSpec {
                 start: s_i,
                 count,
                 ascending,
@@ -1253,7 +1253,7 @@ fn eval_range(
             } else {
                 nonlistable_right_unbounded_range_model(s_i)
             };
-            m.range = Some(std::rc::Rc::new(crate::template::RangeSpec {
+            m.range = Some(std::rc::Rc::new(crate::core::RangeSpec {
                 start: s_i,
                 count: 0,
                 ascending: true,
@@ -2223,7 +2223,7 @@ fn builtin_impl(
         "seq_contains" => {
             // Java seq_containsBI（BuiltInsForSequences.java:308-380）：checkMethodArgCount(1)；
             // 序列优先（2.3.x BC），否则集合迭代；参数缺失变量 → null → modelsEqual false
-            crate::builtins::eval_util::check_arg_count("seq_contains", args.exprs, 1, 1)?;
+            crate::core::eval_util::check_arg_count("seq_contains", args.exprs, 1, 1)?;
             let m = eval(env, target)?;
             let needle = crate::builtins::sequences::eval_arg_lenient(env, args.exprs, 0)?;
             let items = crate::builtins::sequences::seq_or_collection_items(&m, "seq_contains")?;

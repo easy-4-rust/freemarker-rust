@@ -4,7 +4,7 @@
 //! v1 仅支持目标为方法模型（TemplateMethodModelEx）的基础版——宏/函数的 `?with_args`
 //! （Java Macro.WithArgsCallable）属 P4。
 
-use crate::builtins::eval_util::check_arg_count;
+use crate::core::eval_util::check_arg_count;
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::{TModel, TemplateMethodModelEx};

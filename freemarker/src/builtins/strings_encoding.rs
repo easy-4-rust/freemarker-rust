@@ -14,7 +14,7 @@
 //! - rtf → RTFEnc：转义 `\` `{` `}`；
 //! - xhtml → XHTMLEnc（与 Rust html_escape 相同：& < > " '→&#39;）。
 
-use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, target_string};
+use crate::core::eval_util::{arg_count, arg_string, check_arg_count, target_string};
 use crate::core::{Environment, Expr};
 use crate::error::Result;
 use crate::template::utility::html_escape;

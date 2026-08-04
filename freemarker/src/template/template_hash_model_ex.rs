@@ -4,7 +4,7 @@
 use crate::error::Result;
 use crate::template::TModel;
 
-pub trait TemplateHashModelEx: crate::template::template_model::TemplateHashModel {
+pub trait TemplateHashModelEx: crate::template::TemplateHashModel {
     fn size(&self) -> Result<usize>;
     fn keys(&self) -> Result<Vec<String>>;
     /// 插入序条目（默认 = keys() 逐个 get；重复键模型可覆盖为原始键值对列表）

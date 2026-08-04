@@ -37,14 +37,6 @@ pub fn freemarker::builtins::dates::iso_utc_ms_nz(&mut freemarker::Environment<'
 pub fn freemarker::builtins::dates::iso_utc_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::dates::time(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::dates::time_if_unknown(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::eval_util
-pub fn freemarker::builtins::eval_util::arg_count(core::option::Option<&[freemarker::core::Expr]>) -> usize
-pub fn freemarker::builtins::eval_util::arg_number(&mut freemarker::Environment<'_>, core::option::Option<&[freemarker::core::Expr]>, usize) -> freemarker::Result<freemarker::value::TNumber>
-pub fn freemarker::builtins::eval_util::arg_string(&mut freemarker::Environment<'_>, core::option::Option<&[freemarker::core::Expr]>, usize) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::builtins::eval_util::check_arg_count(&str, core::option::Option<&[freemarker::core::Expr]>, usize, usize) -> freemarker::Result<()>
-pub fn freemarker::builtins::eval_util::coerce_to_string(&mut freemarker::Environment<'_>, &freemarker::TModel) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::builtins::eval_util::models_equal(&freemarker::TModel, &freemarker::TModel) -> freemarker::Result<bool>
-pub fn freemarker::builtins::eval_util::target_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr) -> freemarker::Result<alloc::string::String>
 pub mod freemarker::builtins::existence
 pub fn freemarker::builtins::existence::blank_to_null(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::existence::empty_to_null(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
@@ -2793,6 +2785,45 @@ impl<T> core::clone::CloneToUninit for freemarker::core::OptInClassResolver wher
 pub unsafe fn freemarker::core::OptInClassResolver::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for freemarker::core::OptInClassResolver
 pub fn freemarker::core::OptInClassResolver::from(T) -> T
+pub struct freemarker::core::RangeSpec
+pub freemarker::core::RangeSpec::adaptive: bool
+pub freemarker::core::RangeSpec::affected_by_string_slicing_bug: bool
+pub freemarker::core::RangeSpec::ascending: bool
+pub freemarker::core::RangeSpec::count: usize
+pub freemarker::core::RangeSpec::start: i64
+pub freemarker::core::RangeSpec::unbounded: bool
+impl core::clone::Clone for freemarker::core::RangeSpec
+pub fn freemarker::core::RangeSpec::clone(&self) -> freemarker::core::RangeSpec
+impl core::marker::Copy for freemarker::core::RangeSpec
+impl core::marker::Freeze for freemarker::core::RangeSpec
+impl core::marker::Send for freemarker::core::RangeSpec
+impl core::marker::Sync for freemarker::core::RangeSpec
+impl core::marker::Unpin for freemarker::core::RangeSpec
+impl core::marker::UnsafeUnpin for freemarker::core::RangeSpec
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::core::RangeSpec
+impl core::panic::unwind_safe::UnwindSafe for freemarker::core::RangeSpec
+impl<T, U> core::convert::Into<U> for freemarker::core::RangeSpec where U: core::convert::From<T>
+pub fn freemarker::core::RangeSpec::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::core::RangeSpec where U: core::convert::Into<T>
+pub type freemarker::core::RangeSpec::Error = core::convert::Infallible
+pub fn freemarker::core::RangeSpec::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::core::RangeSpec where U: core::convert::TryFrom<T>
+pub type freemarker::core::RangeSpec::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::core::RangeSpec::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for freemarker::core::RangeSpec where T: core::clone::Clone
+pub type freemarker::core::RangeSpec::Owned = T
+pub fn freemarker::core::RangeSpec::clone_into(&self, &mut T)
+pub fn freemarker::core::RangeSpec::to_owned(&self) -> T
+impl<T> core::any::Any for freemarker::core::RangeSpec where T: 'static + ?core::marker::Sized
+pub fn freemarker::core::RangeSpec::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::core::RangeSpec where T: ?core::marker::Sized
+pub fn freemarker::core::RangeSpec::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::core::RangeSpec where T: ?core::marker::Sized
+pub fn freemarker::core::RangeSpec::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for freemarker::core::RangeSpec where T: core::clone::Clone
+pub unsafe fn freemarker::core::RangeSpec::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for freemarker::core::RangeSpec
+pub fn freemarker::core::RangeSpec::from(T) -> T
 pub struct freemarker::core::Settings
 pub freemarker::core::Settings::auto_escaping: freemarker::core::AutoEscaping
 pub freemarker::core::Settings::boolean_format: alloc::string::String
@@ -2922,12 +2953,19 @@ pub fn freemarker::core::BigDecimalEngine::mod_op(&self, &freemarker::value::TNu
 pub fn freemarker::core::BigDecimalEngine::mul(&self, &freemarker::value::TNumber, &freemarker::value::TNumber) -> freemarker::Result<freemarker::value::TNumber>
 pub fn freemarker::core::BigDecimalEngine::negate(&self, &freemarker::value::TNumber) -> freemarker::Result<freemarker::value::TNumber>
 pub fn freemarker::core::BigDecimalEngine::sub(&self, &freemarker::value::TNumber, &freemarker::value::TNumber) -> freemarker::Result<freemarker::value::TNumber>
+pub fn freemarker::core::arg_count(core::option::Option<&[freemarker::core::Expr]>) -> usize
+pub fn freemarker::core::arg_number(&mut freemarker::Environment<'_>, core::option::Option<&[freemarker::core::Expr]>, usize) -> freemarker::Result<freemarker::value::TNumber>
+pub fn freemarker::core::arg_string(&mut freemarker::Environment<'_>, core::option::Option<&[freemarker::core::Expr]>, usize) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::core::canonical_setting_key(&str) -> &str
+pub fn freemarker::core::check_arg_count(&str, core::option::Option<&[freemarker::core::Expr]>, usize, usize) -> freemarker::Result<()>
+pub fn freemarker::core::coerce_to_string(&mut freemarker::Environment<'_>, &freemarker::TModel) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::core::compare_models(&mut freemarker::Environment<'_>, &freemarker::TModel, &freemarker::TModel, freemarker::core::CmpOp) -> freemarker::Result<bool>
 pub fn freemarker::core::eval(&mut freemarker::Environment<'_>, &freemarker::core::Expr) -> freemarker::Result<freemarker::TModel>
 pub fn freemarker::core::exec(&mut freemarker::Environment<'_>, &freemarker::core::Element) -> freemarker::Result<freemarker::core::ExecOutcome>
 pub fn freemarker::core::java_time_zone_id(&str) -> alloc::string::String
+pub fn freemarker::core::models_equal(&freemarker::TModel, &freemarker::TModel) -> freemarker::Result<bool>
 pub fn freemarker::core::render(&freemarker::Template, freemarker::TModel, &mut dyn core::io::write::Write) -> freemarker::Result<()>
+pub fn freemarker::core::target_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr) -> freemarker::Result<alloc::string::String>
 pub mod freemarker::error
 pub enum freemarker::error::FlowKind
 pub freemarker::error::FlowKind::Break
@@ -4590,45 +4628,6 @@ impl<T> core::clone::CloneToUninit for freemarker::template::MalformedTemplateNa
 pub unsafe fn freemarker::template::MalformedTemplateNameException::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for freemarker::template::MalformedTemplateNameException
 pub fn freemarker::template::MalformedTemplateNameException::from(T) -> T
-pub struct freemarker::template::RangeSpec
-pub freemarker::template::RangeSpec::adaptive: bool
-pub freemarker::template::RangeSpec::affected_by_string_slicing_bug: bool
-pub freemarker::template::RangeSpec::ascending: bool
-pub freemarker::template::RangeSpec::count: usize
-pub freemarker::template::RangeSpec::start: i64
-pub freemarker::template::RangeSpec::unbounded: bool
-impl core::clone::Clone for freemarker::template::RangeSpec
-pub fn freemarker::template::RangeSpec::clone(&self) -> freemarker::template::RangeSpec
-impl core::marker::Copy for freemarker::template::RangeSpec
-impl core::marker::Freeze for freemarker::template::RangeSpec
-impl core::marker::Send for freemarker::template::RangeSpec
-impl core::marker::Sync for freemarker::template::RangeSpec
-impl core::marker::Unpin for freemarker::template::RangeSpec
-impl core::marker::UnsafeUnpin for freemarker::template::RangeSpec
-impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::RangeSpec
-impl core::panic::unwind_safe::UnwindSafe for freemarker::template::RangeSpec
-impl<T, U> core::convert::Into<U> for freemarker::template::RangeSpec where U: core::convert::From<T>
-pub fn freemarker::template::RangeSpec::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for freemarker::template::RangeSpec where U: core::convert::Into<T>
-pub type freemarker::template::RangeSpec::Error = core::convert::Infallible
-pub fn freemarker::template::RangeSpec::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for freemarker::template::RangeSpec where U: core::convert::TryFrom<T>
-pub type freemarker::template::RangeSpec::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn freemarker::template::RangeSpec::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for freemarker::template::RangeSpec where T: core::clone::Clone
-pub type freemarker::template::RangeSpec::Owned = T
-pub fn freemarker::template::RangeSpec::clone_into(&self, &mut T)
-pub fn freemarker::template::RangeSpec::to_owned(&self) -> T
-impl<T> core::any::Any for freemarker::template::RangeSpec where T: 'static + ?core::marker::Sized
-pub fn freemarker::template::RangeSpec::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for freemarker::template::RangeSpec where T: ?core::marker::Sized
-pub fn freemarker::template::RangeSpec::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for freemarker::template::RangeSpec where T: ?core::marker::Sized
-pub fn freemarker::template::RangeSpec::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for freemarker::template::RangeSpec where T: core::clone::Clone
-pub unsafe fn freemarker::template::RangeSpec::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for freemarker::template::RangeSpec
-pub fn freemarker::template::RangeSpec::from(T) -> T
 pub struct freemarker::template::ResourceBundleLocalizedString
 impl freemarker::template::ResourceBundleLocalizedString
 pub fn freemarker::template::ResourceBundleLocalizedString::base_name(&self) -> &str
@@ -4932,7 +4931,7 @@ pub freemarker::template::TModel::method_indexable: bool
 pub freemarker::template::TModel::node: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateNodeModel>>
 pub freemarker::template::TModel::node_hash: core::option::Option<alloc::rc::Rc<dyn freemarker::template::NodeHashModel>>
 pub freemarker::template::TModel::number: core::option::Option<freemarker::template::ModelNumber>
-pub freemarker::template::TModel::range: core::option::Option<alloc::rc::Rc<freemarker::template::RangeSpec>>
+pub freemarker::template::TModel::range: core::option::Option<alloc::rc::Rc<freemarker::core::RangeSpec>>
 pub freemarker::template::TModel::scalar: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateScalarModel>>
 pub freemarker::template::TModel::sequence: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateSequenceModel>>
 pub freemarker::template::TModel::transform: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateTransformModel>>
@@ -5924,7 +5923,7 @@ pub freemarker::TModel::method_indexable: bool
 pub freemarker::TModel::node: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateNodeModel>>
 pub freemarker::TModel::node_hash: core::option::Option<alloc::rc::Rc<dyn freemarker::template::NodeHashModel>>
 pub freemarker::TModel::number: core::option::Option<freemarker::template::ModelNumber>
-pub freemarker::TModel::range: core::option::Option<alloc::rc::Rc<freemarker::template::RangeSpec>>
+pub freemarker::TModel::range: core::option::Option<alloc::rc::Rc<freemarker::core::RangeSpec>>
 pub freemarker::TModel::scalar: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateScalarModel>>
 pub freemarker::TModel::sequence: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateSequenceModel>>
 pub freemarker::TModel::transform: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateTransformModel>>

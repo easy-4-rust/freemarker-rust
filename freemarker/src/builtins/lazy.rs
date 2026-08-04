@@ -5,7 +5,7 @@
 //! - `?switch(c1, v1, c2, v2, ...[, default])` → switch_BI：目标求值一次，case 用 `==`
 //!   语义比较（EvalUtil.compare），命中返回对应值（惰性）；偶数个参数且未命中 → 报错。
 
-use crate::builtins::eval_util::{arg_count, check_arg_count};
+use crate::core::eval_util::{arg_count, check_arg_count};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;

@@ -18,8 +18,8 @@
 //!   零宽匹配的 find() 推进按 Java Matcher.find() 语义手动循环实现 —— fancy-regex
 //!   的 captures_iter 会跳过紧跟上一匹配的空匹配，而 Java 保留它）。
 
-use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, coerce_to_string};
 use crate::core::environment::model_to_string;
+use crate::core::eval_util::{arg_count, arg_string, check_arg_count, coerce_to_string};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::{

@@ -11,11 +11,11 @@
 //! - `?is_date_only` 等 → is_dateOfTypeBI：按 DateValue.kind 判定；
 //! - `?namespace` → namespaceBI（v1：命名空间值返回命名空间模型；非变量目标报错）。
 
-use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, coerce_to_string};
 use crate::builtins::format::{
     format_c_number, format_c_string, format_number, format_number_with, CFormatKind,
 };
 use crate::builtins::strings_encoding::java_string_enc;
+use crate::core::eval_util::{arg_count, arg_string, check_arg_count, coerce_to_string};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;

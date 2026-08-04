@@ -2,8 +2,8 @@
 //! （一文件一 Java 对象拆分：原 template_model.rs 合并存放 → 独立文件）
 
 use crate::error::Result;
-use crate::template::template_model::TemplateHashModelEx;
 use crate::template::TModel;
+use crate::template::TemplateHashModelEx;
 
 /// 键值对（对应 TemplateHashModelEx2.KeyValuePair；v1 的 entries() 默认实现
 /// 已覆盖 Java Ex2 的 KeyValuePair 迭代语义——本 trait 供需要原始键值对

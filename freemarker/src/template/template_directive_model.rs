@@ -3,8 +3,8 @@
 
 use crate::core::Environment;
 use crate::error::Result;
-use crate::template::template_model::TemplateDirectiveBody;
 use crate::template::TModel;
+use crate::template::TemplateDirectiveBody;
 use std::collections::HashMap;
 
 pub trait TemplateDirectiveModel {

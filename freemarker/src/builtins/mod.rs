@@ -18,7 +18,6 @@
 
 pub mod callables;
 pub mod dates;
-pub mod eval_util;
 pub mod existence;
 pub mod format;
 pub mod iso_date_format;

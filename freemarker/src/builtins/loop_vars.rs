@@ -6,7 +6,7 @@
 //! - `?item_parity` → 每项轮换 "odd"/"even"；`?item_parity_cap` → "Odd"/"Even"；
 //! - 目标须为循环变量（Java BuiltInForLoopVariable 的迭代上下文定位）。
 
-use crate::builtins::eval_util::check_arg_count;
+use crate::core::eval_util::check_arg_count;
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::{TModel, TemplateMethodModelEx};
@@ -70,7 +70,7 @@ pub fn item_cycle(
     Ok(Some(TModel::from_method(ItemCycleMethod { index: idx })))
 }
 
-use crate::builtins::eval_util::arg_count;
+use crate::core::eval_util::arg_count;
 
 /// 轮换方法（Java item_cycleBI.BIMethod：args[index % args.size()]）
 struct ItemCycleMethod {

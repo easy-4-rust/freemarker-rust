@@ -12,7 +12,7 @@
 //! - number_to_date 家族 → new SimpleDate(new Date(safeToLong(num)), dateType)
 //!   （safeToLong：HALF_UP 取整 + 64 位范围检查）。
 
-use crate::builtins::eval_util::target_string;
+use crate::core::eval_util::target_string;
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;

@@ -18,8 +18,8 @@
 //! - min/max（Java MinOrMaxBI）：null 元素跳过、空 → null（下游 InvalidReference）；
 //!   字符串/布尔上的 > 运算报错（EvalUtil.compare :262-277）。
 
-use crate::builtins::eval_util::{arg_count, check_arg_count};
 use crate::core::environment::{model_to_string, BodyCtx, LambdaValue, LocalEntry};
+use crate::core::eval_util::{arg_count, check_arg_count};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;

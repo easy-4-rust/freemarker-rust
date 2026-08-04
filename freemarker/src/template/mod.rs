@@ -21,6 +21,7 @@ mod logging_attempt_exception_reporter;
 mod malformed_template_name_exception;
 mod map_key_value_pair_iterator;
 mod method_call_aware_template_hash_model;
+mod node_hash_model;
 mod object_wrapper;
 mod object_wrapper_and_unwrapper;
 mod resource_bundle_localized_string;
@@ -37,13 +38,27 @@ mod simple_sequence;
 mod t_model;
 #[allow(clippy::module_inception)] // Template.java → template/template.rs（一文件一对象约定）
 mod template;
+mod template_boolean_model;
+mod template_collection_model;
+mod template_date_model;
+mod template_directive_body;
+mod template_directive_model;
 mod template_exception;
-mod template_model;
+mod template_hash_model;
+mod template_hash_model_ex;
+mod template_hash_model_ex2;
+mod template_method_model_ex;
 mod template_model_adapter;
 mod template_model_exception;
 mod template_model_iterator;
 mod template_model_list_sequence;
+mod template_model_with_api_support;
+mod template_node_model;
 mod template_not_found_exception;
+mod template_number_model;
+mod template_scalar_model;
+mod template_sequence_model;
+mod template_transform_model;
 mod transform_control;
 mod true_template_boolean_model;
 /// 对应 Java `freemarker.template.utility` 包（原顶层 utility/ 迁入）
@@ -72,6 +87,7 @@ pub use logging_attempt_exception_reporter::LoggingAttemptExceptionReporter;
 pub use malformed_template_name_exception::MalformedTemplateNameException;
 pub use map_key_value_pair_iterator::{KeyValuePair, MapKeyValuePairIterator};
 pub use method_call_aware_template_hash_model::MethodCallAwareTemplateHashModel;
+pub use node_hash_model::NodeHashModel;
 pub use object_wrapper::ObjectWrapper;
 pub use object_wrapper_and_unwrapper::ObjectWrapperAndUnwrapper;
 pub use resource_bundle_localized_string::ResourceBundleLocalizedString;
@@ -87,18 +103,27 @@ pub use simple_scalar::SimpleScalar;
 pub use simple_sequence::SimpleSequence;
 pub use t_model::{ModelKind, ModelNumber, TModel};
 pub use template::Template;
+pub use template_boolean_model::TemplateBooleanModel;
+pub use template_collection_model::TemplateCollectionModel;
+pub use template_date_model::TemplateDateModel;
+pub use template_directive_body::TemplateDirectiveBody;
+pub use template_directive_model::TemplateDirectiveModel;
 pub use template_exception::TemplateException;
-pub use template_model::{
-    NodeHashModel, RangeSpec, TemplateApiSupport, TemplateBooleanModel, TemplateCollectionModel,
-    TemplateDateModel, TemplateDirectiveBody, TemplateDirectiveModel, TemplateHashModel,
-    TemplateHashModelEx, TemplateHashModelEx2, TemplateMethodModelEx, TemplateNodeModel,
-    TemplateNumberModel, TemplateScalarModel, TemplateSequenceModel, TemplateTransformModel,
-};
+pub use template_hash_model::TemplateHashModel;
+pub use template_hash_model_ex::TemplateHashModelEx;
+pub use template_hash_model_ex2::TemplateHashModelEx2;
+pub use template_method_model_ex::TemplateMethodModelEx;
 pub use template_model_adapter::TemplateModelAdapter;
 pub use template_model_exception::TemplateModelException;
 pub use template_model_iterator::TemplateModelIterator;
 pub use template_model_list_sequence::TemplateModelListSequence;
+pub use template_model_with_api_support::TemplateApiSupport;
+pub use template_node_model::TemplateNodeModel;
 pub use template_not_found_exception::TemplateNotFoundException;
+pub use template_number_model::TemplateNumberModel;
+pub use template_scalar_model::TemplateScalarModel;
+pub use template_sequence_model::TemplateSequenceModel;
+pub use template_transform_model::TemplateTransformModel;
 pub use transform_control::{TransformControl, END, REPAINT, START};
 pub use true_template_boolean_model::TrueTemplateBooleanModel;
 pub use version::Version;

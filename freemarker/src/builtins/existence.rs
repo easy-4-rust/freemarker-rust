@@ -21,7 +21,7 @@ fn target_string(env: &mut Environment, target: &Expr) -> Result<Option<String>>
         // Java evalMaybeNonexistentTarget → null → *_to_null 返回 null
         return Ok(None);
     }
-    crate::builtins::eval_util::coerce_to_string(env, &m).map(Some)
+    crate::core::eval_util::coerce_to_string(env, &m).map(Some)
 }
 
 /// ?empty_to_null —— Java empty_to_nullBI
