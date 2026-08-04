@@ -11,12 +11,14 @@
 //! - BuiltIn → BuiltIn 家族（BuiltInsFor*.java；docs/05）；ListLit → ListLiteral；
 //!   HashLit → HashLiteral；Lambda → LocalLambdaExpression；Paren → ParentheticalExpression
 
-use crate::core::environment::{expr_desc, lambda_model, model_to_string};
+use crate::core::environment::{expr_desc, model_to_string};
 use crate::core::expression::{
-    eval_interp_str, ArithmeticExpression, BooleanLiteral, ComparisonExpression, HashLiteral,
-    Identifier, ListLiteral, NumOp, NumberLiteral, ParentheticalExpression, StringLiteral,
+    eval_interp_str, ArithmeticExpression, BooleanLiteral, ComparisonExpression,
+    DefaultToExpression, ExistsExpression, HashLiteral, Identifier, ListLiteral,
+    LocalLambdaExpression, MethodCall, NotExpression, NumOp, NumberLiteral,
+    ParentheticalExpression, StringLiteral, UnaryPlusMinusExpression,
 };
-use crate::core::{ArithmeticEngine, BigDecimalEngine, BuiltinVar, Expr, ExprKind, RangeKind};
+use crate::core::{BuiltinVar, Expr, ExprKind, RangeKind};
 use crate::error::{Result, TemplateError};
 use crate::span::Span;
 use crate::template::utility::java_trim;
@@ -63,26 +65,11 @@ fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel>
         ExprKind::BuiltinVar(v) => eval_builtin_var(env, *v),
         ExprKind::Dot { target, name } => eval_dot(env, target, name),
         ExprKind::DynKey { target, key } => eval_dyn_key(env, target, key),
-        ExprKind::Call { callee, args } => eval_call(env, callee, args),
-        ExprKind::UnaryMinus(t) => {
-            // Java UnaryPlusMinusExpression.java:42 _eval（TYPE_MINUS → ArithmeticEngine.negate）；
-            // 操作数 null → modelToNumber → NonNumericalException（消息同 InvalidReference）
-            let m = eval(env, t)?;
-            if m.is_nothing() {
-                return Err(TemplateError::invalid_reference(
-                    crate::core::environment::expr_desc(t),
-                ));
-            }
-            let n = m.get_number()?;
-            let engine = BigDecimalEngine::default();
-            Ok(TModel::from_number(engine.negate(&n)?))
+        ExprKind::Call { callee, args } => {
+            MethodCall::new((**callee).clone(), args.clone()).eval(env)
         }
-        ExprKind::Not(t) => {
-            // Java NotExpression `evalToBoolean` → modelToBoolean（classic 兼容见下）
-            let m = eval(env, t)?;
-            let b = model_to_boolean(env, &m)?;
-            Ok(TModel::from_boolean(!b))
-        }
+        ExprKind::UnaryMinus(t) => UnaryPlusMinusExpression::new((**t).clone()).eval(env),
+        ExprKind::Not(t) => NotExpression::new((**t).clone()).eval(env),
         ExprKind::Add(a, b) => {
             crate::core::expression::AddConcatExpression::new((**a).clone(), (**b).clone())
                 .eval(env)
@@ -126,14 +113,16 @@ fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel>
             crate::core::expression::OrExpression::new((**a).clone(), (**b).clone()).eval(env)
         }
         ExprKind::Range { start, end, kind } => eval_range(env, start, end, *kind),
-        ExprKind::Default { target, default } => eval_default_to(env, target, default),
-        ExprKind::Exists(t) => eval_exists(env, t),
+        ExprKind::Default { target, default } => {
+            DefaultToExpression::new((**target).clone(), default.as_ref().map(|d| (**d).clone()))
+                .eval(env)
+        }
+        ExprKind::Exists(t) => ExistsExpression::new((**t).clone()).eval(env),
         ExprKind::BuiltIn { target, name, args } => eval_builtin(env, target, name, args),
         ExprKind::ListLit(items) => ListLiteral::new(items.clone()).eval(env),
         ExprKind::HashLit(pairs) => HashLiteral::new(pairs.clone()).eval(env),
         ExprKind::Lambda { params, body } => {
-            // Java LocalLambdaExpression：v1 仅构造槽位模型（?map/?filter 消费方由内建智能体扩展）
-            Ok(lambda_model(params.clone(), Rc::new((**body).clone())))
+            LocalLambdaExpression::new(params.clone(), (**body).clone()).eval(env)
         }
         ExprKind::Paren(inner) => ParentheticalExpression::new((**inner).clone()).eval(env),
     }
@@ -793,41 +782,6 @@ fn join_append_item(
 
 /// 方法/函数调用（Java MethodCall.java:54-77 `_eval`：
 /// 宏角色 → invokeFunction（输出丢弃）；方法角色 → exec(args)）
-fn eval_call(env: &mut crate::core::Environment, callee: &Expr, args: &[Expr]) -> Result<TModel> {
-    let c = eval(env, callee)?;
-    if let Some(mv) = env.as_macro(&c) {
-        // Java MethodCall :68-71：instanceof Macro → invokeFunction
-        if !mv.def.is_function {
-            return Err(TemplateError::misc(
-                "A macro cannot be called in an expression. (Functions can be.)",
-            ));
-        }
-        let args: Vec<(String, Expr)> = args.iter().map(|e| (String::new(), e.clone())).collect();
-        return env.invoke_function(&mv, &args);
-    }
-    if let Some(m) = &c.method {
-        let mut vals = Vec::with_capacity(args.len());
-        for a in args {
-            // Java：标识符求值不抛错（Environment.getVariable 返回 null），缺失
-            // 参数以 null 传入方法（`m.bar(null, 11)` 的 null 即缺失变量——
-            // jar 实测合法）；本引擎解析层抛 Err → 此处按 Java 语义转为 nothing
-            match eval(env, a) {
-                Ok(v) => vals.push(v),
-                Err(TemplateError::InvalidReference { .. }) => vals.push(TModel::nothing()),
-                Err(e) => return Err(e),
-            }
-        }
-        // Java :60-66：TemplateMethodModelEx.exec(arguments.getModelList(env))；
-        // Java 经线程局部 Environment 访问上下文，Rust 显式传 env
-        return m.exec(env, vals);
-    }
-    Err(TemplateError::misc(format!(
-        "The value of {} is not a method or function (it's a {})",
-        crate::core::environment::expr_desc(callee),
-        c.type_name
-    )))
-}
-
 // Java ArithmeticExpression / ComparisonExpression（实现已拆至
 // expression/arithmetic_expression.rs、expression/comparison_expression.rs）——
 // CmpOp/compare_models 供 exec.rs `<#switch>` 与 lazy.rs 复用（Java SwitchBlock :66-71
@@ -1076,29 +1030,6 @@ pub(crate) fn eval_lenient(env: &mut crate::core::Environment, target: &Expr) ->
     }
 }
 
-fn eval_default_to(
-    env: &mut crate::core::Environment,
-    target: &Expr,
-    default: &Option<Box<Expr>>,
-) -> Result<TModel> {
-    // Java DefaultToExpression._eval：目标 null/缺失 → 默认值；无默认值 → 空串模型
-    let m = eval_lenient(env, target)?;
-    if !m.is_nothing() {
-        return Ok(m);
-    }
-    match default {
-        Some(d) => eval(env, d),
-        None => Ok(TModel::from_scalar(String::new())),
-    }
-}
-
-/// 存在性（Java ExistsExpression：求值成功且非 null → TRUE）
-fn eval_exists(env: &mut crate::core::Environment, t: &Expr) -> Result<TModel> {
-    let m = eval_lenient(env, t)?;
-    Ok(TModel::from_boolean(!m.is_nothing()))
-}
-
-/// 哈希字面量（Java HashLiteral：键求值为标量）
 /// 数值截断（Java `Number.intValue()/longValue()` 向零截断语义）
 pub(crate) fn trunc_i64(n: &TNumber) -> Option<i64> {
     match n {
@@ -2299,6 +2230,7 @@ fn char_index_from(s: &str, from: usize) -> Option<&str> {
 mod tests {
     use super::*;
     use crate::cache::StringLoader;
+    use crate::core::environment::lambda_model;
     use crate::template::{Configuration, DynValue, ObjectWrapper, SimpleObjectWrapper};
     use indexmap::IndexMap;
     use std::sync::Arc;
