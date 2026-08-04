@@ -331,9 +331,7 @@ fn test3_layer_lazyness_matrix() {
             ("t1;", Some(true), Some(false), true),
             ("", Some(true), Some(true), true),
         ];
-        for (_i, (expected, lazy_imports, lazy_auto_imports, set_lazy_auto)) in
-            combos.iter().enumerate()
-        {
+        for (expected, lazy_imports, lazy_auto_imports, set_lazy_auto) in combos.iter() {
             // Java dropConfiguration() + getConfiguration()：每组全新 Configuration
             let (mut c, loader) = test_config();
             add_template(&loader, "lazy.ftl", "<#import 't2.ftl' as t2>${loaded!}");

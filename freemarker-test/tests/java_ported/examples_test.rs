@@ -370,10 +370,12 @@ fn example3() {
         chrono::FixedOffset::east_opt(0).unwrap(),
     ));
     c.settings.time_zone_id = "UTC".to_string();
-    let mut tc_stats = TemplateConfiguration::default();
-    tc_stats.date_time_format = Some("iso".to_string());
-    tc_stats.date_format = Some("iso".to_string());
-    tc_stats.time_format = Some("iso".to_string());
+    let tc_stats = TemplateConfiguration {
+        date_time_format: Some("iso".to_string()),
+        date_format: Some("iso".to_string()),
+        time_format: Some("iso".to_string()),
+        ..Default::default()
+    };
     // Java: MergingTemplateConfigurationFactory(Conditional(*.stats.* → tcStats),
     //   Conditional(mail/** → utf-8), FirstMatch(xml→XML, Or(html,htm)→HTML).
     //   allowNoMatch(true))——mail/扩展名分支的断言是 getOutputFormat/getEncoding

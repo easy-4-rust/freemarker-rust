@@ -58,6 +58,7 @@ fn cfg() -> (Configuration, Arc<StringLoader>) {
 /// 引擎差异：v1 的 ?withArgs/?withArgsLast 对**指令**（TemplateDirectiveModel）未
 /// 实现（Java BIMethodForDirective，BuiltInsForCallables.java:187-254）——断言引擎
 /// 实际错误；宏/函数/方法已按 Java 语义实现（见各方法断言）。
+#[allow(dead_code)] // 引擎差异断言保留（?withArgs 对指令未实现），供后续补齐时复用
 fn assert_only_methods(c: &Configuration, loader: &Arc<StringLoader>, ftl: &str, last: bool) {
     let bi = if last {
         "?with_args_last"
