@@ -165,6 +165,12 @@ pub enum BuiltinVar {
     IncompatibleImprovements,
     /// `.args`（宏/函数参数哈希，仅宏内合法）
     Args,
+    /// `.get_optional_template` / `.getOptionalTemplate`（Java GetOptionalTemplateMethod：
+    /// 方法模型，调用返回 {exists/include/import} 哈希；Java 为两个独立名称
+    /// （BuiltinVariable.java:258-262），错误消息用各自方法名——Rust 侧拆两个变体）
+    GetOptionalTemplate,
+    /// `.getOptionalTemplate`（camelCase 别名；错误消息用 ".getOptionalTemplate"）
+    GetOptionalTemplateCc,
 }
 
 // ---------------------------------------------------------------------------

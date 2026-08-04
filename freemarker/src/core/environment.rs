@@ -548,6 +548,18 @@ impl<'a> Environment<'a> {
     /// 构造时 `importMacros(template)` 预先注册主模板宏（Java 宏定义在渲染前全局可见）。
     pub fn new(template: &'a Template, root: TModel, out: &'a mut dyn Write) -> Self {
         let base_settings = &template.configuration.settings;
+        // per-template 配置（Java：Environment 构造时
+        // `setTemplateConfiguration` 应用模板配置的渲染期设置；未设置项继承
+        // 全局值 → Cow::Owned 覆盖副本）
+        let settings_cow = match &template.template_configuration {
+            Some(tc) => {
+                let mut s = (*base_settings).clone();
+                tc.apply_to(&mut s);
+                std::borrow::Cow::Owned(s)
+            }
+            None => std::borrow::Cow::Borrowed(base_settings),
+        };
+        let base_settings = &settings_cow;
         let base_time_zone = base_settings.time_zone;
         let base_time_zone_id = base_settings.time_zone_id.clone();
         let main_ns = Rc::new(Namespace::new(template.name.clone()));
@@ -578,7 +590,7 @@ impl<'a> Environment<'a> {
             macro_frames: Vec::new(),
             visit_stack: Vec::new(),
             return_depth: None,
-            settings: std::borrow::Cow::Borrowed(base_settings),
+            settings: settings_cow,
             base_time_zone,
             base_time_zone_id,
             attempt_depth: 0,
@@ -1401,17 +1413,43 @@ impl<'a> Environment<'a> {
     ) -> Result<()> {
         let full = self.resolve_template_name(name);
         let encoding = encoding.or_else(|| self.template.encoding.clone());
-        let mut found: Option<(String, Rc<crate::template::Template>)> = None;
-        let mut last_err: Option<TemplateError> = None;
-        // Java lookupWithLocalizedThenAcquisitionStrategy（TemplateCache.java:914-948）：
-        // 每个 locale 变体（en_US → en → 无后缀）内部做完整 acquisition
+        match self.lookup_template(&full, parse, encoding.as_deref())? {
+            LookupOutcome::Found(_, LookupResult::Parsed(t)) => self.include_template(&t),
+            LookupOutcome::Found(_, LookupResult::PlainText(text)) => self.emit(&text),
+            LookupOutcome::Missing(err) => {
+                if ignore_missing {
+                    return Ok(());
+                }
+                // Java Include.accept（Include.java:73-90）：加载失败（模板缺失/被包含
+                // 模板解析错误）→ "Template inclusion failed (for parameter value
+                // \"{name}\"):\n{原因}"（jar 实测 include_not_found / include_parse_error
+                // 基线；被包含模板体内部的渲染错误不加此包装——include_template 路径）
+                Err(TemplateError::misc(format!(
+                    "Template inclusion failed (for parameter value \"{name}\"):\n{}",
+                    err.to_user_message()
+                )))
+            }
+        }
+    }
+
+    /// 模板查找（Java `getTemplateForInclusion` 的加载部分：TemplateCache.java:914-948
+    /// lookupWithLocalizedThenAcquisitionStrategy —— locale 变体（en_US → en → 无后缀）
+    /// 外层 × acquisition 候选内层；parse=false → 直接读源文本（getPlainTextTemplate）；
+    /// 全部候选失败 → Missing（携带最后错误；调用方决定静默跳过或报错）
+    pub(crate) fn lookup_template(
+        &mut self,
+        full: &str,
+        parse: bool,
+        encoding: Option<&str>,
+    ) -> Result<LookupOutcome> {
         let locale = self.settings.locale.clone();
         let locale_cands: Vec<String> = if locale.is_empty() {
-            vec![full.clone()]
+            vec![full.to_string()]
         } else {
-            crate::template::configuration::localized_candidates(&full, &locale)
+            crate::template::configuration::localized_candidates(full, &locale)
         };
-        'outer: for lc in &locale_cands {
+        let mut last_err: Option<TemplateError> = None;
+        for lc in &locale_cands {
             for acq in acquisition_candidates(lc) {
                 if !parse {
                     // Java parseAsFTL=false：直接读源文本（TemplateCache.loadTemplate
@@ -1423,37 +1461,24 @@ impl<'a> Environment<'a> {
                         .template
                         .configuration
                         .template_loader
-                        .read_encoded(&*src, encoding.as_deref().unwrap_or("UTF-8"))?;
-                    return self.emit(&text);
+                        .read_encoded(&*src, encoding.unwrap_or("UTF-8"))?;
+                    return Ok(LookupOutcome::Found(acq, LookupResult::PlainText(text)));
                 }
                 match self
                     .template
                     .configuration
-                    .get_template_encoded(&acq, encoding.as_deref())
+                    .get_template_encoded(&acq, encoding)
                 {
-                    Ok(t) => {
-                        found = Some((acq, t));
-                        break 'outer;
-                    }
+                    Ok(t) => return Ok(LookupOutcome::Found(acq, LookupResult::Parsed(t))),
                     Err(e) => last_err = Some(e),
                 }
             }
         }
-        let Some((_, t)) = found else {
-            if ignore_missing {
-                return Ok(());
-            }
-            let err = last_err.unwrap_or(TemplateError::NotFound { name: full });
-            // Java Include.accept（Include.java:73-90）：加载失败（模板缺失/被包含
-            // 模板解析错误）→ "Template inclusion failed (for parameter value
-            // \"{name}\"):\n{原因}"（jar 实测 include_not_found / include_parse_error
-            // 基线；被包含模板体内部的渲染错误不加此包装——include_template 路径）
-            return Err(TemplateError::misc(format!(
-                "Template inclusion failed (for parameter value \"{name}\"):\n{}",
-                err.to_user_message()
-            )));
-        };
-        self.include_template(&t)
+        Ok(LookupOutcome::Missing(last_err.unwrap_or(
+            TemplateError::NotFound {
+                name: full.to_string(),
+            },
+        )))
     }
 
     /// 执行被包含模板（Java include(includedTemplate) :3126-3145：
@@ -1521,6 +1546,35 @@ impl<'a> Environment<'a> {
         Ok(())
     }
 
+    /// `<#import>` 已加载模板变体（Java `importLib(loadedTemplate, null)` ——
+    /// GetOptionalTemplateMethod 的 `import` 方法调用；Java :3234-3250 注释：
+    /// 缓存键用模板查找名（template.getName），与 import_lib 的根基准归一化名一致；
+    /// 已缓存 → 直接返回现有命名空间，不重复初始化）
+    pub(crate) fn import_lib_loaded(&mut self, key: &str, found: &LookupResult) -> Result<TModel> {
+        if let Some(existing) = self.loaded_libs.get(key) {
+            return Ok(namespace_model(existing.clone()));
+        }
+        let ns = match found {
+            LookupResult::Parsed(t) => {
+                let ns = Rc::new(Namespace::new(t.name.clone()));
+                *ns.ns_prefixes.borrow_mut() = t.ns_prefixes.clone();
+                self.loaded_libs.insert(key.to_string(), ns.clone());
+                // Java initializeImportLibNamespace（importLib :3280-3293）：命名空间
+                // 切换 + NullWriter 输出丢弃执行（Rust capture 丢弃）
+                self.initialize_import_lib_namespace(&ns, t)?;
+                ns
+            }
+            // plain text 模板无宏可注册：Java include(plainTemplate) 在 NullWriter 下
+            // 输出被丢弃，等价于仅创建空命名空间
+            LookupResult::PlainText(_) => {
+                let ns = Rc::new(Namespace::new(key.to_string()));
+                self.loaded_libs.insert(key.to_string(), ns.clone());
+                ns
+            }
+        };
+        Ok(namespace_model(ns))
+    }
+
     fn initialize_import_lib_namespace(&mut self, ns: &Rc<Namespace>, t: &Template) -> Result<()> {
         let prev_ns = self.current_ns.clone();
         let prev_name = self.current_template_name.clone();
@@ -1549,6 +1603,22 @@ impl<'a> Environment<'a> {
         let ns = self.current_ns.clone();
         register_macro(&ns, &def.name, def);
     }
+}
+
+/// 模板查找产物（Java `getTemplateForInclusion` 的两种结果：parseAsFTL=true →
+/// 解析的 Template；false → 直接读源文本的 plain text Template，TemplateCache
+/// loadTemplate :564-580 的 StringWriter 分支）
+#[derive(Clone)]
+pub(crate) enum LookupResult {
+    Parsed(Rc<crate::template::Template>),
+    PlainText(String),
+}
+
+/// 模板查找结果（对应 Java `getTemplateForInclusion` 的 ignoreMissing 语义：
+/// 缺失时由调用方决定静默跳过，或按携带的 last_err / NotFound 报错）
+pub(crate) enum LookupOutcome {
+    Found(String, LookupResult),
+    Missing(TemplateError),
 }
 
 /// 注册宏（Java visitMacroDef :1164-1167：currentNamespace.put(macroName, macro)）
@@ -2068,7 +2138,7 @@ pub(crate) fn model_to_string(env: &mut Environment, m: &TModel) -> Result<Strin
     if let Some(n) = &m.number {
         return n
             .as_number()
-            .map(|n| crate::builtins::format::format_number(env, &n));
+            .and_then(|n| crate::builtins::format::format_number(env, &n));
     }
     if let Some(b) = &m.boolean {
         let bv = b.as_boolean()?;
@@ -2115,6 +2185,15 @@ pub(crate) fn format_date_value(
     format_string: &str,
 ) -> Result<String> {
     use crate::builtins::iso_date_format::{format_iso_like, is_iso_like, parse_iso_params};
+    // Java Environment.java:2336-2346（getTemplateDateFormatWithoutCache）：`@name`
+    // → 自定义日期格式查找；v1 无注册机制 → 一律 UndefinedCustomFormatException
+    // （date/time/datetime 三种格式串共用此检查，消息统一 "No custom date format..."）
+    if let Some(name) = crate::builtins::format::custom_format_name(format_string) {
+        return Err(TemplateError::misc(format!(
+            "No custom date format was defined with name {}",
+            crate::builtins::format::j_quote(&name)
+        )));
+    }
     // Java Environment.java:2184：格式串无效 → "Can't create ... based on format string" 包装
     // （dateformat-iso-like 用例断言消息含 "format string"）
     let r: Result<String> = (|| match is_iso_like(format_string) {

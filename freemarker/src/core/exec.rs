@@ -2489,6 +2489,7 @@ ${double(21)}"#;
 #[cfg(test)]
 mod golden {
     use crate::cache::StringLoader;
+    use crate::core::Environment;
     use crate::error::{Result, TemplateError};
     use crate::template::{Configuration, TModel, TemplateDirectiveBody, TemplateDirectiveModel};
     use indexmap::IndexMap;
@@ -2543,7 +2544,7 @@ mod golden {
 
     struct ExecHelloWorld;
     impl crate::template::TemplateMethodModelEx for ExecHelloWorld {
-        fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+        fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
             Ok(TModel::from_scalar("Hello, world!\n".to_string()))
         }
     }

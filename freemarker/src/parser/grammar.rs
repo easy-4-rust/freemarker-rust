@@ -3168,6 +3168,14 @@ impl<'a> Parser<'a> {
                 let (t2, nl, nc) = self.next_tok()?;
                 match t2 {
                     Tok::Ident(name) => {
+                        // Java BuiltinVariable.java:258-262：GET_OPTIONAL_TEMPLATE(_CC)
+                        // 是两个独立名称（错误消息用各自方法名），须在归一化前区分
+                        if name == "getOptionalTemplate" {
+                            return Ok(Expr::new(
+                                ExprKind::BuiltinVar(BuiltinVar::GetOptionalTemplateCc),
+                                Span::new(nl, nc),
+                            ));
+                        }
                         let name = camel_to_snake(&name);
                         match builtin_var_of(&name) {
                             Some(v) => Ok(Expr::new(
@@ -3178,7 +3186,7 @@ impl<'a> Parser<'a> {
                                 nl,
                                 nc,
                                 format!(
-                                    "The built-in variable \".{name}\" doesn't exist. The allowed special variable names are: namespace, main, globals, locals, data_model, vars, lang, locale, locale_object, time_zone, template_name, main_template_name, current_template_name, node, current_node, error, output_encoding, output_format, auto_esc, url_escaping_charset, version, incompatible_improvements, args, now."
+                                    "The built-in variable \".{name}\" doesn't exist. The allowed special variable names are: namespace, main, globals, locals, data_model, vars, lang, locale, locale_object, time_zone, template_name, main_template_name, current_template_name, node, current_node, error, output_encoding, output_format, auto_esc, url_escaping_charset, version, incompatible_improvements, args, now, get_optional_template."
                                 ),
                             )),
                         }
@@ -4765,6 +4773,7 @@ fn builtin_var_of(name: &str) -> Option<BuiltinVar> {
         "version" => BuiltinVar::Version,
         "incompatible_improvements" => BuiltinVar::IncompatibleImprovements,
         "args" => BuiltinVar::Args,
+        "get_optional_template" => BuiltinVar::GetOptionalTemplate,
         _ => return None,
     })
 }

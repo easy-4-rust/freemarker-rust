@@ -95,7 +95,7 @@ fn test_custom_format() {
         &loader,
         "${d?string.@epoch} ${d?string.@epoch} <#setting locale='de_DE'>${d?string.@epoch}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@epoch\""],
+        &["No custom date format was defined with name", "\"epoch\""],
     );
     let _ = m;
     // Java: datetimeFormat="@epoch" → "${d} ${d?string} ..." = "123456789 ..."
@@ -105,7 +105,7 @@ fn test_custom_format() {
         &loader,
         "<#assign d = d?datetime>${d} ${d?string} <#setting locale='de_DE'>${d}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@epoch\""],
+        &["No custom date format was defined with name", "\"epoch\""],
     );
     let _ = m;
     // Java: @htmlIso（带 <span class='T'> 的 HTML 标记格式）
@@ -115,7 +115,7 @@ fn test_custom_format() {
         &loader,
         "<#assign d = d?datetime>${d} ${d?string} <#setting locale='de_DE'>${d}",
         dm,
-        &["Can't create date/time/datetime format based on format string \"@htmlIso\""],
+        &["No custom date format was defined with name", "\"htmlIso\""],
     );
     let _ = m;
 }
@@ -142,7 +142,7 @@ fn test_locale_change() {
         &loader,
         "${d?string.@loc} ${d?string.@loc} <#setting locale='de_DE'>${d?string.@loc} ${d?string.@loc} <#setting locale='en_US'>${d?string.@loc} ${d?string.@loc}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@loc\""],
+        &["No custom date format was defined with name", "\"loc\""],
     );
     let _ = m;
     // Java: datetimeFormat="@loc" → 同上（按当前 locale/timeZone 输出）
@@ -152,7 +152,7 @@ fn test_locale_change() {
         &loader,
         "<#assign d = d?datetime>${d} ${d?string} <#setting locale='de_DE'>${d} ${d?string} <#setting locale='en_US'>${d} ${d?string}",
         dm,
-        &["Can't create date/time/datetime format based on format string \"@loc\""],
+        &["No custom date format was defined with name", "\"loc\""],
     );
     let _ = m;
 }
@@ -181,7 +181,7 @@ fn test_time_zone_change() {
         &loader,
         "${d?string.@loc} ${d?string.@loc} ${d?datetime?isoLocal} <#setting timeZone='GMT+02:00'>${d?string.@loc} ${d?string.@loc} ${d?datetime?isoLocal} <#setting timeZone='GMT+01:00'>${d?string.@loc} ${d?string.@loc} ${d?datetime?isoLocal}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@loc\""],
+        &["No custom date format was defined with name", "\"loc\""],
     );
     let _ = m;
     // Java: datetimeFormat="@loc" → 按 timeZone 输出（+01:00 / +02:00）
@@ -191,7 +191,7 @@ fn test_time_zone_change() {
         &loader,
         "<#assign d = d?datetime>${d} ${d?string} <#setting timeZone='GMT+02:00'>${d} ${d?string} <#setting timeZone='GMT+01:00'>${d} ${d?string}",
         dm,
-        &["Can't create date/time/datetime format based on format string \"@loc\""],
+        &["No custom date format was defined with name", "\"loc\""],
     );
     let _ = m;
 }
@@ -232,7 +232,7 @@ fn test_custom_parameterized() {
         &loader,
         "${d}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@div 1000\""],
+        &["No custom date format was defined with name", "\"div\""],
     );
     let _ = m;
     let m = assert_error_contains_with_dm(
@@ -240,7 +240,7 @@ fn test_custom_parameterized() {
         &loader,
         "${d?string}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@div 1000\""],
+        &["No custom date format was defined with name", "\"div\""],
     );
     let _ = m;
     // Java: ${d?string.@div_100} → "123456"
@@ -249,7 +249,7 @@ fn test_custom_parameterized() {
         &loader,
         "${d?string.@div_100}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@div_100\""],
+        &["No custom date format was defined with name", "\"div\""],
     );
     let _ = m;
     // Java: ${d?string.@div_xyz} → 报错含 "@div_xyz"/"xyz"；引擎为模式解析错
@@ -258,7 +258,7 @@ fn test_custom_parameterized() {
         &loader,
         "${d?string.@div_xyz}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@div_xyz\""],
+        &["No custom date format was defined with name", "\"div\""],
     );
     let _ = m;
     // Java: datetimeFormat="@div"（缺参数）→ 报错含 "format parameter is required"
@@ -268,7 +268,7 @@ fn test_custom_parameterized() {
         &loader,
         "${d}",
         dm,
-        &["Can't create date/time/datetime format based on format string \"@div\""],
+        &["No custom date format was defined with name", "\"div\""],
     );
     let _ = m;
 }
@@ -286,28 +286,40 @@ fn test_unknown_custom_format() {
         &c,
         &loader,
         "${.now}",
-        &["Can't create date/time/datetime format based on format string \"@noSuchFormat\""],
+        &[
+            "No custom date format was defined with name",
+            "\"noSuchFormat\"",
+        ],
     );
     c.settings.date_format = "@noSuchFormatD".to_string();
     let _m2 = assert_error_contains(
         &c,
         &loader,
         "${.now?date}",
-        &["Can't create date/time/datetime format based on format string \"@noSuchFormatD\""],
+        &[
+            "No custom date format was defined with name",
+            "\"noSuchFormatD\"",
+        ],
     );
     c.settings.time_format = "@noSuchFormatT".to_string();
     let _m3 = assert_error_contains(
         &c,
         &loader,
         "${.now?time}",
-        &["Can't create date/time/datetime format based on format string \"@noSuchFormatT\""],
+        &[
+            "No custom date format was defined with name",
+            "\"noSuchFormatT\"",
+        ],
     );
     c.settings.date_time_format = "".to_string();
     let _m4 = assert_error_contains(
         &c,
         &loader,
         "${.now?string('@noSuchFormat2')}",
-        &["Can't create date/time/datetime format based on format string \"@noSuchFormat2\""],
+        &[
+            "No custom date format was defined with name",
+            "\"noSuchFormat2\"",
+        ],
     );
 }
 
@@ -344,7 +356,7 @@ fn test_ici_and_escaping() {
         &loader,
         "${d}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@epoch\""],
+        &["No custom date format was defined with name", "\"epoch\""],
     );
     // 引擎支持引号字面量模式：'@'yyyy → "@1970"（引号内 '@' 原样、yyyy 格式化）—— 与 Java 一致
     c.settings.date_time_format = "'@'yyyy".to_string();
@@ -367,7 +379,7 @@ fn test_ici_and_escaping_when_cust_forms_are_accepted(
         loader,
         "${d}",
         dm.clone(),
-        &["Can't create date/time/datetime format based on format string \"@epoch\""],
+        &["No custom date format was defined with name", "\"epoch\""],
     );
     let _ = m;
     c.settings.date_time_format = "'@'yyyy".to_string();
@@ -508,31 +520,20 @@ fn test_aliases() {
     let mut dm = indexmap::IndexMap::new();
     dm.insert("d".to_string(), tm());
     let dm = TModel::from_hash(dm);
-    let out1 = render_named_with_dm(&c, &loader, "t1.ftl", dm.clone());
-    assert_eq!(out1, "@6 @0 @0 E");
-    let out2 = render_named_with_dm(&c, &loader, "t2.ftl", dm);
-    assert_eq!(out2, "@6 @0 @0 E");
-}
-
-/// 以命名模板 + 数据模型渲染（util 的 render_named 不带 dm）
-fn render_named_with_dm(
-    c: &Configuration,
-    _loader: &Arc<StringLoader>,
-    name: &str,
-    dm: TModel,
-) -> String {
-    let t = c
-        .get_template(name)
-        .unwrap_or_else(|e| panic!("get_template({name}) failed: {e}"));
-    let mut out = Vec::new();
-    t.process(dm, &mut out)
-        .unwrap_or_else(|e| panic!("process({name}) failed: {e}"));
-    String::from_utf8_lossy(&out).into_owned()
+    // Java t1.ftl: "2015-Sep-06 2015-Sep 2015-sept. E" —— 引擎差异：@d 未实现 →
+    // 首个求值即报 UndefinedCustomFormatException（t2 同，模板配置层未实现）
+    assert_error_contains_with_dm(
+        &c,
+        &loader,
+        common_ftl,
+        dm,
+        &["No custom date format was defined with name", "\"d\""],
+    );
 }
 
 /// Java testAlieses2：别名格式按 locale 选择（@d）
-/// 引擎差异：@d 别名格式未实现 —— `@d` 被当作 '@'字面量 + 'd'(日) 模式解析 →
-/// "@6"（与 locale 无关）。Java 期望 "2015-Sep_en 2015-Sept_en_GB ... 2015-szept."
+/// 引擎差异：@d 别名格式未实现 → UndefinedCustomFormatException（与 locale 无关）。
+/// Java 期望 "2015-Sep_en 2015-Sept_en_GB ... 2015-szept."
 #[test]
 fn test_aliases2() {
     let (mut c, loader) = cfg();
@@ -540,13 +541,13 @@ fn test_aliases2() {
     let mut dm = indexmap::IndexMap::new();
     dm.insert("d".to_string(), tm());
     let dm = TModel::from_hash(dm);
-    let out = render_ftl_with_dm(
+    assert_error_contains_with_dm(
         &c,
         &loader,
         "<#setting locale='en_US'>${d} <#setting locale='en_GB'>${d} <#setting locale='en_GB_Win'>${d} <#setting locale='fr_FR'>${d} <#setting locale='hu_HU'>${d}",
         dm,
+        &["No custom date format was defined with name", "\"d\""],
     );
-    assert_eq!(out, "@6 @6 @6 @6 @6");
 }
 
 /// Java testZeroArgDateBI：?date()/?time()/?datetime() 零参调用（2.3.24 起）

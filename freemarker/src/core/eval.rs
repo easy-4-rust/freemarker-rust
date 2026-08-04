@@ -325,6 +325,15 @@ fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result
                 "Can't get .args here, as there's no macro or function (that's implemented in the template) call in context.",
             )),
         },
+        // Java BuiltinVariable.java:258-262：GET_OPTIONAL_TEMPLATE(_CC) →
+        // GetOptionalTemplateMethod 方法模型（无状态；exec 时经 env 查找模板；
+        // 两个变体仅错误消息中的方法名不同）
+        BuiltinVar::GetOptionalTemplate => Ok(TModel::from_method(
+            crate::core::get_optional_template_method::GetOptionalTemplateMethod::snake_case(),
+        )),
+        BuiltinVar::GetOptionalTemplateCc => Ok(TModel::from_method(
+            crate::core::get_optional_template_method::GetOptionalTemplateMethod::camel_case(),
+        )),
     }
 }
 
@@ -832,8 +841,8 @@ fn eval_call(env: &mut crate::core::Environment, callee: &Expr, args: &[Expr]) -
             }
         }
         // Java :60-66：TemplateMethodModelEx.exec(arguments.getModelList(env))；
-        // Java 结果经 ObjectWrapper.wrap，Rust 侧方法直接返回 TModel
-        return m.exec(vals);
+        // Java 经线程局部 Environment 访问上下文，Rust 显式传 env
+        return m.exec(env, vals);
     }
     Err(TemplateError::misc(format!(
         "The value of {} is not a method or function (it's a {})",
@@ -1649,7 +1658,7 @@ struct NewConstructorFunction {
 }
 
 impl crate::template::TemplateMethodModelEx for NewConstructorFunction {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut crate::core::Environment, args: Vec<TModel>) -> Result<TModel> {
         crate::template::utility_transforms::new_utility_class(&self.class_name, &args)
     }
 }
@@ -3243,7 +3252,7 @@ mod tests {
 
     struct MethodStub;
     impl crate::template::TemplateMethodModelEx for MethodStub {
-        fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        fn exec(&self, _env: &mut crate::core::Environment, args: Vec<TModel>) -> Result<TModel> {
             args.first()
                 .cloned()
                 .ok_or_else(|| TemplateError::misc("no arg"))

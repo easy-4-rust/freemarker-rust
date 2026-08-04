@@ -78,6 +78,8 @@ mod extended_decimal_format_test;
 mod file_template_loader_test;
 #[path = "java_ported/filter_bi_test.rs"]
 mod filter_bi_test;
+#[path = "java_ported/get_optional_template_method_test.rs"]
+mod get_optional_template_method_test;
 #[path = "java_ported/get_source_test.rs"]
 mod get_source_test;
 #[path = "java_ported/header_parsing.rs"]

@@ -61,7 +61,7 @@ pub fn string(
     if let Some(n) = &m.number {
         let n = n.as_number()?;
         if argc == 0 {
-            return Ok(Some(TModel::from_scalar(format_number(env, &n))));
+            return Ok(Some(TModel::from_scalar(format_number(env, &n)?)));
         }
         if argc == 1 {
             let fmt = arg_string(env, args, 0)?;
@@ -69,7 +69,7 @@ pub fn string(
                 &fmt,
                 &env.settings.locale,
                 &n,
-            ))));
+            )?)));
         }
         return Err(TemplateError::misc(
             "?string expects 0 or 1 arguments for numbers",

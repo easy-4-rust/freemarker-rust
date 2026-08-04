@@ -211,7 +211,8 @@ fn test_extended_params_effect() {
             "0;; roundingMode=floor",
             "en_US",
             &TNumber::Double(-1.4),
-        ),
+        )
+        .unwrap(),
         "-1;; roundingMode=floor" // Java: "-2"
     );
     // Java: unnecessary + 2.5 → ArithmeticException —— 引擎差异：v1 无 roundingMode 检查
@@ -242,7 +243,8 @@ fn test_extended_params_effect() {
             "0.##;; minusSign=m",
             "en_US",
             &TNumber::Double(-1.0)
-        ),
+        )
+        .unwrap(),
         "-1;; minusSign=m" // Java: "m1"
     );
     // infinity/nan：Java 0.##;; infinity=foo → "foo" —— 引擎差异：0.0 → "0"
@@ -356,7 +358,8 @@ fn test_locale() {
             "0.0",
             "en_US",
             &freemarker::value::TNumber::Int(1000)
-        ),
+        )
+        .unwrap(),
         "1000.0"
     );
     assert_eq!(
@@ -364,7 +367,8 @@ fn test_locale() {
             "0.0",
             "fr_FR",
             &freemarker::value::TNumber::Int(1000)
-        ),
+        )
+        .unwrap(),
         "1000,0"
     );
     // Java: ",000.0;;groupingSeparator=_" US → "1_000.0"；FR → "1_000,0"
@@ -375,7 +379,8 @@ fn test_locale() {
             ",000.0;;groupingSeparator=_",
             "en_US",
             &freemarker::value::TNumber::Int(1000)
-        ),
+        )
+        .unwrap(),
         "1,000.0;;groupingSeparator=_" // Java: "1_000.0"
     );
     assert_eq!(
@@ -383,7 +388,8 @@ fn test_locale() {
             ",000.0;;groupingSeparator=_",
             "fr_FR",
             &freemarker::value::TNumber::Int(1000)
-        ),
+        )
+        .unwrap(),
         "1\u{202f}000,0;;groupingSeparator=_" // Java: "1_000,0"
     );
     let _ = (c, loader);

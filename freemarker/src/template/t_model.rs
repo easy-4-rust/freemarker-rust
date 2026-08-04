@@ -456,6 +456,7 @@ impl TModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Environment;
     use crate::template::TemplateDirectiveBody;
     use std::collections::HashMap;
 
@@ -513,7 +514,7 @@ mod tests {
 
     struct MethodStub;
     impl TemplateMethodModelEx for MethodStub {
-        fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+        fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
             Ok(TModel::nothing())
         }
     }

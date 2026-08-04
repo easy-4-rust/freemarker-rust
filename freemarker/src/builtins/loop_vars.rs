@@ -78,7 +78,7 @@ struct ItemCycleMethod {
 }
 
 impl TemplateMethodModelEx for ItemCycleMethod {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         if args.is_empty() {
             return Err(TemplateError::misc(
                 "?item_cycle expects at least one argument",

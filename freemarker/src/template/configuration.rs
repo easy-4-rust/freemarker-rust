@@ -2,7 +2,10 @@
 //! （加载流见 docs/02 §2.1；缓存键/延迟/局部化回退由 cache 智能体补全）
 
 use crate::cache::TemplateNameFormat;
-use crate::cache::{NameFormatDefault020300, StringLoader, TemplateCache, TemplateLoader};
+use crate::cache::{
+    NameFormatDefault020300, StringLoader, TemplateCache, TemplateConfigurationFactory,
+    TemplateLoader,
+};
 use crate::core::Settings;
 use crate::error::{Result, TemplateError};
 use crate::parser;
@@ -22,6 +25,11 @@ pub struct Configuration {
     /// （autoImports 映射；每次渲染前 importLib，Environment.process :322
     /// doAutoImportsAndIncludes）
     pub auto_imports: Vec<(String, String)>,
+    /// per-template 配置工厂 —— 对应 Java `Configuration.setTemplateConfigurations`
+    /// （@since 2.3.24；模板加载时按源名匹配，结果应用到模板渲染设置；
+    /// Java 的 factory 绑定 Configuration 机制 Rust 侧无对应——Arc 共享持有，
+    /// 文档注明）
+    pub template_configurations: Option<Arc<dyn TemplateConfigurationFactory>>,
 }
 
 impl Clone for Configuration {
@@ -34,6 +42,7 @@ impl Clone for Configuration {
             cache: Mutex::new(TemplateCache::default()),
             shared_vars: self.shared_vars.clone(),
             auto_imports: self.auto_imports.clone(),
+            template_configurations: self.template_configurations.clone(),
         }
     }
 }
@@ -71,6 +80,7 @@ impl Default for Configuration {
             cache: Mutex::new(TemplateCache::default()),
             shared_vars,
             auto_imports: Vec::new(),
+            template_configurations: None,
         }
     }
 }
@@ -92,6 +102,46 @@ impl Configuration {
 
     pub fn set_shared_variable(&mut self, name: &str, model: TModel) {
         self.shared_vars.insert(name.to_string(), model);
+    }
+
+    /// 设置 per-template 配置工厂 —— 对应 Java `Configuration.setTemplateConfigurations`
+    /// （Java 会触发 factory.setConfiguration 绑定；Rust 侧 Arc 共享持有即为绑定，
+    /// 无重复绑定检查）
+    pub fn set_template_configurations(
+        &mut self,
+        factory: Option<Arc<dyn TemplateConfigurationFactory>>,
+    ) {
+        self.template_configurations = factory;
+    }
+
+    /// 按源名匹配并应用 per-template 配置（Java：TemplateCache.loadTemplate 加载
+    /// 后 `cfg.getTemplateConfiguration` + Template 携带；工厂异常 → 加载失败）
+    fn apply_template_configuration(&self, source_name: &str, t: &mut Template) -> Result<()> {
+        let Some(factory) = &self.template_configurations else {
+            return Ok(());
+        };
+        match factory.get(source_name) {
+            Ok(Some(tc)) => t.template_configuration = Some((*tc).clone()),
+            Ok(None) => {}
+            Err(e) => {
+                return Err(TemplateError::misc(format!(
+                    "Failed to get template configuration for source name \"{source_name}\": {e}"
+                )))
+            }
+        }
+        Ok(())
+    }
+
+    /// 清空模板缓存 —— 对应 Java `Configuration.clearTemplateCache()`
+    /// （→ TemplateCache.clear :645-657：清空存储；若加载器实现
+    /// StatefulTemplateLoader 则同步调用其 resetState —— Java 的 instanceof
+    /// 检查在 Rust 侧以 TemplateLoader::reset_state 默认空操作等价替代，
+    /// 此处直接虚分派）
+    pub fn clear_template_cache(&self) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear();
+        }
+        self.template_loader.reset_state();
     }
 
     /// 带局部化回退的取模板 —— 对应 Java `TemplateCache.lookupWithLocalizedThenAcquisitionStrategy`
@@ -138,6 +188,9 @@ impl Configuration {
                 t = parser::parse(&Rc::new(self.clone()), &normalized, &text)?;
             }
         }
+        // per-template 配置（Java TemplateCache.loadTemplate 的
+        // getTemplateConfiguration 应用点）
+        self.apply_template_configuration(&normalized, &mut t)?;
         Ok(Rc::new(t))
     }
 
@@ -148,7 +201,11 @@ impl Configuration {
         let loaded = cache.get_or_load(name, &*self.template_loader, |n, text| {
             // 闭包内不得触碰 self.cache（锁已持有）；cfg 克隆重建空缓存（无锁）
             let cfg = Rc::new(self.clone());
-            parser::parse(&cfg, n, &text).map(Rc::new)
+            let mut t = parser::parse(&cfg, n, &text)?;
+            // per-template 配置（Java TemplateCache.loadTemplate 应用点；
+            // 失败时模板尚未入缓存）
+            self.apply_template_configuration(n, &mut t)?;
+            Ok(Rc::new(t))
         })?;
         // Ok(None) = 负查找缓存（Java storeNegativeLookup 后抛 TemplateNotFoundException）
         loaded.ok_or_else(|| TemplateError::NotFound {

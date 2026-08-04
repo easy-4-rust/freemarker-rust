@@ -31,129 +31,192 @@ fn cfg() -> (Configuration, Arc<StringLoader>) {
 }
 
 /// Java testUnknownCustomFormat：未知自定义格式 → UndefinedCustomFormatException
-/// （消息含 "@noSuchFormat"/"noSuchFormat"；?string('@noSuchFormat2') 同理）
-/// 引擎差异：v1 无自定义格式 —— "@noSuchFormat" 按字面量 pattern 渲染（不报错）。
+/// （消息 "No custom number format was defined with name \"noSuchFormat\""；
+/// ?string('@noSuchFormat2') 同理）
 #[test]
 fn test_unknown_custom_format() {
     let (mut c, loader) = cfg();
-    // 引擎差异：Java 报 UndefinedCustomFormatException（含 "@noSuchFormat"）；
-    // v1 字面量前缀处理 → "@noSuchFormat1"
     c.settings.number_format = "@noSuchFormat".to_string();
-    assert_output(&c, &loader, "${1}", "@noSuchFormat1");
+    assert_error_contains(
+        &c,
+        &loader,
+        "${1}",
+        &[
+            "No custom number format was defined with name",
+            "\"noSuchFormat\"",
+        ],
+    );
     c.settings.number_format = "number".to_string();
-    // 引擎差异：Java 报 "Undefined custom format: @noSuchFormat2"；v1 → "@noSuchFormat21"
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         "${1?string('@noSuchFormat2')}",
-        "@noSuchFormat21",
+        &[
+            "No custom number format was defined with name",
+            "\"noSuchFormat2\"",
+        ],
     );
 }
 
 /// Java testStringBI：`?string.@hex` 十六进制（11→b、12→c）
-/// 引擎差异：@hex 自定义格式未实现（字面量前缀）→ "@hex11" 等
+/// 引擎差异：@hex 自定义格式未实现 → UndefinedCustomFormatException
 #[test]
 fn test_string_bi() {
     let (c, loader) = cfg();
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         "${11} ${11?string.@hex} ${12} ${12?string.@hex}",
-        "11 @hex11 12 @hex12",
+        &["No custom number format was defined with name", "\"hex\""],
     );
 }
 
 /// Java testSetting：numberFormat 设置 @hex
-/// 引擎差异：@hex 未实现（字面量前缀）
+/// 引擎差异：@hex 未实现 → 报错
 #[test]
 fn test_setting() {
     let (mut c, loader) = cfg();
     c.settings.number_format = "@hex".to_string();
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         "${11?string.number} ${11} ${12?string.number} ${12}",
-        "11 @hex11 12 @hex12",
+        &["No custom number format was defined with name", "\"hex\""],
     );
 }
 
 /// Java testSetting2：模板内 <#setting numberFormat='@hex'>/<#setting numberFormat='@loc'>
-/// 引擎差异：@hex/@loc 自定义格式未实现（字面量前缀）
+/// 引擎差异：@hex/@loc 未实现 → 首次求值即报错
 #[test]
 fn test_setting2() {
     let (c, loader) = cfg();
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         "<#setting numberFormat='@hex'>${11?string.number} ${11} ${12?string.number} ${12} ${13?string}<#setting numberFormat='@loc'>${11?string.number} ${11} ${12?string.number} ${12} ${13?string}",
-        "11 @hex11 12 @hex12 @hex1311 @loc11 12 @loc12 @loc13",
+        &["No custom number format was defined with name", "\"hex\""],
     );
 }
 
 /// Java testUnformattableNumber：@hex 遇小数 → "hexadecimal int" 错误
-/// 引擎差异：@hex 未实现 —— 1.1 按字面量前缀渲染 "@hex1"（不报错）
+/// 引擎差异：@hex 未实现 → 一律 UndefinedCustomFormatException（含整数）
 #[test]
 fn test_unformattable_number() {
     let (mut c, loader) = cfg();
     c.settings.number_format = "@hex".to_string();
-    assert_output(&c, &loader, "${1.1}", "@hex1");
+    assert_error_contains(
+        &c,
+        &loader,
+        "${1.1}",
+        &["No custom number format was defined with name", "\"hex\""],
+    );
 }
 
 /// Java testLocaleSensitive：@loc 格式（locale 敏感）
-/// 引擎差异：@loc 自定义格式未实现（字面量前缀，与 locale 无关）
+/// 引擎差异：@loc 未实现 → 报错（与 locale 无关）
 #[test]
 fn test_locale_sensitive() {
     let (mut c, loader) = cfg();
     c.settings.number_format = "@loc".to_string();
-    assert_output(&c, &loader, "${1.1}", "@loc1");
+    assert_error_contains(
+        &c,
+        &loader,
+        "${1.1}",
+        &["No custom number format was defined with name", "\"loc\""],
+    );
     c.settings.locale = "de_DE".to_string();
-    assert_output(&c, &loader, "${1.1}", "@loc1");
+    assert_error_contains(
+        &c,
+        &loader,
+        "${1.1}",
+        &["No custom number format was defined with name", "\"loc\""],
+    );
 }
 
 /// Java testLocaleSensitive2：模板内 locale 切换
-/// 引擎差异：@loc 未实现（字面量前缀）
+/// 引擎差异：@loc 未实现 → 报错
 #[test]
 fn test_locale_sensitive2() {
     let (mut c, loader) = cfg();
     c.settings.number_format = "@loc".to_string();
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         "${1.1} <#setting locale='de_DE'>${1.1}",
-        "@loc1 @loc1",
+        &["No custom number format was defined with name", "\"loc\""],
     );
 }
 
 /// Java testCustomParameterized：@base 2 参数化自定义格式
-/// 引擎差异：@base 参数化自定义格式未实现（字面量前缀）
+/// 引擎差异：@base 未实现 → UndefinedCustomFormatException（name 取到空格/下划线前）
 #[test]
 fn test_custom_parameterized() {
     let (mut c, loader) = cfg();
     c.settings.number_format = "@base 2".to_string();
-    assert_output(&c, &loader, "${11}", "@base 211");
-    assert_output(&c, &loader, "${11?string}", "@base 211");
-    assert_output(&c, &loader, "${11?string.@base_3}", "@base_311");
-    // 引擎差异：Java 报 "Undefined custom format: @base_xyz"；v1 字面量前缀 → "@base_xyz11"
-    assert_output(&c, &loader, "${11?string.@base_xyz}", "@base_xyz11");
+    assert_error_contains(
+        &c,
+        &loader,
+        "${11}",
+        &["No custom number format was defined with name", "\"base\""],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${11?string}",
+        &["No custom number format was defined with name", "\"base\""],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${11?string.@base_3}",
+        &["No custom number format was defined with name", "\"base\""],
+    );
+    // Java 报 "Undefined custom format: @base_xyz"（2.3.34 消息：name="base_xyz"？
+    // —— Java :1648-1657 findParamsStart 遇 '_' 停 → name="base"）；引擎同 name="base"
+    assert_error_contains(
+        &c,
+        &loader,
+        "${11?string.@base_xyz}",
+        &["No custom number format was defined with name", "\"base\""],
+    );
     c.settings.number_format = "@base".to_string();
-    // 引擎差异：Java 报 "format parameter is required"；v1 字面量前缀 → "@base11"
-    assert_output(&c, &loader, "${11}", "@base11");
+    assert_error_contains(
+        &c,
+        &loader,
+        "${11}",
+        &["No custom number format was defined with name", "\"base\""],
+    );
 }
 
 /// Java testCustomWithFallback：@base 2|0.0#（fallback pattern）
-/// 引擎差异：@base 自定义格式未实现（字面量前缀）
+/// 引擎差异：@base 未实现 → 报错
 #[test]
 fn test_custom_with_fallback() {
     let (mut c, loader) = cfg();
     c.settings.number_format = "@base 2|0.0#".to_string();
-    assert_output(&c, &loader, "${11}", "@base 2|11.0");
-    assert_output(&c, &loader, "${11.34}", "@base 2|11.34");
-    assert_output(&c, &loader, "${11?string('@base 3|0.00')}", "@base 3|11.00");
-    assert_output(
+    assert_error_contains(
+        &c,
+        &loader,
+        "${11}",
+        &["No custom number format was defined with name", "\"base\""],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${11.34}",
+        &["No custom number format was defined with name", "\"base\""],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        "${11?string('@base 3|0.00')}",
+        &["No custom number format was defined with name", "\"base\""],
+    );
+    assert_error_contains(
         &c,
         &loader,
         "${11.2?string('@base 3|0.00')}",
-        "@base 3|11.20",
+        &["No custom number format was defined with name", "\"base\""],
     );
 }
 
@@ -165,12 +228,13 @@ fn test_environment_getters() {
     let (mut c, loader) = cfg();
     let _def_fmt = c.settings.number_format.clone();
     // Java: env.getTemplateNumberFormat() —— 引擎等价 = 无参 ?string（当前 number_format）
-    // 显式 "0.00"：引擎 format_number_with("0.00", locale, n)
+    // 显式 "0.00"：引擎 format_number_with("0.00", locale, n).unwrap()
     let s = freemarker::builtins::format::format_number_with(
         "0.00",
         "en_US",
         &freemarker::value::TNumber::Double(1.25),
-    );
+    )
+    .unwrap();
     // Java assertEquals("1.25", explF.formatToPlainText(new SimpleNumber(1.25)))
     assert_eq!(s, "1.25");
     // Java: expl2F = getTemplateNumberFormat("@loc") → "1.25_en_US" —— 引擎差异：@loc 未实现
@@ -179,7 +243,8 @@ fn test_environment_getters() {
         "0.00",
         "fr_FR",
         &freemarker::value::TNumber::Double(1.25),
-    );
+    )
+    .unwrap();
     assert_eq!(s_fr, "1,25");
     // Java: expl2FFr = getTemplateNumberFormat("@loc", Locale.FRANCE) → "1.25_fr_FR" —— 引擎差异
     // Java: assertSame 缓存同一性断言 —— 引擎差异：v1 无格式化器缓存对象
@@ -211,7 +276,7 @@ impl freemarker::template::TemplateDirectiveModel for IncNumberDirective {
 }
 
 /// Java testStringBIDoesSnapshot：?string 在调用时快照格式输入（Java 惰性格式化）
-/// 引擎差异：@loc/@hex 自定义格式未实现（字面量前缀）—— s2/s3 为字面量模式输出
+/// 引擎差异：@loc/@hex 未实现 → s2/s3 求值时 UndefinedCustomFormatException
 #[test]
 fn test_string_bi_does_snapshot() {
     let (c, loader) = cfg();
@@ -226,14 +291,15 @@ fn test_string_bi_does_snapshot() {
     );
     dm.insert("incN".to_string(), inc);
     let dm = TModel::from_hash(dm);
-    // Java 期望 "123 123_en_US 7b"（@loc/@hex 生效）；引擎差异：字面量前缀 → "123 @loc123 @hex123"
-    let out = render_ftl_with_dm(
+    // Java 期望 "123 123_en_US 7b"（@loc/@hex 生效）；引擎差异：@loc 未实现 →
+    // s2 求值报错（s1 已固化、未求值的 s3 不触发）
+    assert_error_contains_with_dm(
         &c,
         &loader,
         "<#assign s1 = n?string><#setting numberFormat='@loc'><#assign s2 = n?string><#setting numberFormat='@hex'><#assign s3 = n?string>${s1} ${s2} ${s3}",
         dm.clone(),
+        &["No custom number format was defined with name", "\"loc\""],
     );
-    assert_eq!(out, "123 @loc123 @hex123");
     // 第二个断言：incN 指令递增 n —— 引擎即时求值语义与 Java 一致（s1 已固化）
     let out2 = render_ftl_with_dm(
         &c,
@@ -263,15 +329,21 @@ fn test_null_in_model() {
 }
 
 /// Java testIcIAndEscaping：ICI 门控的 @ 转义语义（2.3.23/2.3.24）
-/// 引擎差异：@hex 未实现（字面量前缀）；'@'0 / @@0 字面量模式与 Java 一致
+/// 引擎固定 ICI 2.3.34 → `@hex` 报 UndefinedCustomFormatException；
+/// `'@'0` / `@@0` 字面量转义模式与 Java 一致（@@ 第二个字符非字母，不走自定义分支）
 #[test]
 fn test_ici_and_escaping() {
     let (mut c, loader) = cfg();
     test_ici_and_escaping_when_cust_forms_accepted(&mut c, &loader);
-    // Java 移除自定义格式后 @hex 字面量输出 / '@'0 转义 —— 引擎差异：@ 处理未实现
+    // Java 移除自定义格式后 @hex 字面量输出（ICI<2.3.24）/ 报错（ICI>=2.3.24）；
+    // 引擎固定 ICI 2.3.34 → 报错；'@'0 / @@0 字面量模式与 Java 一致
     c.settings.number_format = "@hex".to_string();
-    // 引擎差异：Java 报 "custom"/"hex" 错误；v1 字面量前缀 → "@hex10"
-    assert_output(&c, &loader, "${10}", "@hex10");
+    assert_error_contains(
+        &c,
+        &loader,
+        "${10}",
+        &["No custom number format was defined with name", "\"hex\""],
+    );
     c.settings.number_format = "'@'0".to_string();
     assert_output(&c, &loader, "${10}", "@10");
     c.settings.number_format = "@@0".to_string();
@@ -282,9 +354,14 @@ fn test_ici_and_escaping_when_cust_forms_accepted(
     c: &mut Configuration,
     loader: &Arc<StringLoader>,
 ) {
-    // Java ICI 2.3.24（自定义格式被接受）：@hex → a —— 引擎差异：@hex 未实现（字面量前缀）
+    // Java ICI 2.3.24（自定义格式被接受）：@hex → a —— 引擎差异：@hex 未实现 → 报错
     c.settings.number_format = "@hex".to_string();
-    assert_output(c, loader, "${10}", "@hex10");
+    assert_error_contains(
+        c,
+        loader,
+        "${10}",
+        &["No custom number format was defined with name", "\"hex\""],
+    );
     c.settings.number_format = "'@'0".to_string();
     assert_output(c, loader, "${10}", "@10");
     c.settings.number_format = "@@0".to_string();
@@ -293,94 +370,122 @@ fn test_ici_and_escaping_when_cust_forms_accepted(
 
 /// Java testAlieses：别名自定义格式 + 模板配置层（t1.ftl/t2.ftl 不同输出）
 /// 引擎差异：AliasTemplateNumberFormatFactory + ConditionalTemplateConfigurationFactory
-/// （模板配置层）未实现 —— t1/t2 输出相同（字面量前缀）
+/// （模板配置层）未实现 —— @f/@d/@i 均报 UndefinedCustomFormatException
 #[test]
 fn test_aliases() {
     let (c, loader) = cfg();
     let common_ftl = "${1?string.@f} ${1?string.@d} <#setting locale='fr_FR'>${1.5?string.@d} <#attempt>${10?string.@i}<#recover>E</#attempt>";
     add_template(&loader, "t1.ftl", common_ftl);
     add_template(&loader, "t2.ftl", common_ftl);
-    let out1 = render_named(&c, &loader, "t1.ftl");
-    // Java t1.ftl: "1f 1.0 1,5 E" —— 引擎差异：@f/@d/@i 自定义格式未实现（字面量前缀）
-    assert_eq!(out1, "@f1 @d1 @d2 @i10");
-    let out2 = render_named(&c, &loader, "t2.ftl");
-    // Java t2.ftl: "1f 1d 1,5d a"（模板配置层覆盖）—— 引擎差异：配置层未实现
-    assert_eq!(out2, "@f1 @d1 @d2 @i10");
+    // Java t1.ftl: "1f 1.0 1,5 E" —— 引擎差异：@f 未实现 → 首个求值即报错
+    assert_error_contains(
+        &c,
+        &loader,
+        common_ftl,
+        &["No custom number format was defined with name", "\"f\""],
+    );
+    // Java t2.ftl: "1f 1d 1,5d a"（模板配置层覆盖）—— 引擎差异：配置层未实现，
+    // t2 与 t1 同错误（不再单独渲染断言）
 }
 
 /// Java testAlieses2：别名格式按 locale 选择
-/// 引擎差异：@n 别名格式未实现（字面量前缀，与 locale 无关）
+/// 引擎差异：@n 别名格式未实现 → 报错（与 locale 无关）
 #[test]
 fn test_aliases2() {
     let (mut c, loader) = cfg();
     c.settings.number_format = "@n".to_string();
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         "<#setting locale='en_US'>${1} <#setting locale='en_GB'>${1} <#setting locale='en_GB_Win'>${1} <#setting locale='fr_FR'>${1} <#setting locale='hu_HU'>${1}",
-        "@n1 @n1 @n1 @n1 @n1",
+        &["No custom number format was defined with name", "\"n\""],
     );
 }
 
 /// Java testMarkupFormat：@printfG_3 标记格式（含 <sup>）在多种转义上下文
-/// 引擎差异：@printfG_3（printf 风格自定义格式）未实现 —— 全部按字面量前缀输出
+/// 引擎差异：@printfG_3（printf 风格自定义格式）未实现 → UndefinedCustomFormatException
 #[test]
 fn test_markup_format() {
     let (mut c, loader) = cfg();
     c.settings.number_format = "@printfG_3".to_string();
     let common_ftl = "${1234567} ${'cat:' + 1234567} ${0.0000123}";
-    // 引擎差异：Java 输出 "1.23*10<sup>6</sup> cat:... 1.23*10<sup>-5</sup>"（markup）；
-    // v1 字面量前缀 → "@printfG_31234567 cat:@printfG_31234567 @printfG_30"
-    let common_output = "@printfG_31234567 cat:@printfG_31234567 @printfG_30";
-    assert_output(&c, &loader, common_ftl, common_output);
-    assert_output(
+    // Java 输出 "1.23*10<sup>6</sup> cat:... 1.23*10<sup>-5</sup>"（markup）；
+    // 引擎差异：@printfG_3 未实现 → 首个数字求值即报错（name="printfG"，下划线截断）
+    assert_error_contains(
+        &c,
+        &loader,
+        common_ftl,
+        &[
+            "No custom number format was defined with name",
+            "\"printfG\"",
+        ],
+    );
+    assert_error_contains(
         &c,
         &loader,
         &format!("<#ftl outputFormat='HTML'>{}", common_ftl),
-        common_output,
+        &[
+            "No custom number format was defined with name",
+            "\"printfG\"",
+        ],
     );
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         &format!("<#escape x as x?html>{}</#escape>", common_ftl),
-        common_output,
+        &[
+            "No custom number format was defined with name",
+            "\"printfG\"",
+        ],
     );
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         &format!("<#escape x as x?xhtml>{}</#escape>", common_ftl),
-        common_output,
+        &[
+            "No custom number format was defined with name",
+            "\"printfG\"",
+        ],
     );
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         &format!("<#escape x as x?xml>{}</#escape>", common_ftl),
-        common_output,
+        &[
+            "No custom number format was defined with name",
+            "\"printfG\"",
+        ],
     );
     // Java：assertOutput("${\"" + commonFtl + "\"}") —— 引号字符串内嵌插值
-    assert_output(
+    assert_error_contains(
         &c,
         &loader,
         &format!("${{\"{}\"}}", common_ftl),
-        common_output,
+        &[
+            "No custom number format was defined with name",
+            "\"printfG\"",
+        ],
     );
     // 引擎差异：Java 报 "HTML"/"plainText"/"conversion" 错误（markup 无法输出到
-    // plainText）；v1 @printfG_3 为普通文本 → 正常渲染（无 markup 冲突）
-    assert_output(
+    // plainText）；v1 @printfG_3 未实现 → 同 UndefinedCustomFormatException
+    assert_error_contains(
         &c,
         &loader,
         &format!("<#ftl outputFormat='plainText'>{}", common_ftl),
-        common_output,
+        &[
+            "No custom number format was defined with name",
+            "\"printfG\"",
+        ],
     );
 }
 
 /// Java testPrintG：@printfG 系列（%G 风格）
-/// 引擎差异：@printfG 自定义格式未实现（字面量前缀）
+/// 引擎差异：@printfG 未实现 → UndefinedCustomFormatException（name="printfG"）
 #[test]
 fn test_print_g() {
     let (c, loader) = cfg();
     // Java 遍历 6 种 Number 类型（int/long/double/float/BigInteger/BigDecimal）
-    // —— 引擎差异：@printfG 未实现；字面量前缀下各类型输出相同
+    // —— 引擎差异：@printfG 未实现；各类型同报错
     let nums: Vec<freemarker::value::TNumber> = vec![
         freemarker::value::TNumber::Int(1234567),
         freemarker::value::TNumber::Long(1234567),
@@ -395,15 +500,47 @@ fn test_print_g() {
                 .into_iter()
                 .collect(),
         );
-        // Java "1.23457E+06" —— 引擎差异：@printfG 未实现（字面量前缀）
-        let out = render_ftl_with_dm(&c, &loader, "${n?string.@printfG}", dm.clone());
-        assert_eq!(out, "@printfG1234567");
-        let out3 = render_ftl_with_dm(&c, &loader, "${n?string.@printfG_3}", dm.clone());
-        assert_eq!(out3, "@printfG_31234567");
-        let out7 = render_ftl_with_dm(&c, &loader, "${n?string.@printfG_7}", dm.clone());
-        assert_eq!(out7, "@printfG_71234567");
-        let outn = render_ftl_with_dm(&c, &loader, "${0.0000123?string.@printfG}", dm);
-        assert_eq!(outn, "@printfG0");
+        // Java "1.23457E+06" —— 引擎差异：@printfG 未实现 → 报错
+        assert_error_contains_with_dm(
+            &c,
+            &loader,
+            "${n?string.@printfG}",
+            dm.clone(),
+            &[
+                "No custom number format was defined with name",
+                "\"printfG\"",
+            ],
+        );
+        assert_error_contains_with_dm(
+            &c,
+            &loader,
+            "${n?string.@printfG_3}",
+            dm.clone(),
+            &[
+                "No custom number format was defined with name",
+                "\"printfG\"",
+            ],
+        );
+        assert_error_contains_with_dm(
+            &c,
+            &loader,
+            "${n?string.@printfG_7}",
+            dm.clone(),
+            &[
+                "No custom number format was defined with name",
+                "\"printfG\"",
+            ],
+        );
+        assert_error_contains_with_dm(
+            &c,
+            &loader,
+            "${0.0000123?string.@printfG}",
+            dm,
+            &[
+                "No custom number format was defined with name",
+                "\"printfG\"",
+            ],
+        );
     }
 }
 

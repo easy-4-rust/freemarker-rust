@@ -9,6 +9,7 @@
 
 use std::rc::Rc;
 
+use freemarker::core::Environment;
 use freemarker::parser::parse;
 use freemarker::template::{
     Configuration, ObjectWrapper, SimpleObjectWrapper, TModel, TemplateMethodModelEx,
@@ -99,7 +100,11 @@ fn new_builtin_unknown_class_parse() {
 
 struct DummyMethod;
 impl TemplateMethodModelEx for DummyMethod {
-    fn exec(&self, _args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(
+        &self,
+        _env: &mut Environment,
+        _args: Vec<TModel>,
+    ) -> freemarker::error::Result<TModel> {
         Ok(TModel::nothing())
     }
 }

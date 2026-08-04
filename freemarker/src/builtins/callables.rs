@@ -79,7 +79,7 @@ struct WithArgsMethod {
 }
 
 impl TemplateMethodModelEx for WithArgsMethod {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let mut all = Vec::with_capacity(args.len() + self.bound.len());
         if self.at_end {
             all.extend(args);
@@ -88,6 +88,6 @@ impl TemplateMethodModelEx for WithArgsMethod {
             all.extend(self.bound.iter().cloned());
             all.extend(args);
         }
-        self.method.exec(all)
+        self.method.exec(env, all)
     }
 }

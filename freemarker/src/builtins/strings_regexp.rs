@@ -262,7 +262,7 @@ impl TemplateCollectionModel for MatcherColl {
 /// `x?matches`（无参）→ 方法模型：exec([pattern[, flags]]) 返回新匹配器
 struct MatcherMethod(Rc<RegexMatchData>);
 impl TemplateMethodModelEx for MatcherMethod {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let bi = "matches";
         if args.is_empty() || args.len() > 2 {
             return Err(TemplateError::misc(format!(

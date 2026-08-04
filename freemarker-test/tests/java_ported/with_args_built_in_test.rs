@@ -16,6 +16,7 @@
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
 use freemarker::cache::StringLoader;
+use freemarker::core::Environment;
 use freemarker::template::{Configuration, TModel, TemplateMethodModelEx};
 use freemarker::value::TNumber;
 use std::sync::Arc;
@@ -802,7 +803,7 @@ fn arg_text(m: &TModel) -> String {
 
 struct M3pMethod;
 impl TemplateMethodModelEx for M3pMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let a = spread_seq(args)?;
         // 引擎差异：v1 withArgsLast 追加在尾部 → 参数顺序 [尾随..., 绑定...]，
         // 展开后与 Java 一致
@@ -817,14 +818,18 @@ impl TemplateMethodModelEx for M3pMethod {
 
 struct M0pMethod;
 impl TemplateMethodModelEx for M0pMethod {
-    fn exec(&self, _args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(
+        &self,
+        _env: &mut Environment,
+        _args: Vec<TModel>,
+    ) -> freemarker::error::Result<TModel> {
         Ok(TModel::from_scalar("OK".to_string()))
     }
 }
 
 struct MvaMethod;
 impl TemplateMethodModelEx for MvaMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let a = spread_seq(args)?;
         if a.len() == 1 && a[0].is_hash() {
             // Java：?withArgs({}) 对方法报错（"hash" 提示）
@@ -847,7 +852,7 @@ impl TemplateMethodModelEx for MvaMethod {
 
 struct MNullableMethod;
 impl TemplateMethodModelEx for MNullableMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let a = spread_seq(args)?;
         Ok(TModel::from_scalar(format!(
             "{}, {}, {}",
@@ -900,7 +905,7 @@ struct LegacyMethod {
 }
 
 impl TemplateMethodModelEx for LegacyMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let args = spread_seq(args)?;
         let mut parts = Vec::new();
         for a in args {

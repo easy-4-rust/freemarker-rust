@@ -588,9 +588,15 @@ fn split_digits(bd: &BigDecimal) -> (String, String) {
 ///   :51-53）—— en_US 等为 `#,##0.###`（分组 + 至多 3 位小数、HALF_EVEN 舍入）；
 /// - "c"/"computer" → C 格式
 /// - 其余 → DecimalFormat 子集
-pub fn format_number(env: &Environment, n: &TNumber) -> String {
+pub fn format_number(env: &Environment, n: &TNumber) -> Result<String> {
     let fmt = env.settings.number_format.as_str();
     let locale = env.settings.locale.as_str();
+    if let Some(name) = custom_format_name(fmt) {
+        return Err(TemplateError::misc(format!(
+            "No custom number format was defined with name {}",
+            j_quote(&name)
+        )));
+    }
     if fmt == "number" || fmt.is_empty() {
         // 默认模式解析结果缓存（首次解析后复用，热路径避免每次模式解析；
         // 键为 (number_format, locale)，`<#setting>` 改动后自动失效）
@@ -600,41 +606,84 @@ pub fn format_number(env: &Environment, n: &TNumber) -> String {
             _ => {
                 let parsed = match parse_decimal_format("#,##0.###", locale) {
                     Ok(df) => df,
-                    Err(_) => return n.to_plain_string(),
+                    Err(_) => return Ok(n.to_plain_string()),
                 };
                 let rc = std::rc::Rc::new(parsed);
                 *cache = Some((fmt.to_string(), locale.to_string(), rc.clone()));
                 rc
             }
         };
-        format_decimal(&df, n)
+        Ok(format_decimal(&df, n))
     } else if fmt == "c" || fmt == "computer" {
-        format_c_number(n, CFormatKind::JavaScriptOrJson)
+        Ok(format_c_number(n, CFormatKind::JavaScriptOrJson))
     } else {
         match parse_decimal_format(fmt, locale) {
-            Ok(df) => format_decimal(&df, n),
-            Err(_) => n.to_plain_string(),
+            Ok(df) => Ok(format_decimal(&df, n)),
+            Err(_) => Ok(n.to_plain_string()),
         }
     }
 }
 
-/// 与 format_number 相同，但显式指定格式串（?string('pattern') 用）
-pub fn format_number_with(fmt: &str, locale: &str, n: &TNumber) -> String {
+/// 与 format_number 相同，但显式指定格式串（?string('pattern') 用；
+/// Java ?string 的格式串同样经 getTemplateNumberFormat → `@` 检查）
+pub fn format_number_with(fmt: &str, locale: &str, n: &TNumber) -> Result<String> {
+    if let Some(name) = custom_format_name(fmt) {
+        return Err(TemplateError::misc(format!(
+            "No custom number format was defined with name {}",
+            j_quote(&name)
+        )));
+    }
     if fmt == "number" || fmt.is_empty() {
         // Java NumberFormat.getNumberInstance(locale) 的 v1 复刻：`#,##0.###`
         // （分组 + 至多 3 位小数；1/2 → "0.5"、123456/7 → "17,636.571"）
         match parse_decimal_format("#,##0.###", locale) {
-            Ok(df) => format_decimal(&df, n),
-            Err(_) => n.to_plain_string(),
+            Ok(df) => Ok(format_decimal(&df, n)),
+            Err(_) => Ok(n.to_plain_string()),
         }
     } else if fmt == "c" || fmt == "computer" {
-        format_c_number(n, CFormatKind::JavaScriptOrJson)
+        Ok(format_c_number(n, CFormatKind::JavaScriptOrJson))
     } else {
         match parse_decimal_format(fmt, locale) {
-            Ok(df) => format_decimal(&df, n),
-            Err(_) => n.to_plain_string(),
+            Ok(df) => Ok(format_decimal(&df, n)),
+            Err(_) => Ok(n.to_plain_string()),
         }
     }
+}
+
+/// 自定义格式名解析（Java Environment.java:1637-1641（number）/ :2325-2328（date）：
+/// `@` 开头 + 长度>1 + 第二字符为字母 才走自定义格式分支；`@@0` 的 @ 转义、
+/// `@0` 的字面量模式、`@` 单独均不匹配 → None）。name 取到首个空格/下划线前
+/// （Java findParamsStart :1648-1657）。v1 无自定义格式注册机制（Java
+/// isIcI2324OrLater 恒真）→ 匹配即视为未定义。
+pub(crate) fn custom_format_name(format_string: &str) -> Option<String> {
+    let rest = format_string.strip_prefix('@')?;
+    if !rest.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let name = rest
+        .split([' ', '_'])
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    Some(name)
+}
+
+/// Java `StringUtil.jQuote`：双引号包裹 + `\ " \n \r \t` 转义
+pub(crate) fn j_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[cfg(test)]

@@ -115,7 +115,7 @@ fn new_test_model(args: &[TModel]) -> Result<TModel> {
 /// 其余类名 → ClassNotFoundException 语义
 pub struct ObjectConstructorFn;
 impl crate::template::TemplateMethodModelEx for ObjectConstructorFn {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let Some(first) = args.first() else {
             return Err(TemplateError::misc(
                 "No error description was specified for this error; low-level message: java.lang.IllegalArgumentException: Object constructor needs at least 1 argument.",
@@ -152,7 +152,7 @@ impl crate::template::TemplateMethodModelEx for ObjectConstructorFn {
 /// n 为参数经 arg_to_test_value 解析后的值：数值取整，字符串为数字单词则映射为对应数字）
 pub struct SimpleTestMethodFn;
 impl crate::template::TemplateMethodModelEx for SimpleTestMethodFn {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let value = if let Some(arg) = args.first() {
             arg_to_test_value(arg)
         } else {
