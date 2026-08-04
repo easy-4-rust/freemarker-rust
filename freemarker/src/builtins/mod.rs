@@ -162,7 +162,7 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "namespace" => Some(multi::namespace),
         "absolute_template_name" => Some(multi::absolute_template_name),
         "api" => Some(multi::api),
-        "markup_string" => Some(multi::markup_string),
+        "markup_string" => Some(markup_outputs::markup_string),
         // ---- 惰性条件（BuiltInsWithLazyConditionals.java）----
         "then" => Some(lazy::then),
         "switch" => Some(lazy::switch),

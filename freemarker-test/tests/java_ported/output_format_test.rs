@@ -167,17 +167,14 @@ fn test_esc_and_no_esc_bi_basics() {
     setup_shared_vars(&mut c);
     let common = "${'<x>'} ${'<x>'?esc} ${'<x>'?noEsc}";
     // Java t.ftlh（HTML，autoEsc on）期望 "&lt;x&gt; &lt;x&gt; <x>"：
-    //   引擎差异（markup 结果二次转义）→ `${'<x>'?esc}` 得 "&amp;lt;x&amp;gt;"、
-    //   `${'<x>'?noEsc}` 得 "&lt;x&gt;"，故不逐字对齐（见文件头 apply_escape 差异）。
+    //   ?esc/?noEsc 结果按 markup 语义输出（autoEsc 下不二次转义，
+    //   DollarVariable.java:72-77 同格式 markup 原样输出）
     let html_auto = render_ftl(
         &c,
         &l,
         &format!("<#outputFormat 'HTML'><#autoEsc>{common}</#autoEsc></#outputFormat>"),
     );
-    assert_eq!(
-        html_auto, "&lt;x&gt; &amp;lt;x&amp;gt; &lt;x&gt;",
-        "Java 期望 \"&lt;x&gt; &lt;x&gt; <x>\"；引擎差异：?esc/?noEsc 结果在 autoEsc 下被二次转义"
-    );
+    assert_eq!(html_auto, "&lt;x&gt; &lt;x&gt; <x>");
     // Java t-noAuto.ftlh（autoEsc=false）→ "<x> &lt;x&gt; <x>" ✓ 逐字对齐
     assert_output(
         &c,

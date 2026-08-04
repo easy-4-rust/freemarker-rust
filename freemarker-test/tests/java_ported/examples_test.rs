@@ -14,26 +14,19 @@
 //! - `.ftlh` 文件扩展名 → HTMLOutputFormat + autoEscaping 的识别
 //!   （recognizeStandardFileExtensions + 扩展名 TemplateConfiguration）引擎未实现
 //!   → AutoEscapingExample 用 `<#outputFormat 'HTML'>` + `<#autoEsc>` 包裹等价翻译
-//!   （同 output_format_test.rs 的模式）；引擎 autoEsc 对 markup 模型语义
-//!   （?esc/?no_esc 结果被二次转义、捕获输出被转义）与 Java 差异 → 相关断言
-//!   ENGINE_GAP（标 #[ignore]，Java 期望值保留）。
+//!   （同 output_format_test.rs 的模式）。
 //!
-//! ENGINE_GAP: testAbsoluteTemplateNameBI —— ?absolute_template_name 内建未实现
-//!   （absolute_template_name_bi_test.rs：v1 报 Unknown built-in）；
-//!   testInfoBox/testStringLiteral2/testStringConcat —— autoEsc 下引擎对 ?esc/
-//!   ?no_esc 结果仍做二次转义（output_format_test.rs 头注：apply_escape 对 markup
-//!   模型不跳过二次转义；Java 转义结果/markup 不再转义）；
-//!   testCapture/testConvert —— v1 无 markup 输出模型：捕获输出在 autoEsc 下被
-//!   转义、?esc 的 markup 无法跨 XML/RTF 格式转换（&apos;/\\{\\} 不产生）、
-//!   <#attempt> 捕获段不会因格式转换失败；
+//! ENGINE_GAP: testCapture/testConvert —— v1 捕获输出为普通字符串（Java 捕获块
+//!   输出 markup 模型，插值时不再转义）：capture 的 "Captured output: <b>Test</b>"
+//!   在 autoEsc 下仍被转义；另有 BlockAssign 末叶链空白剥离差异（行首多 "\n"）；
+//!   testConvert —— ?esc 的 markup 无格式槽位，跨 XML/RTF 格式转换（&apos;/\{\}）
+//!   不产生、<#attempt> 捕获段不因格式转换失败（?esc/?no_esc 单格式语义已对齐，
+//!   DollarVariable.java:72-92 的跨格式分支未实现）；
 //!   testConvert2 —— 空白剥离差异：Java getLastLeaf 停在 BlockAssignment（视为
 //!   叶、heedsOpeningWhitespace=false，TextBlock.java:488-504），块后换行被剥离；
 //!   v1 last_leaf 深入 assign body 到捕获文本（heeds=true）→ 行首多 3 个换行
 //!   （其余内容逐字一致）；另有引擎末叶链对 BlockAssign 无 Macro/BlockAssignment
-//!   特例（同因影响 testCapture 行首 "\n"）；
-//!   testMarkup —— ?markup_string 内建未实现 + markup 二次转义语义差异；
-//!   testUsingWithArgsSpecialVariable ×2 —— ?with_args/?with_args_last 对宏/函数
-//!   调用 v1 仅支持方法模型（with_args_built_in_test.rs："only supported on methods"）。
+//!   特例（同因影响 testCapture 行首 "\n"）。
 //! NOT_APPLICABLE: testConfigureOutputFormatExamples / CustomFormatsExample 三个
 //!   方法 / testGettingStartedMain / TemplateConfigurationExamples 的
 //!   getOutputFormat/getEncoding 断言 —— Java 依赖 Template.getOutputFormat() 公开
@@ -65,7 +58,6 @@ fn html_autoesc_ftl(body: &str) -> String {
 /// （示例 FTL：`?absolute_template_name` + `.get_optional_template` +
 /// `.caller_template_name` + `<@t.include>` 的绝对模板名解析示例）
 #[test]
-#[ignore = "引擎差异：?absolute_template_name 内建未实现（v1 报 Unknown built-in）→ 整链渲染失败；断言保留 Java 原文"]
 fn test_absolute_template_name_bi() {
     let (c, loader) = test_config();
     // 示例模板内容（license 头注释省略；目录：src/test/resources/freemarker/manual/）
@@ -108,7 +100,6 @@ fn test_absolute_template_name_bi() {
 /// assertOutputForNamed("AutoEscapingExample-infoBox.ftlh")
 /// （HTML autoEsc：普通字符串插值转义；`?no_esc` 结果不再转义）
 #[test]
-#[ignore = "引擎差异：autoEsc 下引擎对 ?no_esc 结果仍做二次转义（output_format_test.rs 头注；实际输出 \"Foo &lt;b&gt;bar&lt;/b&gt;\"）；空白剥离逐字一致；断言保留 Java 原文"]
 fn test_info_box() {
     let (c, loader) = test_config();
     // 引擎差异：Java 模板经 .ftlh 扩展名识别为 HTML+autoEsc；v1 无扩展名识别 →
@@ -153,7 +144,6 @@ fn test_capture() {
 /// assertOutputForNamed("AutoEscapingExample-markup.ftlh")
 /// （?no_esc/?esc 产生 markup 输出；?markup_string 双重转义）
 #[test]
-#[ignore = "引擎差异：?markup_string 内建未实现（v1 报 Unknown built-in），且 autoEsc 下 markup 语义差异；断言保留 Java 原文"]
 fn test_markup() {
     let (c, loader) = test_config();
     let ftl = html_autoesc_ftl(
@@ -234,7 +224,6 @@ fn test_string_literal() {
 /// assertOutputForNamed("AutoEscapingExample-stringLiteral2.ftlh")
 /// （?esc/?no_esc 的 markup 值嵌入字符串字面量插值）
 #[test]
-#[ignore = "引擎差异：autoEsc 下 ?esc/?no_esc 结果被二次转义（实际 \"Foo &amp;amp; bar baz\"）；断言保留 Java 原文"]
 fn test_string_literal2() {
     let (c, loader) = test_config();
     // 引擎差异：autoEsc 下 ?esc/?no_esc 结果被二次转义（见文件头）→
@@ -256,7 +245,6 @@ fn test_string_literal2() {
 /// assertOutputForNamed("AutoEscapingExample-stringConcat.ftlh")
 /// （字符串连接中 ?no_esc 片段不转义、普通片段转义）
 #[test]
-#[ignore = "引擎差异：autoEsc 下 ?no_esc 结果被二次转义（实际 \"&lt;h1&gt;Foo &amp; bar&lt;/h1&gt;\"）；断言保留 Java 原文"]
 fn test_string_concat() {
     let (c, loader) = test_config();
     // 引擎差异：autoEsc 下 ?no_esc 结果被二次转义 → "<h1>" 实际为 "&lt;h1&gt;"。
@@ -418,7 +406,6 @@ fn example3() {
 /// assertOutputForNamed("WithArgsExamples-usingWithArgsSpecialVariable.ftl")
 /// （宏内 `<@m1?with_args(.args) />` 委托调用示例）
 #[test]
-#[ignore = "引擎差异：?with_args 对宏调用 v1 仅支持方法模型（报 \"?with_args is only supported on methods in v1\"）；断言保留 Java 原文"]
 fn test_using_with_args_special_variable() {
     let (c, loader) = test_config();
     // 示例 FTL（license 头省略）：
@@ -449,7 +436,6 @@ fn test_using_with_args_special_variable() {
 /// assertOutputForNamed("WithArgsLastExamples.ftl")
 /// （函数/宏的 ?with_args/?with_args_last 与 .args 特殊变量示例）
 #[test]
-#[ignore = "引擎差异：?with_args/?with_args_last 对函数/宏调用 v1 仅支持方法模型（报 \"?with_args is only supported on methods in v1\"）；断言保留 Java 原文"]
 fn test_using_with_args_special_variable_last() {
     let (c, loader) = test_config();
     // 示例 FTL（license 头省略）——期望输出见方法注释末尾：
@@ -490,21 +476,24 @@ fn test_using_with_args_special_variable_last() {
     assert_output(&c, &loader, ftl, expected);
 }
 
-/// AbsoluteTemplateNameBIExample-main.ftl（license 头省略）
+/// AbsoluteTemplateNameBIExample-main.ftl（license 头省略；import 行后有一空行 ——
+/// 引擎差异注：Java 空白剥离只裁首行换行，空行余 "\n" 保留）
 const MAIN_FTL: &str = "<#import '/AbsoluteTemplateNameBIExample-lib.ftl' as lib>\n\
+\n\
 <@lib.smileyInclude 'AbsoluteTemplateNameBIExample-foo.ftl' />\n\
 <@lib.smileyInclude '../AbsoluteTemplateNameBIExample-foo.ftl' />\n\
 <@lib.smileyInclude '/AbsoluteTemplateNameBIExample-foo.ftl' />\n\
 <@lib.smileyInclude 'AbsoluteTemplateNameBIExample-missing.ftl' />";
 
-/// AbsoluteTemplateNameBIExample-lib.ftl（license 与文档注释头省略）
+/// AbsoluteTemplateNameBIExample-lib.ftl（license 与文档注释头省略；
+/// 缩进用 \x20 显式写出 —— Rust 字符串续行符 `\` 会吃掉行首空白）
 const LIB_FTL: &str = "<#macro smileyInclude name>\n\
-  <#local t = .get_optional_template(\n\
-      name?absolute_template_name(.caller_template_name))>\n\
-  <#if t.exists>\n\
-    (:\n\
-    <@t.include />\n\
-  <#else>\n\
-    ):\n\
-  </#if>\n\
+\x20 <#local t = .get_optional_template(\n\
+\x20     name?absolute_template_name(.caller_template_name))>\n\
+\x20 <#if t.exists>\n\
+\x20   (:\n\
+\x20   <@t.include />\n\
+\x20 <#else>\n\
+\x20   ):\n\
+\x20 </#if>\n\
 </#macro>";

@@ -35,10 +35,12 @@ fn macro_from_body(name: String, body: Vec<Element>) -> Rc<crate::core::environm
         params: Vec::new(),
         body,
         namespace: None,
+        template_name: String::new(),
         span: crate::span::Span::new(0, 0),
     });
     Rc::new(crate::core::environment::MacroValue {
         def,
         ns: std::rc::Weak::new(),
+        with_args: None,
     })
 }

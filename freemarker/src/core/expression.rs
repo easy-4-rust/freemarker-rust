@@ -210,6 +210,12 @@ pub enum BuiltinVar {
     MainTemplateName,
     /// `.current_template_name` / `.currentTemplateName`（当前执行模板名）
     CurrentTemplateName,
+    /// `.caller_template_name`（Java BuiltinVariable.java:264-267：当前宏/函数
+    /// **调用方**模板名 —— 调用点所在模板的查找名；宏外 → 报错；无名调用方 → "")
+    CallerTemplateName,
+    /// `.callerTemplateName`（camelCase 别名；错误消息用各自字面名 ——
+    /// BuiltinVariable.java:81-82 CALLER_TEMPLATE_NAME / CALLER_TEMPLATE_NAME_CC）
+    CallerTemplateNameCc,
     /// `.node` / `.current_node` / `.currentNode`（XML 节点 —— Java 特有，v1 无节点模型）
     Node,
     /// `.error`（最近一次 attempt/recover 捕获的错误消息，Java getCurrentRecoveredErrorMessage）

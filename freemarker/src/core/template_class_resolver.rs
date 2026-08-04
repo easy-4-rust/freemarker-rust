@@ -107,52 +107,33 @@ impl NewBuiltinClassResolver {
             _ => {}
         }
         if v.contains(':') {
-            // Java SettingStringParser.parseAsSegmentedList（Configurable.java:3259-3290）：
+            // Java SettingStringParser.parseAsSegmentedList（Configurable.java:3262-3292）：
             // 分段列表 `key: v1, v2, key2: v3` —— 含 `:` 的项开启新段（键），
-            // 其余项追加当前段的值列表；键支持 snake_case/camelCase 双写法
+            // 其余项追加当前段的值列表；键支持 snake_case/camelCase 双写法。
+            // 词法（SettingStringParser.fetchWord/fetchStringValue/skipWS）：
+            // 单双引号项剥首尾引号并做 FTL 字面量转义解码（\" \\ \n 等），
+            // 引号内允许空白/逗号；键值间空白不敏感。
+            let mut parser = SettingStringParser::new(v);
+            let segments = parser.parse_as_segmented_list()?;
             let mut allowed: Vec<String> = Vec::new();
             let mut trusted: Vec<String> = Vec::new();
-            // 当前段归属（Java currentSegment 的等价物）
-            let mut segment_allowed = true;
-            let mut started = false;
-            for token in v.split(',') {
-                let token = token.trim();
-                if token.is_empty() {
-                    continue;
-                }
-                if let Some((key, val)) = token.split_once(':') {
-                    let key = key.trim();
-                    let val = val.trim();
-                    match key {
-                        "allowed_classes" | "allowedClasses" => {
-                            allowed.push(val.to_string());
-                            segment_allowed = true;
-                        }
-                        "trusted_templates" | "trustedTemplates" => {
-                            trusted.push(val.to_string());
-                            segment_allowed = false;
-                        }
-                        other => {
-                            return Err(TemplateError::misc(format!(
-                                "Unrecognized list segment key: {other:?}. Supported keys are: \
-                                 \"allowed_classes\", \"allowedClasses\", \"trusted_templates\", \
-                                 \"trustedTemplates\". "
-                            )));
-                        }
+            for (key, vals) in segments {
+                match key.as_str() {
+                    "allowed_classes" | "allowedClasses" => {
+                        allowed.extend(vals);
                     }
-                    started = true;
-                } else if started {
-                    if segment_allowed {
-                        allowed.push(token.to_string());
-                    } else {
-                        trusted.push(token.to_string());
+                    "trusted_templates" | "trustedTemplates" => {
+                        trusted.extend(vals);
                     }
-                } else {
-                    // Java "The very first list item must be followed by \":\" ..."（:3270-3273）
-                    return Err(TemplateError::misc(
-                        "The very first list item must be followed by \":\" so it will be the \
-                         key for the following sub-list.",
-                    ));
+                    other => {
+                        // Java ParseException（Configurable.java:2857-2867）：
+                        // "Unrecognized list segment key: {jQuote(key)}. Supported keys are: ..."
+                        return Err(TemplateError::misc(format!(
+                            "Unrecognized list segment key: {other:?}. Supported keys are: \
+                             \"allowed_classes\", \"allowedClasses\", \"trusted_templates\", \
+                             \"trustedTemplates\". "
+                        )));
+                    }
                 }
             }
             return Ok(NewBuiltinClassResolver::OptIn(OptInClassResolver::new(
@@ -206,6 +187,248 @@ fn instantiating_not_allowed(class_name: &str, optin: bool) -> TemplateError {
         format!("Instantiating {class_name} is not allowed in the template for security reasons.")
     };
     TemplateError::misc(msg)
+}
+
+/// 设置串解析器 —— 对应 Java `Configurable.SettingStringParser`（Configurable.java:3248-3386）：
+/// `parseAsSegmentedList` + `fetchStringValue`（剥引号 + FTLStringLiteralDec）+
+/// `fetchWord`（引号感知的单词扫描）+ `skipWS`。Java 按 char 处理，Rust 以
+/// `Vec<char>` 等价（设置值均为 ASCII 场景，字符级语义一致）
+struct SettingStringParser {
+    text: Vec<char>,
+    pos: usize,
+}
+
+impl SettingStringParser {
+    fn new(text: &str) -> Self {
+        SettingStringParser {
+            text: text.chars().collect(),
+            pos: 0,
+        }
+    }
+
+    /// 对应 `skipWS`（Configurable.java:3337-3346）：跳过空白；EOF 返回 None
+    fn skip_ws(&mut self) -> Option<char> {
+        while self.pos < self.text.len() {
+            let c = self.text[self.pos];
+            if !c.is_whitespace() {
+                return Some(c);
+            }
+            self.pos += 1;
+        }
+        None
+    }
+
+    /// 对应 `fetchWord`（Configurable.java:3350-3386）：引号内（`\` 转义）任意字符；
+    /// 未引号 → [letterOrDigit, /, \, _, ., -, !, *, ?] 序列
+    fn fetch_word(&mut self) -> Result<String> {
+        if self.pos == self.text.len() {
+            return Err(TemplateError::misc("Unexpeced end of text"));
+        }
+        let c = self.text[self.pos];
+        let b = self.pos;
+        if c == '\'' || c == '"' {
+            let q = c;
+            self.pos += 1;
+            let mut escaped = false;
+            while self.pos < self.text.len() {
+                let c = self.text[self.pos];
+                if !escaped {
+                    if c == '\\' {
+                        escaped = true;
+                    } else if c == q {
+                        break;
+                    }
+                } else {
+                    escaped = false;
+                }
+                self.pos += 1;
+            }
+            if self.pos == self.text.len() {
+                // Java "Missing " + q
+                return Err(TemplateError::misc(format!("Missing {q}")));
+            }
+            self.pos += 1; // 跳过闭合引号
+            return Ok(self.text[b..self.pos].iter().collect());
+        }
+        loop {
+            if self.pos >= self.text.len() {
+                break;
+            }
+            let c = self.text[self.pos];
+            if !(c.is_alphanumeric()
+                || c == '/'
+                || c == '\\'
+                || c == '_'
+                || c == '.'
+                || c == '-'
+                || c == '!'
+                || c == '*'
+                || c == '?')
+            {
+                break;
+            }
+            self.pos += 1;
+        }
+        if b == self.pos {
+            // Java "Unexpected character: " + c
+            return Err(TemplateError::misc(format!("Unexpected character: {c}")));
+        }
+        Ok(self.text[b..self.pos].iter().collect())
+    }
+
+    /// 对应 `fetchStringValue`（Configurable.java:3317-3323）：剥首尾引号 +
+    /// `StringUtil.FTLStringLiteralDec`（StringUtil.java:559-660：`\` 转义解码）
+    fn fetch_string_value(&mut self) -> Result<String> {
+        let mut w = self.fetch_word()?;
+        if w.starts_with('\'') || w.starts_with('"') {
+            w = w[1..w.len() - 1].to_string();
+        }
+        ftl_string_literal_dec(&w)
+    }
+
+    /// 对应 `parseAsSegmentedList`（Configurable.java:3262-3292）：键段 + 值列表；
+    /// 分隔符为 `,` 或 `:`；首项非键 → "The very first list item must be followed by \":\" ..."
+    fn parse_as_segmented_list(&mut self) -> Result<Vec<(String, Vec<String>)>> {
+        let mut segments: Vec<(String, Vec<String>)> = Vec::new();
+        let mut current: Option<usize> = None;
+        loop {
+            let c = self.skip_ws();
+            if c.is_none() {
+                break;
+            }
+            let item = self.fetch_string_value()?;
+            let c = self.skip_ws();
+            if c == Some(':') {
+                segments.push((item, Vec::new()));
+                current = Some(segments.len() - 1);
+            } else {
+                match current {
+                    Some(i) => segments[i].1.push(item),
+                    None => {
+                        // Java :3269-3273
+                        return Err(TemplateError::misc(
+                            "The very first list item must be followed by \":\" so it will be the key for the following sub-list.",
+                        ));
+                    }
+                }
+            }
+            match c {
+                None => break,
+                Some(',') | Some(':') => self.pos += 1,
+                Some(other) => {
+                    // Java "Expected \",\" or \":\" or the end of text but found \"{c}\""
+                    return Err(TemplateError::misc(format!(
+                        "Expected \",\" or \":\" or the end of text but found \"{other}\""
+                    )));
+                }
+            }
+        }
+        Ok(segments)
+    }
+}
+
+/// 对应 `StringUtil.FTLStringLiteralDec`（StringUtil.java:559-660）：`\` 转义解码
+/// （\" \' \\ \n \r \t \f \b \g(>) \l(<) \a(&) \{ \= \xHH；其余 → 错误）
+fn ftl_string_literal_dec(s: &str) -> Result<String> {
+    let Some(idx) = s.find('\\') else {
+        return Ok(s.to_string());
+    };
+    let chars: Vec<char> = s.chars().collect();
+    let lidx = chars.len() - 1;
+    let mut out = String::with_capacity(s.len());
+    let mut bidx = 0usize;
+    let mut idx = idx;
+    loop {
+        out.extend(&chars[bidx..idx]);
+        if idx >= lidx {
+            return Err(TemplateError::misc(
+                "The last character of string literal is backslash",
+            ));
+        }
+        let c = chars[idx + 1];
+        match c {
+            '"' | '\'' | '\\' => {
+                out.push(c);
+                bidx = idx + 2;
+            }
+            'n' => {
+                out.push('\n');
+                bidx = idx + 2;
+            }
+            'r' => {
+                out.push('\r');
+                bidx = idx + 2;
+            }
+            't' => {
+                out.push('\t');
+                bidx = idx + 2;
+            }
+            'f' => {
+                out.push('\u{000c}');
+                bidx = idx + 2;
+            }
+            'b' => {
+                out.push('\u{0008}');
+                bidx = idx + 2;
+            }
+            'g' => {
+                out.push('>');
+                bidx = idx + 2;
+            }
+            'l' => {
+                out.push('<');
+                bidx = idx + 2;
+            }
+            'a' => {
+                out.push('&');
+                bidx = idx + 2;
+            }
+            '{' | '=' => {
+                out.push(c);
+                bidx = idx + 2;
+            }
+            'x' => {
+                // Java：x = idx(反斜杠)+2 = 'x' 之后；z = lidx > x+3 ? x+3 : lidx
+                // （最多 4 位十六进制）
+                let mut x = idx + 2;
+                let mut y = 0u32;
+                let z = if lidx > x + 3 { x + 3 } else { lidx };
+                while x <= z {
+                    let b = chars[x];
+                    let digit = b.to_digit(16);
+                    match digit {
+                        Some(d) => {
+                            y = (y << 4) + d;
+                            x += 1;
+                        }
+                        None => break,
+                    }
+                }
+                if x > idx + 2 {
+                    let ch = char::from_u32(y).ok_or_else(|| {
+                        TemplateError::misc("Invalid \\x escape in a string literal")
+                    })?;
+                    out.push(ch);
+                } else {
+                    return Err(TemplateError::misc(
+                        "Invalid \\x escape in a string literal",
+                    ));
+                }
+                bidx = x;
+            }
+            other => {
+                return Err(TemplateError::misc(format!(
+                    "Invalid escape sequence (\\{other}) in a string literal"
+                )));
+            }
+        }
+        idx = match s[bidx..].find('\\') {
+            Some(i) => bidx + i,
+            None => break,
+        };
+    }
+    out.extend(&chars[bidx..]);
+    Ok(out)
 }
 
 /// 模板名净化 —— 对应 Java `OptInTemplateClassResolver.safeGetTemplateName`（:88-124）：

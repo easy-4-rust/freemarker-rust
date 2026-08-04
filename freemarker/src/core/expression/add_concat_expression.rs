@@ -84,8 +84,37 @@ pub(crate) fn eval_add(env: &mut crate::core::Environment, a: &Expr, b: &Expr) -
         }
         return Ok(TModel::from_hash(map));
     }
-    // 字符串拼接（Java EvalUtil.coerceModelToStringOrMarkup）
+    // 字符串拼接（Java EvalUtil.coerceModelToStringOrMarkup + AddConcatExpression._eval
+    // :98-136 —— 任一侧是 markup 输出 → 结果**提升为 markup**：markup 部分原样、
+    // 字符串部分按输出格式转义（concatMarkupOutputs / fromPlainTextByEscaping 语义，
+    // CommonMarkupOutputFormat.java:77-99；Java 中 ?esc 的纯文本存储与 ?no_esc 的
+    // markup 存储在输出期等价，v1 统一按已转义内容处理））
+    let l_markup = l.is_markup_output();
+    let r_markup = r.is_markup_output();
     let ls = model_to_string(env, &l)?;
     let rs = model_to_string(env, &r)?;
+    if l_markup || r_markup {
+        let mut out = String::new();
+        match (l_markup, r_markup) {
+            (true, true) => {
+                out.push_str(&ls);
+                out.push_str(&rs);
+            }
+            (true, false) => {
+                out.push_str(&ls);
+                out.push_str(&crate::builtins::markup_outputs::escape_plain_text(
+                    env, &rs,
+                ));
+            }
+            (false, true) => {
+                out.push_str(&crate::builtins::markup_outputs::escape_plain_text(
+                    env, &ls,
+                ));
+                out.push_str(&rs);
+            }
+            (false, false) => unreachable!(),
+        }
+        return Ok(crate::builtins::markup_outputs::markup_model(out));
+    }
     Ok(TModel::from_scalar(ls + &rs))
 }

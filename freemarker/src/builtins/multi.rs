@@ -15,6 +15,7 @@ use crate::builtins::format::{
     format_c_number, format_c_string, format_number, format_number_with, CFormatKind,
 };
 use crate::builtins::strings_encoding::java_string_enc;
+use crate::cache::TemplateNameFormat;
 use crate::core::eval_util::{arg_count, arg_string, check_arg_count, coerce_to_string};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
@@ -297,27 +298,58 @@ fn _java_c_format_ref(s: &str) -> String {
     java_string_enc(s)
 }
 
-/// ?absolute_template_name —— Java BuiltInsForMultipleTypes.absolute_template_nameBI
-/// 将相对模板路径解析为绝对路径。名称含 `/` → 已是绝对路径；否则拼接当前模板的目录前缀。
+/// ?absolute_template_name —— Java BuiltInsForStringsMisc.absolute_template_nameBI
+/// （BuiltInsForStringsMisc.java:143-185）：把目标字符串解析为绝对模板名。
+/// 语义：`resolvePath(base)` = `rootBasedToAbsoluteName(toFullTemplateName(base, target))`
+/// （Environment.java:3326-3352 → TemplateNameFormat）——目标含 "://"（位置 > 0）
+/// 或为带 scheme 基准的绝对路径 → scheme 名原样；"/" 开头 → 基准的 scheme 前缀
+/// （无 scheme 则去前导 "/"）；相对 → 基准所在目录拼接。
+/// 无实参 → 基准 = 表达式所在模板名（Java `getTemplate().getName()` —— 词法模板，
+/// :165-167）；1 个实参 → 基准 = 该实参（Java 方法形态 AbsoluteTemplateNameResult.exec
+/// :158-162，checkMethodArgCount(args, 1)）。
 pub fn absolute_template_name(
     env: &mut Environment,
     target: &Expr,
     args: Option<&[Expr]>,
 ) -> Result<Option<TModel>> {
-    check_arg_count("absolute_template_name", args, 0, 0)?;
     let m = crate::core::eval::eval(env, target)?;
     let name = coerce_to_string(env, &m)?;
-    // 含 '/' → 已是绝对路径
-    if name.contains('/') {
-        return Ok(Some(TModel::from_scalar(name)));
-    }
-    // 否则拼接当前模板的目录前缀
-    let current = &env.current_template_name;
-    let dir = match current.rfind('/') {
-        Some(pos) => &current[..=pos],
-        None => "",
+    let base = match args {
+        // Java 方法形态：`'a/b'?absolute_template_name('dir/f')`（exec(args) 恰 1 实参）
+        Some(as_) => {
+            if as_.len() != 1 {
+                return Err(TemplateError::misc(format!(
+                    "?absolute_template_name(...) expects 1 argument but has received {}.",
+                    if as_.is_empty() {
+                        "none".to_string()
+                    } else {
+                        as_.len().to_string()
+                    }
+                )));
+            }
+            arg_string(env, args, 0)?
+        }
+        // Java 标量形态：基准 = 表达式所在模板名（getTemplate().getName()）
+        None => env.lexical_template_name.clone(),
     };
-    Ok(Some(TModel::from_scalar(format!("{dir}{name}"))))
+    Ok(Some(TModel::from_scalar(resolve_template_path(
+        &name, &base,
+    )?)))
+}
+
+/// 绝对名解析（Java absolute_template_nameBI.resolvePath，BuiltInsForStringsMisc.
+/// java:172-181）：toFullTemplateName（baseName==null → 原样）→
+/// rootBasedToAbsoluteTemplateName
+fn resolve_template_path(path_to_resolve: &str, base: &str) -> Result<String> {
+    // Java Environment.toFullTemplateName（:3326-3333）：isClassicCompatible ||
+    // baseName==null → 原样返回（无名模板 —— v1 无名模板名 ""，此处按 null 处理）
+    let full = if base.is_empty() {
+        path_to_resolve.to_string()
+    } else {
+        crate::cache::NameFormatDefault020300.to_root_based_name(base, path_to_resolve)?
+    };
+    // Java rootBasedToAbsoluteTemplateName（Environment.java:3350-3352）
+    crate::cache::NameFormatDefault020300.root_based_name_to_absolute_name(&full)
 }
 
 /// ?api —— Java BuiltInsForMultipleTypes.apiBI：对象包装器 API 访问。
@@ -333,25 +365,6 @@ pub fn api(env: &mut Environment, target: &Expr, args: Option<&[Expr]>) -> Resul
     Err(TemplateError::misc(
         "The \"?api\" built-in is only available when the object wrapper supports it, but the current object wrapper (SimpleObjectWrapper) doesn't."
     ))
-}
-
-/// ?markup_string —— Java BuiltInsForMarkupOutput.markup_string
-/// 若目标是 markup 输出 → 提取其底层标量字符串；否则原样返回。
-pub fn markup_string(
-    env: &mut Environment,
-    target: &Expr,
-    args: Option<&[Expr]>,
-) -> Result<Option<TModel>> {
-    check_arg_count("markup_string", args, 0, 0)?;
-    let m = crate::core::eval::eval(env, target)?;
-    if m.is_markup_output() {
-        // 提取 markup 输出中的底层字符串
-        if let Some(s) = &m.scalar {
-            return Ok(Some(TModel::from_scalar(s.as_string()?)));
-        }
-    }
-    // 非 markup 输出 → 原样返回
-    Ok(Some(m))
 }
 
 #[cfg(test)]
@@ -443,20 +456,21 @@ mod tests {
 
     #[test]
     fn absolute_template_name_absolute() {
-        // 名称含 '/' → 原样返回
+        // Java AbsoluteTemplateNameBITest.basicsTest：'/a/b' → 绝对路径去前导 "/" 后
+        // 转绝对名（"/a/b"）；相对名 → 根相对转绝对（前加 "/"）
         assert_eq!(
             eval_out(no_root(), "'/abs/path.ftl'?absolute_template_name", "t.ftl").unwrap(),
             "/abs/path.ftl"
         );
         assert_eq!(
             eval_out(no_root(), "'sub/dir/t.ftl'?absolute_template_name", "t.ftl").unwrap(),
-            "sub/dir/t.ftl"
+            "/sub/dir/t.ftl"
         );
     }
 
     #[test]
     fn absolute_template_name_relative() {
-        // 相对名称 → 拼接当前模板的目录前缀
+        // 相对名称 → 以当前模板所在目录为基准解析（Java toFullTemplateName）
         assert_eq!(
             eval_out(
                 no_root(),
@@ -464,29 +478,66 @@ mod tests {
                 "base/t.ftl"
             )
             .unwrap(),
-            "base/child.ftl"
+            "/base/child.ftl"
         );
         assert_eq!(
             eval_out(no_root(), "'x.ftl'?absolute_template_name", "a/b/c.ftl").unwrap(),
-            "a/b/x.ftl"
+            "/a/b/x.ftl"
         );
     }
 
     #[test]
     fn absolute_template_name_no_directory() {
-        // 当前模板名不含 '/' → 直接拼接
+        // 当前模板名不含 '/' → 根相对解析
         assert_eq!(
             eval_out(no_root(), "'other.ftl'?absolute_template_name", "root.ftl").unwrap(),
-            "other.ftl"
+            "/other.ftl"
         );
     }
 
     #[test]
-    fn markup_string_non_markup() {
-        // 非 markup 目标 → 原样返回
+    fn absolute_template_name_with_base_arg() {
+        // 方法形态：'a/b'?absolute_template_name('dir/f') → 以实参为基准
+        // （Java AbsoluteTemplateNameBITest.basicsTest :52-57）
+        for base in ["dir/f", "/dir/f", "dir/", "/dir/"] {
+            assert_eq!(
+                eval_out(
+                    no_root(),
+                    &format!("'a/b'?absolute_template_name('{base}')"),
+                    "t.ftl"
+                )
+                .unwrap(),
+                "/dir/a/b",
+                "base: {base}"
+            );
+        }
+        // 基准带 scheme → 相对名以 scheme 目录为基准、绝对名保留 scheme 前缀
         assert_eq!(
-            eval_out(no_root(), "'hello'?markup_string", "t.ftl").unwrap(),
-            "hello"
+            eval_out(
+                no_root(),
+                "'a/b'?absolute_template_name('schema://dir/f')",
+                "t.ftl"
+            )
+            .unwrap(),
+            "schema://dir/a/b"
         );
+        assert_eq!(
+            eval_out(
+                no_root(),
+                "'/a/b'?absolute_template_name('schema://dir/f')",
+                "t.ftl"
+            )
+            .unwrap(),
+            "schema://a/b"
+        );
+    }
+
+    #[test]
+    fn markup_string_non_markup_errors() {
+        // Java BuiltInForMarkupOutput._eval（BuiltInForMarkupOutput.java:31-34）：
+        // 目标非 markup 输出 → NonMarkupOutputException（"left-hand operand:
+        // Expected a markup output value..."）；v1 旧实现原样返回目标（已修正）
+        let err = eval_out(no_root(), "'hello'?markup_string", "t.ftl").unwrap_err();
+        assert!(err.to_string().contains("markup output"), "{err}");
     }
 }

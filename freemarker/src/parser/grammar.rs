@@ -857,14 +857,18 @@ impl<'a> Parser<'a> {
                         }
                         TagOpen::EndCall { .. } => {
                             // UNIFIED_CALL_END：`</@name>` 或 `</@ns.name>`（点链名，
-                            // FTL.jj 1102；`</@>` 无名）
-                            let mut name = self.lexer.read_name().unwrap_or_default();
+                            // FTL.jj 1102；`</@>` 无名）。名字按 Java `<ID>` token
+                            // 语义（FTL.jj 1392：ID_START_CHAR (ID_START_CHAR|ASCII_DIGIT)*
+                            // —— **含数字**，如 `</@m2>`；指令名 token 才限制 [a-zA-Z_]+）
+                            let mut name = self.lexer.scan_ident();
                             while self.lexer.peek() == Some('.') {
                                 self.lexer.bump();
-                                if let Some(part) = self.lexer.read_name() {
-                                    name.push('.');
-                                    name.push_str(&part);
+                                let part = self.lexer.scan_ident();
+                                if part.is_empty() {
+                                    break;
                                 }
+                                name.push('.');
+                                name.push_str(&part);
                             }
                             // 结束标签的 `>`（UNIFIED_CALL_END 的 CLOSE_TAG1）
                             self.expect_tag_end_raw()?;
@@ -2142,6 +2146,9 @@ impl<'a> Parser<'a> {
             params,
             body,
             namespace: None,
+            // Java Macro 的 template 字段（TemplateObject.setLocation）：解析期绑定
+            // 定义所在模板（`.caller_template_name` 的调用点词法模板判定用）
+            template_name: self.name.clone(),
             span: Span::new(line, col),
         };
         self.macros.insert(name, def.clone());
@@ -3176,6 +3183,15 @@ impl<'a> Parser<'a> {
                                 Span::new(nl, nc),
                             ));
                         }
+                        // Java BuiltinVariable.java:81-82：CALLER_TEMPLATE_NAME(_CC)
+                        // 同理（错误消息 "Can't get .callerTemplateName here..." 用
+                        // 各自字面名，BuiltinVariable.java:285-293 getRequiredMacroContext）
+                        if name == "callerTemplateName" {
+                            return Ok(Expr::new(
+                                ExprKind::BuiltinVar(BuiltinVar::CallerTemplateNameCc),
+                                Span::new(nl, nc),
+                            ));
+                        }
                         let name = camel_to_snake(&name);
                         match builtin_var_of(&name) {
                             Some(v) => Ok(Expr::new(
@@ -3186,7 +3202,7 @@ impl<'a> Parser<'a> {
                                 nl,
                                 nc,
                                 format!(
-                                    "The built-in variable \".{name}\" doesn't exist. The allowed special variable names are: namespace, main, globals, locals, data_model, vars, lang, locale, locale_object, time_zone, template_name, main_template_name, current_template_name, node, current_node, error, output_encoding, output_format, auto_esc, url_escaping_charset, version, incompatible_improvements, args, now, get_optional_template."
+                                    "The built-in variable \".{name}\" doesn't exist. The allowed special variable names are: namespace, main, globals, locals, data_model, vars, lang, locale, locale_object, time_zone, template_name, main_template_name, current_template_name, caller_template_name, node, current_node, error, output_encoding, output_format, auto_esc, url_escaping_charset, version, incompatible_improvements, args, now, get_optional_template."
                                 ),
                             )),
                         }
@@ -4764,6 +4780,7 @@ fn builtin_var_of(name: &str) -> Option<BuiltinVar> {
         "template_name" => BuiltinVar::TemplateName,
         "main_template_name" => BuiltinVar::MainTemplateName,
         "current_template_name" => BuiltinVar::CurrentTemplateName,
+        "caller_template_name" => BuiltinVar::CallerTemplateName,
         "node" | "current_node" => BuiltinVar::Node,
         "error" => BuiltinVar::Error,
         "output_encoding" => BuiltinVar::OutputEncoding,

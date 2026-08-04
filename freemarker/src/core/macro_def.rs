@@ -13,6 +13,10 @@ pub struct MacroDef {
     pub body: Vec<Element>,
     /// 命名空间限定名（`<@ns.macro>` 中的 ns，None 表示当前命名空间）
     pub namespace: Option<String>,
+    /// 宏定义所在模板的查找名（Java `Macro` 的 `template` 字段——`setLocation` 于
+    /// 解析期绑定，TemplateObject.java:55-83；`.caller_template_name` 的调用点词法
+    /// 模板判定依赖它，BuiltinVariable.java:264-267）
+    pub template_name: String,
     pub span: Span,
 }
 

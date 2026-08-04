@@ -13,7 +13,8 @@
 //!   UnexpectedType 错误；v1 的字符串内建会先把非字符串强制转为字符串 → 不报错，
 //!   断言改为引擎实际输出（Java 报错子串保留在注释中）。
 //! - ?markupString 内建 v1 未实现 → 报 "Unknown built-in: ?markup_string"
-//!   （Java 报 "Expected ... markup ... string/number/date"）。
+//!   （Java 报 "Expected ... markup ... string/number/date"）；现已按 Java
+//!   BuiltInForMarkupOutput 语义实现（目标非 markup → 报错，断言与 Java 一致）。
 //! - setAutoEscapingPolicy(DISABLE) → settings.auto_escaping = Off。
 //! - ?esc 内建对普通字符串行为一致（"a&lt;b"）；对数字/日期/markup 的输出差异。
 
@@ -125,10 +126,30 @@ fn test_string_overloaded_built_ins() {
 #[test]
 fn test_markup_string_built_ins() {
     let (c, loader) = cfg();
-    // ?markupString is now implemented; returns the string representation of its input
-    assert_output(&c, &loader, "${n?string?markupString}", "1,500");
-    assert_output(&c, &loader, "${n?markupString}", "1,500");
-    assert_output(&c, &loader, "${dt?markupString}", "Sep 6, 2015 1:00:00 PM");
+    // Java：?markupString 只接受 markup 输出（BuiltInForMarkupOutput.java:31-34
+    // NonMarkupOutputException）——字符串/数字/日期目标均报错
+    // （CoercionToTextualTest.java:83-85：["Expected", "markup", type]）
+    let msg = assert_error_contains(
+        &c,
+        &loader,
+        "${n?string?markupString}",
+        &["Expected", "markup", "string"],
+    );
+    let _ = msg;
+    let msg = assert_error_contains(
+        &c,
+        &loader,
+        "${n?markupString}",
+        &["Expected", "markup", "number"],
+    );
+    let _ = msg;
+    let msg = assert_error_contains(
+        &c,
+        &loader,
+        "${dt?markupString}",
+        &["Expected", "markup", "date"],
+    );
+    let _ = msg;
 }
 
 /// Java testSimpleInterpolation

@@ -91,6 +91,32 @@ fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result
         BuiltinVar::CurrentTemplateName => Ok(TModel::from_scalar(
             env.current_template_name.clone(),
         )),
+        // Java :264-267：CALLER_TEMPLATE_NAME(_CC) → 当前宏/函数**调用方**模板名
+        // （getRequiredMacroContext(env).callPlace.getTemplate().getName()：
+        // 调用点所在模板的查找名；无名模板 getName()==null → EMPTY_STRING ""）
+        BuiltinVar::CallerTemplateName | BuiltinVar::CallerTemplateNameCc => {
+            match env.get_current_macro_frame() {
+                Some(frame) => Ok(TModel::from_scalar(
+                    frame
+                        .caller_template_name
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_string(),
+                )),
+                None => {
+                    // Java getRequiredMacroContext（BuiltinVariable.java:285-293）：
+                    // "Can't get .{字面名} here, as there's no macro or function ..."
+                    let literal = if matches!(v, BuiltinVar::CallerTemplateNameCc) {
+                        "callerTemplateName"
+                    } else {
+                        "caller_template_name"
+                    };
+                    Err(TemplateError::misc(format!(
+                        "Can't get .{literal} here, as there's no macro or function (that's implemented in the template) call in context."
+                    )))
+                }
+            }
+        }
         // Java :228-229：OUTPUT_ENCODING → getOutputEncoding()（未设置 → null）
         BuiltinVar::OutputEncoding => {
             let enc = env.settings.output_encoding.trim();

@@ -1,7 +1,6 @@
 //! 模板名称格式 —— 对应 Java `freemarker.cache.TemplateNameFormat`
 //! （Default020400 的 toRootBasedName/normalizeRootBasedName 各步骤逐行对照
 //!   TemplateNameFormat.java:234-452；Default020300 简化兼容版对应 :150-230）
-//! v1 未纳入 `rootBasedNameToAbsoluteName`（Java:148, :215-223, :455-463）。
 
 use crate::error::{Result, TemplateError};
 
@@ -13,6 +12,10 @@ pub trait TemplateNameFormat {
     /// 对应 `normalizeRootBasedName(name)`（Java:138）：规范化根相对名，
     /// 使等价名称字符串相等（"sub/../t.ftl"→"t.ftl"、"/t.ftl"→"t.ftl"）
     fn normalize_root_based_name(&self, name: &str) -> Result<String>;
+    /// 对应 `rootBasedNameToAbsoluteName(name)`（Java:148, :215-223, :455-463）：
+    /// 根相对名 → 绝对名（`?absolute_template_name` 内建用，BuiltInsForStringsMisc.
+    /// java:172-181）：含 scheme（"://" 且位置 > 0）原样；非 "/" 开头 → 前加 "/"
+    fn root_based_name_to_absolute_name(&self, name: &str) -> Result<String>;
 }
 
 /// 默认名称格式（对应 `TemplateNameFormat.DEFAULT_2_4_0`，Java:100, :232-469）
@@ -87,6 +90,19 @@ impl TemplateNameFormat for Default020400 {
             Some(s) => format!("{}{}", s, path),
             None => path,
         })
+    }
+
+    /// 对应 `Default020400.rootBasedNameToAbsoluteName`（Java:455-463）：
+    /// 含 scheme（findSchemeSectionEnd != 0）→ 原样；非 "/" 开头 → 前加 "/"
+    fn root_based_name_to_absolute_name(&self, name: &str) -> Result<String> {
+        if find_scheme_section_end(name) != 0 {
+            return Ok(name.to_string());
+        }
+        if name.starts_with('/') {
+            Ok(name.to_string())
+        } else {
+            Ok(format!("/{name}"))
+        }
     }
 }
 
@@ -181,6 +197,22 @@ impl TemplateNameFormat for Default020300 {
             path = path[1..].to_string();
         }
         Ok(path)
+    }
+
+    /// 对应 `Default020300.rootBasedNameToAbsoluteName`（Java:214-223）：
+    /// 含 "://"（位置 > 0）→ 已是带 scheme 的绝对名，原样返回；
+    /// 非 "/" 开头 → 前加 "/"（根相对 → 绝对）；否则原样
+    fn root_based_name_to_absolute_name(&self, name: &str) -> Result<String> {
+        if let Some(idx) = name.find("://") {
+            if idx > 0 {
+                return Ok(name.to_string());
+            }
+        }
+        if name.starts_with('/') {
+            Ok(name.to_string())
+        } else {
+            Ok(format!("/{name}"))
+        }
     }
 }
 

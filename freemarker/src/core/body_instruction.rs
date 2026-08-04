@@ -58,6 +58,16 @@ fn exec_nested(
     // Java getEnclosingMacro 沿父元素链）
     let prev_macro_name =
         std::mem::replace(&mut env.current_macro_name, frame.caller_macro_name.clone());
+    // 词法模板名随调用方上下文恢复（嵌套内容词法上位于调用点模板 ——
+    // Java getCurrentTemplate 的指令栈顶元素 template 语义；帧记录调用时的值）
+    let fallback_lexical = env.lexical_template_name.clone();
+    let prev_lexical = std::mem::replace(
+        &mut env.lexical_template_name,
+        frame
+            .prev_lexical_template_name
+            .clone()
+            .unwrap_or(fallback_lexical),
+    );
     env.local_stack = frame.caller_local_stack.clone();
     if !frame.body_params.is_empty() {
         env.push_local(LocalEntry::Body(Rc::new(
@@ -69,6 +79,7 @@ fn exec_nested(
     env.current_macro_name = prev_macro_name;
     env.local_stack = prev_local;
     env.current_ns = prev_ns;
+    env.lexical_template_name = prev_lexical;
     if let Some(f) = prev_macro {
         env.macro_frames.push(f);
     }

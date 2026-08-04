@@ -408,6 +408,14 @@ pub struct MacroFrame {
     /// 调用方词法宏名（`<#nested>` 回插调用方 body 时 current_macro_name 恢复用——
     /// 调用方 body 元素的 `in macro "m"` 定位；Java 父元素链的宏归属）
     pub(crate) caller_macro_name: Option<String>,
+    /// 调用方模板名 —— 对应 Java `Macro.Context.callPlace`（Macro.java:227-250：
+    /// 调用点 TemplateObject）的 `getTemplate().getName()`（BuiltinVariable.java:264-267）：
+    /// 调用点所在模板的查找名；无名模板 → None（Java getName()==null →
+    /// EMPTY_STRING）。`<#nested>` 回插时当前帧为调用方帧，读数自然恢复。
+    pub(crate) caller_template_name: Option<String>,
+    /// 调用时的词法模板名（`<#nested>` 回插期间 lexical_template_name 恢复用——
+    /// 嵌套内容词法上位于调用点模板，Java getCurrentTemplate 的指令栈顶元素语义）
+    pub(crate) prev_lexical_template_name: Option<String>,
     /// `.args` 特殊变量值（Java Macro.Context.argsSpecialVariableValue——
     /// checkParamsSetAndApplyDefaults :344-397：macro → 参数哈希、function → 参数序列）
     ///
@@ -439,6 +447,27 @@ pub struct MacroValue {
     /// 必须为 `Weak`：`Namespace.macros` 已强持有 `MacroValue`，若此处再强持有
     /// `Namespace`，每个含宏的渲染环境都会形成不可释放的 `Rc` 环。
     pub ns: Weak<Namespace>,
+    /// `?with_args`/`?with_args_last` 预绑定参数 —— 对应 Java `Macro.WithArgs`
+    /// （Macro.java:492-510，`new Macro(that, withArgs)` 复制构造 :98-104）；
+    /// None = 无预绑定（普通宏/函数值）
+    pub(crate) with_args: Option<WithArgs>,
+}
+
+/// `?with_args` 预绑定参数 —— 对应 Java `Macro.WithArgs`（Macro.java:492-510）：
+/// 按名（TemplateHashModelEx）或按位（TemplateSequenceModel）二选一 + 顺序标志。
+#[derive(Clone)]
+pub(crate) struct WithArgs {
+    pub kind: WithArgsKind,
+    pub order_last: bool,
+}
+
+/// 预绑定参数的形态（Java WithArgs.byName / byPosition 二选一）
+#[derive(Clone)]
+pub(crate) enum WithArgsKind {
+    /// 按名绑定（Java byName TemplateHashModelEx）
+    ByName(indexmap::IndexMap<String, TModel>),
+    /// 按位绑定（Java byPosition TemplateSequenceModel）
+    ByPosition(Vec<TModel>),
 }
 
 /// lambda 值 —— 对应 Java `LocalLambdaExpression` 求值结果（v1 仅存槽位；
@@ -1188,10 +1217,16 @@ impl<'a> Environment<'a> {
                 }
             }
         }
-        let s = match value {
-            Some(v) => model_to_string(self, &v)?,
-            None => model_to_string(self, m)?,
-        };
+        // Java DollarVariable.accept（DollarVariable.java:62-99）：插值结果已是
+        // markup 输出（?esc/?no_esc/捕获提升产物）且输出格式一致 → **原样输出**，
+        // 不按 autoEsc 二次转义（Java :72-77 moOF == outputFormat → moOF.output(mo)）；
+        // 跨格式转换（:78-92）v1 简化——markup 无格式槽位，一律按同格式处理
+        // （testConvert 等跨格式断言保留 ENGINE_GAP，见 examples_test.rs 头注）
+        let final_model = value.as_ref().unwrap_or(m);
+        let s = model_to_string(self, final_model)?;
+        if final_model.is_markup_output() {
+            return Ok(s);
+        }
         if self.auto_escape {
             // Java AutoEscBlock：按 outputFormat 转义（v1：html/xml；其余格式 P4 TODO）
             match self.settings.output_format {
@@ -1296,13 +1331,18 @@ impl<'a> Environment<'a> {
             caller_ns: self.current_ns.clone(),
             caller_local_stack: self.local_stack.clone(),
             caller_macro_name: self.current_macro_name.clone(),
+            // Java Macro.Context.callPlace（调用点 TemplateObject）的模板名
+            // （BuiltinVariable.java:264-267 getRequiredMacroContext(env).callPlace
+            // → callPlace.getTemplate().getName()）
+            caller_template_name: Some(self.lexical_template_name.clone()),
+            prev_lexical_template_name: Some(self.lexical_template_name.clone()),
             args_value: RefCell::new(None),
             def: mv.def.clone(),
             is_function,
         });
         // 无参数宏：跳过参数绑定（空循环开销——热路径 `<@m/>` 调用）
-        if !mv.def.params.is_empty() {
-            bind_macro_args(self, &frame, &mv.def, args)?;
+        if !mv.def.params.is_empty() || mv.with_args.is_some() {
+            bind_macro_args(self, &frame, &mv.def, args, &mv.with_args)?;
         }
         // Java :880-894：压帧、切换命名空间、清空局部上下文
         self.macro_frames.push(frame.clone());
@@ -1319,6 +1359,13 @@ impl<'a> Environment<'a> {
             self.current_ns_prefixes = ns_prefixes;
         }
         let prev_local = std::mem::take(&mut self.local_stack);
+        // 词法模板名切换为宏定义所在模板（Java getCurrentTemplate：指令栈顶元素
+        // 的 template —— 宏体元素在定义模板中；`.caller_template_name` 的调用点
+        // 判定依赖切换前的值，已记录于帧）
+        let prev_lexical = std::mem::replace(
+            &mut self.lexical_template_name,
+            mv.def.template_name.clone(),
+        );
         // Java ICI 2.3.28+：宏定义帧在参数绑定（setMacroContextLocalsFromArguments）
         // **之后**、默认参数求值（checkParamsSetAndApplyDefaults）**之前**压入
         // （invokeMacroOrFunctionCommonPart 的 pushElement(macro)，jar 实测）——
@@ -1336,6 +1383,7 @@ impl<'a> Environment<'a> {
         self.current_ns = prev_ns;
         self.current_ns_prefixes = prev_ns_prefixes;
         self.local_stack = prev_local;
+        self.lexical_template_name = prev_lexical;
         self.macro_frames.pop();
         self.pop_instruction_frame();
         self.current_macro_name = prev_macro_name;
@@ -1644,9 +1692,11 @@ impl<'a> Environment<'a> {
     fn initialize_import_lib_namespace(&mut self, ns: &Rc<Namespace>, t: &Template) -> Result<()> {
         let prev_ns = self.current_ns.clone();
         let prev_name = self.current_template_name.clone();
+        let prev_lexical = self.lexical_template_name.clone();
         let prev_ns_prefixes = self.current_ns_prefixes.clone();
         self.current_ns = ns.clone();
         self.current_template_name = t.name.clone();
+        self.lexical_template_name = t.name.clone();
         self.current_ns_prefixes = t.ns_prefixes.clone();
         for (name, def) in &t.macros {
             register_macro(ns, name, def);
@@ -1654,6 +1704,7 @@ impl<'a> Environment<'a> {
         let r = self.capture(|env| env.run(&t.root));
         self.current_ns = prev_ns;
         self.current_template_name = prev_name;
+        self.lexical_template_name = prev_lexical;
         self.current_ns_prefixes = prev_ns_prefixes;
         match r {
             Ok((RunSignal::Completed, _)) => Ok(()),
@@ -1694,6 +1745,7 @@ pub(crate) fn register_macro(ns: &Rc<Namespace>, name: &str, def: &MacroDef) {
         Rc::new(MacroValue {
             def: Rc::new(def.clone()),
             ns: Rc::downgrade(ns),
+            with_args: None,
         }),
     );
 }
@@ -1709,13 +1761,23 @@ fn ensure_output_limit(current_len: usize, additional_len: usize) -> Result<()> 
 }
 
 /// 宏参数绑定 —— 对应 Java `setMacroContextLocalsFromArguments`（Environment.java:919-1094，
-/// v1 无 `?with_args`）。位置参数按声明顺序（catch-all 不计入普通参数槽，Macro.java:74-81）；
-/// 命名参数匹配普通参数，未声明者进入命名 catch-all 哈希（Java :1017-1039）。
+/// 含 `?with_args` 预绑定合并）。位置参数按声明顺序（catch-all 不计入普通参数槽，
+/// Macro.java:74-81）；命名参数匹配普通参数，未声明者进入命名 catch-all 哈希
+/// （Java :1017-1039）。
+///
+/// `with_args` 阶段（Java :917-1003 的 WithArgsState 处理）：
+/// - byName：已声明参数直接绑定；其余 → 命名 catch-all —— orderLast=false 立即
+///   插入，orderLast=true 先收集（:938-958 的 orderLastByNameCatchAll），调用参数
+///   绑定完后再补（:1053-1066，重复键跳过）；
+/// - byPosition + orderLast=false：从位置 0 起按声明顺序绑定，溢出进位置 catch-all
+///   （:942-961）；orderLast=true：绑定延后到调用参数之后（:1067-1092），调用含
+///   命名参数且预绑定非空 → 报错（:971-975）。
 fn bind_macro_args(
     env: &mut Environment,
     frame: &Rc<MacroFrame>,
     def: &MacroDef,
     args: &[(String, crate::core::Expr)],
+    with_args: &Option<WithArgs>,
 ) -> Result<()> {
     let normal_params: Vec<&MacroParam> = def.params.iter().filter(|p| !p.catch_all).collect();
     let catch_all_name = def
@@ -1727,7 +1789,124 @@ fn bind_macro_args(
     // Java 命名 catch-all → SimpleHash(LinkedHashMap)：参数插入序
     let mut named_catch_all: Option<IndexMap<String, TModel>> = None;
     let mut positional_catch_all: Option<Vec<TModel>> = None;
+    // orderLast 的 byName catch-all 待定条目（Java WithArgsState.orderLastByNameCatchAll）
+    let mut order_last_pending: Option<Vec<(String, TModel)>> = None;
 
+    let has_named_call = args.iter().any(|(n, _)| !n.is_empty());
+    let has_positional_call = args.iter().any(|(n, _)| n.is_empty());
+    let call_positional_count = args.iter().filter(|(n, _)| n.is_empty()).count();
+
+    // Phase 1：?with_args 预绑定（Java :921-1003）
+    if let Some(wa) = with_args {
+        match &wa.kind {
+            WithArgsKind::ByName(bound) => {
+                for (arg_name, arg_value) in bound {
+                    if normal_params.iter().any(|p| p.name == *arg_name) {
+                        // Java :956-957 setLocalVar（含 null 值 —— 后续默认值处理）
+                        frame
+                            .locals
+                            .borrow_mut()
+                            .insert(arg_name.clone(), arg_value.clone());
+                    } else if let Some(cn) = &catch_all_name {
+                        // Java :938-941：首个未声明预绑定键即初始化命名 catch-all
+                        // （initNamedCatchAllParameter —— 即使 orderLast 只收集待定
+                        // 条目，命名 catch-all 已非 null，位置实参溢出时触发 "both
+                        // named and positional" 错误）
+                        named_catch_all.get_or_insert_with(IndexMap::new);
+                        if wa.order_last {
+                            // Java :946-952：收集，待调用参数绑定后补入（不覆盖）
+                            order_last_pending
+                                .get_or_insert_with(Vec::new)
+                                .push((arg_name.clone(), arg_value.clone()));
+                        } else {
+                            let hash = named_catch_all.as_mut().unwrap();
+                            hash.insert(arg_name.clone(), arg_value.clone());
+                            frame
+                                .locals
+                                .borrow_mut()
+                                .insert(cn.clone(), TModel::from_hash(hash.clone()));
+                        }
+                    } else {
+                        // Java newUndeclaredParamNameException（Environment.java:1148-1154）
+                        return Err(undeclared_param_error(def, &normal_params, arg_name));
+                    }
+                }
+            }
+            WithArgsKind::ByPosition(bound) => {
+                if wa.order_last {
+                    // Java :971-975：调用含命名参数且预绑定非空 → 无法定位 → 报错
+                    if has_named_call && !bound.is_empty() {
+                        return Err(TemplateError::misc(
+                            "Call can't pass parameters by name, as there's \"with args last\" in effect that specifies parameters by position.",
+                        ));
+                    }
+                    // Java :982-988：无 catch-all → 总数预检（调用位置参数 + 预绑定）
+                    if catch_all_name.is_none() {
+                        let total = call_positional_count + bound.len();
+                        if total > normal_params.len() {
+                            return Err(too_many_args_error(def, &normal_params, total));
+                        }
+                    }
+                    // 绑定延后到 Phase 3（Java :1067-1092）
+                } else {
+                    // Java :942-944：预绑定过多且无 catch-all → 报错（总数 = 预绑定数）
+                    if normal_params.len() < bound.len() && catch_all_name.is_none() {
+                        return Err(too_many_args_error(def, &normal_params, bound.len()));
+                    }
+                    for arg_value in bound {
+                        if next_pos < normal_params.len() {
+                            let name = normal_params[next_pos].name.clone();
+                            next_pos += 1;
+                            frame.locals.borrow_mut().insert(name, arg_value.clone());
+                        } else {
+                            let cn = catch_all_name
+                                .as_ref()
+                                .expect("预绑定过多且无 catch-all 已在上方报错");
+                            let list = positional_catch_all.get_or_insert_with(Vec::new);
+                            list.push(arg_value.clone());
+                            let seq = TModel::from_sequence(list.clone());
+                            frame.locals.borrow_mut().insert(cn.clone(), seq);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 2 前置：catch-all 形态初始化（Java :1007-1013 与 :1036-1040 ——
+    // 两个分支的 init 条件合并：有命名调用 → 命名 catch-all；有位置调用 → 位置
+    // catch-all；无调用实参 → 按 with_args 种类（byPosition → 序列，否则哈希））
+    if catch_all_name.is_some() && positional_catch_all.is_none() && named_catch_all.is_none() {
+        let by_position = if has_positional_call {
+            true
+        } else if has_named_call {
+            false
+        } else {
+            matches!(
+                &with_args,
+                Some(wa) if matches!(wa.kind, WithArgsKind::ByPosition(_))
+            )
+        };
+        if by_position {
+            positional_catch_all = Some(Vec::new());
+        } else {
+            named_catch_all = Some(IndexMap::new());
+        }
+    }
+    // Phase 2 前置：位置参数总数预检（Java :1041-1053）——位置 catch-all 未初始化
+    // （即无 catch-all 参数）且总数超声明数 → 命名 catch-all 已有内容 → "both"
+    // 错误，否则 too-many 错误
+    if positional_catch_all.is_none() {
+        let total = call_positional_count + next_pos;
+        if normal_params.len() < total {
+            if named_catch_all.is_some() {
+                return Err(both_named_positional_error(def));
+            }
+            return Err(too_many_args_error(def, &normal_params, total));
+        }
+    }
+
+    // Phase 2：调用参数绑定（Java :1004-1052）
     for (arg_name, arg_expr) in args {
         // Java Environment.getVariable 不抛错（缺失变量 → null）：参数求值 lenient
         // （`f(11, null, 33)` 的 null 即缺失变量，Java checkParamsSetAndApplyDefaults
@@ -1760,19 +1939,20 @@ fn bind_macro_args(
                 let seq = TModel::from_sequence(list.clone());
                 frame.locals.borrow_mut().insert(cn.clone(), seq);
             } else {
-                // Java newTooManyArgumentsException（Environment.java:1097-1103）
-                return Err(TemplateError::misc(format!(
-                    "{} {} only accepts {} parameters, but got {}.",
-                    if def.is_function { "Function" } else { "Macro" },
-                    quote_name(&def.name),
-                    normal_params.len(),
-                    args.len(),
-                )));
+                // 上方总数预检已拦截；此处为防御分支（Java newTooManyArgumentsException）
+                return Err(too_many_args_error(
+                    def,
+                    &normal_params,
+                    call_positional_count + next_pos,
+                ));
             }
         } else if normal_params.iter().any(|p| p.name == *arg_name) {
             frame.locals.borrow_mut().insert(arg_name.clone(), value);
         } else if let Some(cn) = &catch_all_name {
-            // 命名 catch-all（Java :1019-1036）
+            // 命名 catch-all（Java :1019-1036）；位置 catch-all 已有内容 → "both" 错误
+            if positional_catch_all.is_some() {
+                return Err(both_named_positional_error(def));
+            }
             let hash = named_catch_all.get_or_insert_with(IndexMap::new);
             hash.insert(arg_name.clone(), value);
             frame
@@ -1780,26 +1960,67 @@ fn bind_macro_args(
                 .borrow_mut()
                 .insert(cn.clone(), TModel::from_hash(hash.clone()));
         } else {
-            // Java newUndeclaredParamNameException（Environment.java:1105-1113）：
+            // Java newUndeclaredParamNameException（Environment.java:1148-1154）：
             // "Macro "m" has no parameter with name "b". Valid parameter names are: a"
-            // （jar 实测 macro_undeclared_param 基线——含合法参数名清单）
-            let valid: Vec<&str> = normal_params.iter().map(|p| p.name.as_str()).collect();
-            return Err(TemplateError::misc(format!(
-                "{} {} has no parameter with name {}. Valid parameter names are: {}",
-                if def.is_function { "Function" } else { "Macro" },
-                quote_name(&def.name),
-                quote_name(arg_name),
-                valid.join(", "),
-            )));
+            return Err(undeclared_param_error(def, &normal_params, arg_name));
         }
     }
-    // Java Environment.java:1007-1013：catch-all 未收到任何额外参数时也必须绑定
-    // ——by-position 调用（存在位置参数）→ 空序列；by-name 调用 → 空哈希
+
+    // Phase 3：orderLast 收尾（Java :1053-1092）
+    if let Some(wa) = with_args {
+        if wa.order_last {
+            if let Some(pending) = &order_last_pending {
+                for (name, value) in pending {
+                    let exists = named_catch_all
+                        .as_ref()
+                        .is_some_and(|h| h.contains_key(name));
+                    if !exists {
+                        let hash = named_catch_all.get_or_insert_with(IndexMap::new);
+                        hash.insert(name.clone(), value.clone());
+                    }
+                }
+                if let (Some(cn), Some(h)) = (&catch_all_name, &named_catch_all) {
+                    frame
+                        .locals
+                        .borrow_mut()
+                        .insert(cn.clone(), TModel::from_hash(h.clone()));
+                }
+            } else if let WithArgsKind::ByPosition(bound) = &wa.kind {
+                for arg_value in bound {
+                    if next_pos < normal_params.len() {
+                        let name = normal_params[next_pos].name.clone();
+                        next_pos += 1;
+                        frame.locals.borrow_mut().insert(name, arg_value.clone());
+                    } else {
+                        let cn = catch_all_name
+                            .as_ref()
+                            .expect("无 catch-all 时的总数预检已在上方拦截");
+                        let list = positional_catch_all.get_or_insert_with(Vec::new);
+                        list.push(arg_value.clone());
+                        let seq = TModel::from_sequence(list.clone());
+                        frame.locals.borrow_mut().insert(cn.clone(), seq);
+                    }
+                }
+            }
+        }
+    }
+
+    // Java Environment.java:1007-1013/1048-1053：catch-all 未收到任何额外参数时也
+    // 必须绑定——by-position 调用（存在位置参数）→ 空序列；by-name 调用 → 空哈希
     // （如 `<@m foo=1/>` 后 `bar` 为 size 0 的哈希，宏体内可直接 ?keys）
     if let Some(cn) = &catch_all_name {
         let bound = frame.locals.borrow().contains_key(cn);
         if !bound {
-            let by_position = args.iter().any(|(n, _)| n.is_empty());
+            let by_position = if has_positional_call {
+                true
+            } else if has_named_call {
+                false
+            } else {
+                matches!(
+                    &with_args,
+                    Some(wa) if matches!(wa.kind, WithArgsKind::ByPosition(_))
+                )
+            };
             let value = if by_position {
                 TModel::from_sequence(Vec::new())
             } else {
@@ -1809,6 +2030,44 @@ fn bind_macro_args(
         }
     }
     Ok(())
+}
+
+/// Java newTooManyArgumentsException（Environment.java:1130-1136）：
+/// "Macro "m" only accepts 3 parameters, but got 4."
+fn too_many_args_error(def: &MacroDef, normal_params: &[&MacroParam], cnt: usize) -> TemplateError {
+    TemplateError::misc(format!(
+        "{} {} only accepts {} parameters, but got {}.",
+        if def.is_function { "Function" } else { "Macro" },
+        quote_name(&def.name),
+        normal_params.len(),
+        cnt,
+    ))
+}
+
+/// Java newBothNamedAndPositionalCatchAllParamsException（Environment.java:1155-1160）
+fn both_named_positional_error(def: &MacroDef) -> TemplateError {
+    TemplateError::misc(format!(
+        "{} {} call can't have both named and positional arguments that has to go into catch-all parameter.",
+        if def.is_function { "Function" } else { "Macro" },
+        quote_name(&def.name),
+    ))
+}
+
+/// Java newUndeclaredParamNameException（Environment.java:1148-1154）：
+/// "Macro "m" has no parameter with name "b". Valid parameter names are: a"
+fn undeclared_param_error(
+    def: &MacroDef,
+    normal_params: &[&MacroParam],
+    arg_name: &str,
+) -> TemplateError {
+    let valid: Vec<&str> = normal_params.iter().map(|p| p.name.as_str()).collect();
+    TemplateError::misc(format!(
+        "{} {} has no parameter with name {}. Valid parameter names are: {}",
+        if def.is_function { "Function" } else { "Macro" },
+        quote_name(&def.name),
+        quote_name(arg_name),
+        valid.join(", "),
+    ))
 }
 
 /// 默认参数求值 —— 对应 Java `Macro.Context.checkParamsSetAndApplyDefaults`
