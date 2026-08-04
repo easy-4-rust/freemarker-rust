@@ -1,7 +1,8 @@
 //! 点访问 —— 对应 Java `freemarker.core.Dot`
 //! （`_eval` :49-62：目标为哈希/命名空间 → get(key)；否则 NonHashException）
 
-use crate::core::eval::{eval, eval_builtin};
+use crate::core::eval::eval;
+use crate::core::expression::eval_builtin;
 use crate::core::{Expr, ExprKind};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;

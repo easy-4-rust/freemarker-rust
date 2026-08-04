@@ -3,8 +3,9 @@
 //! 范围键切片（`slice_with_range`）对应 Java dealWithRangeKey :183-334
 
 use crate::core::environment::model_to_string;
-use crate::core::eval::{eval, eval_builtin, trunc_i64};
+use crate::core::eval::{eval, trunc_i64};
 use crate::core::expression::dot_builtin_chain;
+use crate::core::expression::eval_builtin;
 use crate::core::{Expr, ExprKind};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;
