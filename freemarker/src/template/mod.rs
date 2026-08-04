@@ -37,7 +37,7 @@ pub use template::Template;
 pub use template_model::{
     NodeHashModel, RangeSpec, TemplateApiSupport, TemplateBooleanModel, TemplateCollectionModel,
     TemplateDateModel, TemplateDirectiveBody, TemplateDirectiveModel, TemplateHashModel,
-    TemplateHashModelEx, TemplateMethodModelEx, TemplateNodeModel, TemplateNumberModel,
-    TemplateScalarModel, TemplateSequenceModel, TemplateTransformModel,
+    TemplateHashModelEx, TemplateHashModelEx2, TemplateMethodModelEx, TemplateNodeModel,
+    TemplateNumberModel, TemplateScalarModel, TemplateSequenceModel, TemplateTransformModel,
 };
 pub use version::Version;

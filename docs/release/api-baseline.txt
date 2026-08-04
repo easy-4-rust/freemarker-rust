@@ -3951,6 +3951,8 @@ impl freemarker::template::TemplateHashModelEx for freemarker::template::SimpleH
 pub fn freemarker::template::SimpleHash::entries(&self) -> freemarker::Result<alloc::vec::Vec<(alloc::string::String, freemarker::TModel)>>
 pub fn freemarker::template::SimpleHash::keys(&self) -> freemarker::Result<alloc::vec::Vec<alloc::string::String>>
 pub fn freemarker::template::SimpleHash::size(&self) -> freemarker::Result<usize>
+pub trait freemarker::template::TemplateHashModelEx2: freemarker::template::TemplateHashModelEx
+pub fn freemarker::template::TemplateHashModelEx2::key_value_pair_iterator(&self) -> freemarker::Result<alloc::vec::Vec<(alloc::string::String, freemarker::TModel)>>
 pub trait freemarker::template::TemplateMethodModelEx
 pub fn freemarker::template::TemplateMethodModelEx::exec(&self, &mut freemarker::Environment<'_>, alloc::vec::Vec<freemarker::TModel>) -> freemarker::Result<freemarker::TModel>
 pub trait freemarker::template::TemplateNodeModel
