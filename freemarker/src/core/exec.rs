@@ -21,7 +21,6 @@ use crate::core::eval;
 use crate::core::{ArithmeticEngine, AssignOp, CallTarget, Element, ElementKind, OutputFormatKind};
 use crate::error::{FlowKind, Result, TemplateError};
 use crate::span::Span;
-use crate::template::utility::java_trim;
 use crate::template::{TModel, TemplateDirectiveBody};
 use crate::value::TNumber;
 use std::cell::RefCell;
@@ -265,56 +264,21 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             default_pos,
         } => exec_switch(env, expr, cases, default, default_pos),
         ElementKind::Attempt { try_, recover } => exec_attempt(env, try_, recover),
-        ElementKind::Break => {
-            // Java BreakInstruction.java:29：BreakOrContinueException.BREAK_INSTANCE
-            Ok(ExecOutcome::Flow(FlowKind::Break))
+        ElementKind::Break => crate::core::break_instruction::BreakInstruction::new().exec(env),
+        ElementKind::Continue => {
+            crate::core::continue_instruction::ContinueInstruction::new().exec(env)
         }
-        ElementKind::Continue => Ok(ExecOutcome::Flow(FlowKind::Continue)),
         ElementKind::Return { expr } => {
-            // Java ReturnInstruction.java:35-51：设置返回值后抛 Return.INSTANCE；
-            // 记录发起时的宏帧深度（nested body 执行时 exec_nested 已弹出被调宏帧，
-            // 栈顶即 return 的归属宏——Java Return 异常携带发起 Macro.Context）
-            env.return_depth = Some(env.macro_frames.len());
-            let v = match expr {
-                Some(e) => {
-                    let m = eval::eval(env, e)?;
-                    if m.is_nothing() {
-                        return Err(TemplateError::invalid_reference(expr_desc(e)));
-                    }
-                    Some(m)
-                }
-                None => None,
-            };
-            Ok(ExecOutcome::ReturnValue(v))
+            crate::core::return_instruction::ReturnInstruction::new(expr.clone()).exec(env)
         }
         ElementKind::Stop { msg } => {
-            // Java StopInstruction：StopException（:43-49；消息经 evalAndCoerceToPlainText）
-            let message = match msg {
-                Some(e) => Some(eval_to_string(env, e)?),
-                None => None,
-            };
-            Ok(ExecOutcome::Stop(message))
+            crate::core::stop_instruction::StopInstruction::new(msg.clone()).exec(env)
         }
-        ElementKind::Flush => {
-            // Java FlushInstruction：冲刷输出缓冲
-            if env.redirect.is_some() {
-                return Ok(ExecOutcome::Done);
-            }
-            env.out.flush().map_err(TemplateError::Io)?;
-            Ok(ExecOutcome::Done)
-        }
+        ElementKind::Flush => crate::core::flush_instruction::FlushInstruction::new().exec(env),
         ElementKind::Trim(body) => {
-            // Java TrimInstruction：块输出捕获 → java trim（String.trim 语义）→ 写出
-            let captured = env.capture(|env| env.run(body))?;
-            match captured.0 {
-                RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-                RunSignal::Completed => {
-                    env.emit(java_trim(&captured.1))?;
-                    Ok(ExecOutcome::Done)
-                }
-            }
+            crate::core::trim_instruction::TrimInstruction::new(body.clone()).exec(env)
         }
-        ElementKind::Comment { text: _ } => Ok(ExecOutcome::Done),
+        ElementKind::Comment { text } => crate::core::comment::Comment::new(text.clone()).exec(env),
         ElementKind::Include { path, attrs } => {
             // Java Include.accept :25-100 + :138-153（parse/encoding/ignore_missing 属性）
             let name = eval_to_string(env, path)?;
@@ -413,12 +377,16 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
                 }
             }
         }
-        ElementKind::Setting { key, value } => exec_setting(env, key, value),
-        ElementKind::FtlHeader { encoding: _ } => Ok(ExecOutcome::Done), // 解析期已处理
+        ElementKind::Setting { key, value } => {
+            crate::core::property_setting::Setting::new(key.clone(), value.clone()).exec(env)
+        }
+        ElementKind::FtlHeader { encoding } => {
+            crate::core::ftl_header::FtlHeader::new(encoding.clone()).exec(env)
+        }
         ElementKind::TrimLineStart
         | ElementKind::NoTrimLineStart
         | ElementKind::TrimLineEnd
-        | ElementKind::LeftTrimLine => Ok(ExecOutcome::Done), // 解析期标记（渲染期由文本剥离实现）
+        | ElementKind::LeftTrimLine => crate::core::trim_instruction::TrimMark::new().exec(env),
         ElementKind::RawText(t) => {
             // <#gt> 特殊文本
             env.emit(t)?;
@@ -490,9 +458,9 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             env.get_current_namespace().put_macro(name, mv);
             Ok(ExecOutcome::Done)
         }
-        ElementKind::Fallback => Err(TemplateError::misc(
-            "#fallback needs XML node support (a Java-specific feature).",
-        )),
+        ElementKind::Fallback => {
+            crate::core::fallback_instruction::FallbackInstruction::new().exec(env)
+        }
     }
 }
 
@@ -1776,7 +1744,7 @@ fn blame_interpolation_content(
     crate::core::environment::attach_location(e, &env.current_template_name, expr.span)
 }
 
-fn exec_setting(
+pub(crate) fn exec_setting(
     env: &mut crate::core::Environment,
     key: &str,
     value: &crate::core::Expr,
@@ -1898,7 +1866,7 @@ fn parse_bool_setting(v: &str) -> Result<bool> {
 }
 
 /// run 结果 → ExecOutcome（宏体/捕获块等内部 run 的返回值上传）
-fn outcome_from_run(r: Result<RunSignal>) -> Result<ExecOutcome> {
+pub(crate) fn outcome_from_run(r: Result<RunSignal>) -> Result<ExecOutcome> {
     match r {
         Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
         Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
@@ -1979,7 +1947,10 @@ fn get_yes_no(_exp: &crate::core::Expr, s: &str) -> Result<bool> {
 }
 
 /// 表达式求值 → 字符串（`<#include>`/`<#import>`/`<#stop msg>`/`<#setting>` 值）
-fn eval_to_string(env: &mut crate::core::Environment, e: &crate::core::Expr) -> Result<String> {
+pub(crate) fn eval_to_string(
+    env: &mut crate::core::Environment,
+    e: &crate::core::Expr,
+) -> Result<String> {
     crate::core::environment::eval_to_string(env, e)
 }
 

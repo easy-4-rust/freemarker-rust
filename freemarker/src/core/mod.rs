@@ -1,20 +1,30 @@
 //! 对应 Java `freemarker.core` 包：解析器产物、渲染引擎、算术引擎、设置项
 
 mod arithmetic_engine;
+mod break_instruction;
+mod comment;
 mod configurable;
+mod continue_instruction;
 pub(crate) mod environment;
 pub(crate) mod eval;
 pub(crate) mod eval_util;
 mod exec;
 mod expression;
+mod fallback_instruction;
+mod flush_instruction;
+mod ftl_header;
 mod get_optional_template_method;
 mod hash_literal;
 mod macro_def;
 mod output_format;
+mod property_setting;
 mod range_model;
+mod return_instruction;
+mod stop_instruction;
 mod template_class_resolver;
 mod template_configuration;
 mod template_element;
+mod trim_instruction;
 
 pub use arithmetic_engine::{ArithmeticEngine, BigDecimalEngine};
 pub use configurable::{canonical_setting_key, java_time_zone_id, Settings, TzSetting};
