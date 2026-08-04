@@ -7,11 +7,11 @@ use crate::core::Expr;
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;
 
-/// ?eval_json —— Java evalJsonBI（BuiltInsForStringsMisc.java:116-131）：JSON 字符串
-/// 解析为模型；失败消息 = "Failed to \"?eval_json\" string with this error:"
-/// + EMBEDDED_MESSAGE 段 + "The failing expression:"（源码拼接，jar 实测格式）。
-/// 内嵌消息用 serde_json 原文（Java JSONParser 逐字消息无 golden/parity 场景覆盖——
-/// 文档化偏差）
+/// ?eval_json —— Java evalJsonBI（BuiltInsForStringsMisc.java:116-131）：
+/// JSON 字符串解析为模型；失败消息 = "Failed to \"?eval_json\" string with
+/// this error:" + EMBEDDED_MESSAGE 段 + "The failing expression:"
+/// （源码拼接，jar 实测格式）。内嵌消息用 serde_json 原文
+/// （Java JSONParser 逐字消息无 golden/parity 场景覆盖——文档化偏差）
 pub fn eval_json(
     env: &mut crate::core::Environment,
     target: &Expr,
