@@ -64,15 +64,15 @@ impl Default for Configuration {
         }
         shared_vars.insert(
             "compress".to_string(),
-            TModel::from_transform(crate::template::utility_transforms::StandardCompressTransform),
+            TModel::from_transform(crate::template::utility::StandardCompressTransform),
         );
         shared_vars.insert(
             "html_escape".to_string(),
-            TModel::from_transform(crate::template::utility_transforms::HtmlEscapeTransform),
+            TModel::from_transform(crate::template::utility::HtmlEscapeTransform),
         );
         shared_vars.insert(
             "normalize_newlines".to_string(),
-            TModel::from_transform(crate::template::utility_transforms::NormalizeNewlinesTransform),
+            TModel::from_transform(crate::template::utility::NormalizeNewlinesTransform),
         );
         Configuration {
             settings: Settings::default(),

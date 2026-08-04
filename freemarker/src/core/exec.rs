@@ -1956,7 +1956,7 @@ fn strip_text<'a>(
 /// 空白压缩 —— 对应 Java `<#compress>`（CompressedBlock.accept :40-44 →
 /// StandardCompress.INSTANCE 变换）：Java 逐字符状态机（utility_transforms.rs）
 fn compress_text(s: &str) -> String {
-    crate::template::utility_transforms::standard_compress_text(s, false)
+    crate::template::utility::standard_compress_text(s, false)
 }
 
 /// Java Include.getYesNo :233-242 + StringUtil.getYesNo :695-709

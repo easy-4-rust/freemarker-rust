@@ -3237,6 +3237,81 @@ impl<T> core::convert::From<T> for freemarker::span::Span
 pub fn freemarker::span::Span::from(T) -> T
 pub mod freemarker::template
 pub mod freemarker::template::utility
+pub struct freemarker::template::utility::CaptureOutputTransform
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::CaptureOutputTransform
+pub fn freemarker::template::utility::CaptureOutputTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::CaptureOutputTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl core::marker::Freeze for freemarker::template::utility::CaptureOutputTransform
+impl core::marker::Send for freemarker::template::utility::CaptureOutputTransform
+impl core::marker::Sync for freemarker::template::utility::CaptureOutputTransform
+impl core::marker::Unpin for freemarker::template::utility::CaptureOutputTransform
+impl core::marker::UnsafeUnpin for freemarker::template::utility::CaptureOutputTransform
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::CaptureOutputTransform
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::CaptureOutputTransform
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::CaptureOutputTransform where U: core::convert::From<T>
+pub fn freemarker::template::utility::CaptureOutputTransform::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::CaptureOutputTransform where U: core::convert::Into<T>
+pub type freemarker::template::utility::CaptureOutputTransform::Error = core::convert::Infallible
+pub fn freemarker::template::utility::CaptureOutputTransform::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::CaptureOutputTransform where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::CaptureOutputTransform::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::CaptureOutputTransform::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::CaptureOutputTransform where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::CaptureOutputTransform::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::CaptureOutputTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::CaptureOutputTransform::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::CaptureOutputTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::CaptureOutputTransform::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::CaptureOutputTransform
+pub fn freemarker::template::utility::CaptureOutputTransform::from(T) -> T
+pub struct freemarker::template::utility::DateUtil
+impl core::marker::Freeze for freemarker::template::utility::DateUtil
+impl core::marker::Send for freemarker::template::utility::DateUtil
+impl core::marker::Sync for freemarker::template::utility::DateUtil
+impl core::marker::Unpin for freemarker::template::utility::DateUtil
+impl core::marker::UnsafeUnpin for freemarker::template::utility::DateUtil
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::DateUtil
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::DateUtil
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::DateUtil where U: core::convert::From<T>
+pub fn freemarker::template::utility::DateUtil::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::DateUtil where U: core::convert::Into<T>
+pub type freemarker::template::utility::DateUtil::Error = core::convert::Infallible
+pub fn freemarker::template::utility::DateUtil::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::DateUtil where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::DateUtil::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::DateUtil::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::DateUtil where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::DateUtil::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::DateUtil where T: ?core::marker::Sized
+pub fn freemarker::template::utility::DateUtil::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::DateUtil where T: ?core::marker::Sized
+pub fn freemarker::template::utility::DateUtil::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::DateUtil
+pub fn freemarker::template::utility::DateUtil::from(T) -> T
+pub struct freemarker::template::utility::Execute
+impl core::marker::Freeze for freemarker::template::utility::Execute
+impl core::marker::Send for freemarker::template::utility::Execute
+impl core::marker::Sync for freemarker::template::utility::Execute
+impl core::marker::Unpin for freemarker::template::utility::Execute
+impl core::marker::UnsafeUnpin for freemarker::template::utility::Execute
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::Execute
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::Execute
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::Execute where U: core::convert::From<T>
+pub fn freemarker::template::utility::Execute::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::Execute where U: core::convert::Into<T>
+pub type freemarker::template::utility::Execute::Error = core::convert::Infallible
+pub fn freemarker::template::utility::Execute::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::Execute where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::Execute::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::Execute::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::Execute where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::Execute::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::Execute where T: ?core::marker::Sized
+pub fn freemarker::template::utility::Execute::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::Execute where T: ?core::marker::Sized
+pub fn freemarker::template::utility::Execute::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::Execute
+pub fn freemarker::template::utility::Execute::from(T) -> T
 pub struct freemarker::template::utility::FnvHasher(_)
 impl core::default::Default for freemarker::template::utility::FnvHasher
 pub fn freemarker::template::utility::FnvHasher::default() -> freemarker::template::utility::FnvHasher
@@ -3266,10 +3341,171 @@ impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::FnvHasher 
 pub fn freemarker::template::utility::FnvHasher::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for freemarker::template::utility::FnvHasher
 pub fn freemarker::template::utility::FnvHasher::from(T) -> T
+pub struct freemarker::template::utility::HtmlEscapeTransform
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::HtmlEscapeTransform
+pub fn freemarker::template::utility::HtmlEscapeTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::HtmlEscapeTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl core::marker::Freeze for freemarker::template::utility::HtmlEscapeTransform
+impl core::marker::Send for freemarker::template::utility::HtmlEscapeTransform
+impl core::marker::Sync for freemarker::template::utility::HtmlEscapeTransform
+impl core::marker::Unpin for freemarker::template::utility::HtmlEscapeTransform
+impl core::marker::UnsafeUnpin for freemarker::template::utility::HtmlEscapeTransform
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::HtmlEscapeTransform
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::HtmlEscapeTransform
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::HtmlEscapeTransform where U: core::convert::From<T>
+pub fn freemarker::template::utility::HtmlEscapeTransform::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::HtmlEscapeTransform where U: core::convert::Into<T>
+pub type freemarker::template::utility::HtmlEscapeTransform::Error = core::convert::Infallible
+pub fn freemarker::template::utility::HtmlEscapeTransform::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::HtmlEscapeTransform where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::HtmlEscapeTransform::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::HtmlEscapeTransform::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::HtmlEscapeTransform where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::HtmlEscapeTransform::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::HtmlEscapeTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::HtmlEscapeTransform::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::HtmlEscapeTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::HtmlEscapeTransform::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::HtmlEscapeTransform
+pub fn freemarker::template::utility::HtmlEscapeTransform::from(T) -> T
+pub struct freemarker::template::utility::NormalizeNewlinesTransform
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::NormalizeNewlinesTransform
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl core::marker::Freeze for freemarker::template::utility::NormalizeNewlinesTransform
+impl core::marker::Send for freemarker::template::utility::NormalizeNewlinesTransform
+impl core::marker::Sync for freemarker::template::utility::NormalizeNewlinesTransform
+impl core::marker::Unpin for freemarker::template::utility::NormalizeNewlinesTransform
+impl core::marker::UnsafeUnpin for freemarker::template::utility::NormalizeNewlinesTransform
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::NormalizeNewlinesTransform
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::NormalizeNewlinesTransform
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::NormalizeNewlinesTransform where U: core::convert::From<T>
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::NormalizeNewlinesTransform where U: core::convert::Into<T>
+pub type freemarker::template::utility::NormalizeNewlinesTransform::Error = core::convert::Infallible
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::NormalizeNewlinesTransform where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::NormalizeNewlinesTransform::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::NormalizeNewlinesTransform where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::NormalizeNewlinesTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::NormalizeNewlinesTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::NormalizeNewlinesTransform
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::from(T) -> T
+pub struct freemarker::template::utility::NumberUtil
+impl core::marker::Freeze for freemarker::template::utility::NumberUtil
+impl core::marker::Send for freemarker::template::utility::NumberUtil
+impl core::marker::Sync for freemarker::template::utility::NumberUtil
+impl core::marker::Unpin for freemarker::template::utility::NumberUtil
+impl core::marker::UnsafeUnpin for freemarker::template::utility::NumberUtil
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::NumberUtil
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::NumberUtil
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::NumberUtil where U: core::convert::From<T>
+pub fn freemarker::template::utility::NumberUtil::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::NumberUtil where U: core::convert::Into<T>
+pub type freemarker::template::utility::NumberUtil::Error = core::convert::Infallible
+pub fn freemarker::template::utility::NumberUtil::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::NumberUtil where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::NumberUtil::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::NumberUtil::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::NumberUtil where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::NumberUtil::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::NumberUtil where T: ?core::marker::Sized
+pub fn freemarker::template::utility::NumberUtil::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::NumberUtil where T: ?core::marker::Sized
+pub fn freemarker::template::utility::NumberUtil::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::NumberUtil
+pub fn freemarker::template::utility::NumberUtil::from(T) -> T
+pub struct freemarker::template::utility::ObjectConstructorFn
+impl freemarker::template::TemplateMethodModelEx for freemarker::template::utility::ObjectConstructorFn
+pub fn freemarker::template::utility::ObjectConstructorFn::exec(&self, &mut freemarker::Environment<'_>, alloc::vec::Vec<freemarker::TModel>) -> freemarker::Result<freemarker::TModel>
+impl core::marker::Freeze for freemarker::template::utility::ObjectConstructorFn
+impl core::marker::Send for freemarker::template::utility::ObjectConstructorFn
+impl core::marker::Sync for freemarker::template::utility::ObjectConstructorFn
+impl core::marker::Unpin for freemarker::template::utility::ObjectConstructorFn
+impl core::marker::UnsafeUnpin for freemarker::template::utility::ObjectConstructorFn
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::ObjectConstructorFn
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::ObjectConstructorFn
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::ObjectConstructorFn where U: core::convert::From<T>
+pub fn freemarker::template::utility::ObjectConstructorFn::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::ObjectConstructorFn where U: core::convert::Into<T>
+pub type freemarker::template::utility::ObjectConstructorFn::Error = core::convert::Infallible
+pub fn freemarker::template::utility::ObjectConstructorFn::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::ObjectConstructorFn where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::ObjectConstructorFn::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::ObjectConstructorFn::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::ObjectConstructorFn where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::ObjectConstructorFn::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::ObjectConstructorFn where T: ?core::marker::Sized
+pub fn freemarker::template::utility::ObjectConstructorFn::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::ObjectConstructorFn where T: ?core::marker::Sized
+pub fn freemarker::template::utility::ObjectConstructorFn::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::ObjectConstructorFn
+pub fn freemarker::template::utility::ObjectConstructorFn::from(T) -> T
+pub struct freemarker::template::utility::StandardCompressTransform
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::StandardCompressTransform
+pub fn freemarker::template::utility::StandardCompressTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::StandardCompressTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl core::marker::Freeze for freemarker::template::utility::StandardCompressTransform
+impl core::marker::Send for freemarker::template::utility::StandardCompressTransform
+impl core::marker::Sync for freemarker::template::utility::StandardCompressTransform
+impl core::marker::Unpin for freemarker::template::utility::StandardCompressTransform
+impl core::marker::UnsafeUnpin for freemarker::template::utility::StandardCompressTransform
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::StandardCompressTransform
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::StandardCompressTransform
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::StandardCompressTransform where U: core::convert::From<T>
+pub fn freemarker::template::utility::StandardCompressTransform::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::StandardCompressTransform where U: core::convert::Into<T>
+pub type freemarker::template::utility::StandardCompressTransform::Error = core::convert::Infallible
+pub fn freemarker::template::utility::StandardCompressTransform::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::StandardCompressTransform where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::StandardCompressTransform::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::StandardCompressTransform::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::StandardCompressTransform where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::StandardCompressTransform::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::StandardCompressTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::StandardCompressTransform::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::StandardCompressTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::StandardCompressTransform::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::StandardCompressTransform
+pub fn freemarker::template::utility::StandardCompressTransform::from(T) -> T
+pub struct freemarker::template::utility::XmlEscapeTransform
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::XmlEscapeTransform
+pub fn freemarker::template::utility::XmlEscapeTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::XmlEscapeTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl core::marker::Freeze for freemarker::template::utility::XmlEscapeTransform
+impl core::marker::Send for freemarker::template::utility::XmlEscapeTransform
+impl core::marker::Sync for freemarker::template::utility::XmlEscapeTransform
+impl core::marker::Unpin for freemarker::template::utility::XmlEscapeTransform
+impl core::marker::UnsafeUnpin for freemarker::template::utility::XmlEscapeTransform
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::template::utility::XmlEscapeTransform
+impl core::panic::unwind_safe::UnwindSafe for freemarker::template::utility::XmlEscapeTransform
+impl<T, U> core::convert::Into<U> for freemarker::template::utility::XmlEscapeTransform where U: core::convert::From<T>
+pub fn freemarker::template::utility::XmlEscapeTransform::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::template::utility::XmlEscapeTransform where U: core::convert::Into<T>
+pub type freemarker::template::utility::XmlEscapeTransform::Error = core::convert::Infallible
+pub fn freemarker::template::utility::XmlEscapeTransform::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::template::utility::XmlEscapeTransform where U: core::convert::TryFrom<T>
+pub type freemarker::template::utility::XmlEscapeTransform::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::template::utility::XmlEscapeTransform::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for freemarker::template::utility::XmlEscapeTransform where T: 'static + ?core::marker::Sized
+pub fn freemarker::template::utility::XmlEscapeTransform::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::template::utility::XmlEscapeTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::XmlEscapeTransform::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::template::utility::XmlEscapeTransform where T: ?core::marker::Sized
+pub fn freemarker::template::utility::XmlEscapeTransform::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for freemarker::template::utility::XmlEscapeTransform
+pub fn freemarker::template::utility::XmlEscapeTransform::from(T) -> T
 pub fn freemarker::template::utility::glob_to_regex(&str, bool) -> core::result::Result<regex::regex::string::Regex, alloc::string::String>
 pub fn freemarker::template::utility::html_enc_legacy(&str) -> alloc::string::String
 pub fn freemarker::template::utility::html_escape(&str) -> alloc::string::String
+pub fn freemarker::template::utility::html_escape_entity(&str) -> alloc::string::String
 pub fn freemarker::template::utility::java_trim(&str) -> &str
+pub fn freemarker::template::utility::normalize_newlines_text(&str) -> alloc::string::String
+pub fn freemarker::template::utility::standard_compress_text(&str, bool) -> alloc::string::String
 pub fn freemarker::template::utility::xml_escape(&str) -> alloc::string::String
 pub type freemarker::template::utility::FnvBuildHasher = core::hash::BuildHasherDefault<freemarker::template::utility::FnvHasher>
 pub enum freemarker::template::DynValue
@@ -4723,6 +4959,8 @@ pub trait freemarker::template::TemplateHashModelEx2: freemarker::template::Temp
 pub fn freemarker::template::TemplateHashModelEx2::key_value_pair_iterator(&self) -> freemarker::Result<alloc::vec::Vec<(alloc::string::String, freemarker::TModel)>>
 pub trait freemarker::template::TemplateMethodModelEx
 pub fn freemarker::template::TemplateMethodModelEx::exec(&self, &mut freemarker::Environment<'_>, alloc::vec::Vec<freemarker::TModel>) -> freemarker::Result<freemarker::TModel>
+impl freemarker::template::TemplateMethodModelEx for freemarker::template::utility::ObjectConstructorFn
+pub fn freemarker::template::utility::ObjectConstructorFn::exec(&self, &mut freemarker::Environment<'_>, alloc::vec::Vec<freemarker::TModel>) -> freemarker::Result<freemarker::TModel>
 pub trait freemarker::template::TemplateModelAdapter
 pub fn freemarker::template::TemplateModelAdapter::template_model(&self) -> freemarker::TModel
 pub trait freemarker::template::TemplateModelIterator
@@ -4778,6 +5016,21 @@ pub fn freemarker::template::TemplateModelListSequence::size(&self) -> freemarke
 pub trait freemarker::template::TemplateTransformModel
 pub fn freemarker::template::TemplateTransformModel::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
 pub fn freemarker::template::TemplateTransformModel::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::CaptureOutputTransform
+pub fn freemarker::template::utility::CaptureOutputTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::CaptureOutputTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::HtmlEscapeTransform
+pub fn freemarker::template::utility::HtmlEscapeTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::HtmlEscapeTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::NormalizeNewlinesTransform
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::NormalizeNewlinesTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::StandardCompressTransform
+pub fn freemarker::template::utility::StandardCompressTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::StandardCompressTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
+impl freemarker::template::TemplateTransformModel for freemarker::template::utility::XmlEscapeTransform
+pub fn freemarker::template::utility::XmlEscapeTransform::transform(&self, &mut freemarker::Environment<'_>) -> freemarker::Result<()>
+pub fn freemarker::template::utility::XmlEscapeTransform::transform_with_body(&self, &mut freemarker::Environment<'_>, &std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>, &[freemarker::core::Element]) -> freemarker::Result<freemarker::core::environment::RunSignal>
 pub trait freemarker::template::TransformControl
 pub fn freemarker::template::TransformControl::after_body(&self) -> i32
 pub fn freemarker::template::TransformControl::on_error(&self) -> i32
