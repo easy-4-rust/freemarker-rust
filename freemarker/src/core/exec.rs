@@ -14,9 +14,7 @@
 //! - OutputFormat → OutputFormatBlock；Setting → PropertySetting.java:136
 //! - Comment → Comment；FtlHeader/RawText/TrimLineStart/NoTrimLineStart → 解析期语义
 
-use crate::core::environment::{
-    expr_desc, model_to_string, EscapeState, LocalEntry, LoopCtx, RunSignal,
-};
+use crate::core::environment::{expr_desc, model_to_string, LocalEntry, LoopCtx, RunSignal};
 use crate::core::eval;
 use crate::core::{ArithmeticEngine, AssignOp, CallTarget, Element, ElementKind, OutputFormatKind};
 use crate::error::{FlowKind, Result, TemplateError};
@@ -216,7 +214,9 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             default,
             default_pos,
         } => exec_switch(env, expr, cases, default, default_pos),
-        ElementKind::Attempt { try_, recover } => exec_attempt(env, try_, recover),
+        ElementKind::Attempt { try_, recover } => {
+            crate::core::attempt_block::AttemptBlock::new(try_.clone(), recover.clone()).exec(env)
+        }
         ElementKind::Break => crate::core::break_instruction::BreakInstruction::new().exec(env),
         ElementKind::Continue => {
             crate::core::continue_instruction::ContinueInstruction::new().exec(env)
@@ -271,64 +271,23 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             Ok(ExecOutcome::Done)
         }
         ElementKind::Escape { expr, body } => {
-            // Java EscapeBlock：body 内插值统一应用转义（v1 运行时转义栈；
-            // Java 在解析期包装插值，行为等价）
-            let state = match &expr.kind {
-                crate::core::ExprKind::Ident(n) if n == "html" => EscapeState::Html,
-                crate::core::ExprKind::Ident(n) if n == "xml" => EscapeState::Xml,
-                crate::core::ExprKind::Ident(n) if n == "xhtml" => EscapeState::Html, // v1：xhtml 按 html
-                _ => EscapeState::Custom(Rc::new(expr.clone())),
-            };
-            env.push_escape(state);
-            let r = env.run(body);
-            env.pop_escape();
-            outcome_from_run(r)
+            crate::core::escape_block::EscapeBlock::new(expr.clone(), body.clone()).exec(env)
         }
         ElementKind::NoEscape(body) => {
-            // Java NoEscapeBlock：关闭外层 escape 与自动转义
-            env.push_escape(EscapeState::Plain);
-            let r = env.run(body);
-            env.pop_escape();
-            outcome_from_run(r)
+            crate::core::no_escape_block::NoEscapeBlock::new(body.clone()).exec(env)
         }
         ElementKind::AutoEsc(body) => {
-            // Java AutoEscBlock：块内开启自动转义
-            let prev = env.is_auto_escape();
-            env.set_auto_escape(true);
-            let r = env.run(body);
-            env.set_auto_escape(prev);
-            outcome_from_run(r)
+            crate::core::auto_esc_block::AutoEscBlock::new(body.clone()).exec(env)
         }
         ElementKind::NoAutoEsc(body) => {
-            // Java NoAutoEscBlock：块内关闭自动转义
-            let prev = env.is_auto_escape();
-            env.set_auto_escape(false);
-            let r = env.run(body);
-            env.set_auto_escape(prev);
-            outcome_from_run(r)
+            crate::core::no_auto_esc_block::NoAutoEscBlock::new(body.clone()).exec(env)
         }
         ElementKind::OutputFormat { name, body } => {
-            // Java OutputFormatBlock：块内切换 outputFormat（v1：仅影响插值自动转义）
-            let n = eval_to_string(env, name)?;
-            let fmt = OutputFormatKind::parse(&n)
-                .ok_or_else(|| TemplateError::misc(format!("Unknown output format: {n}")))?;
-            let prev = env.settings.output_format;
-            env.settings.to_mut().output_format = fmt;
-            let r = env.run(body);
-            env.settings.to_mut().output_format = prev;
-            outcome_from_run(r)
+            crate::core::output_format_block::OutputFormatBlock::new(name.clone(), body.clone())
+                .exec(env)
         }
         ElementKind::Compress(body) => {
-            // Java CompressedBlock：块输出空白压缩（v1 基础版：行首尾空白 + 空行合并；
-            // Java StandardCompress 正则语义 P4 对齐）
-            let captured = env.capture(|env| env.run(body))?;
-            match captured.0 {
-                RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-                RunSignal::Completed => {
-                    env.emit(&compress_text(&captured.1))?;
-                    Ok(ExecOutcome::Done)
-                }
-            }
+            crate::core::compressed_block::CompressedBlock::new(body.clone()).exec(env)
         }
         ElementKind::Setting { key, value } => {
             crate::core::property_setting::Setting::new(key.clone(), value.clone()).exec(env)
@@ -346,22 +305,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             Ok(ExecOutcome::Done)
         }
         ElementKind::Transform { expr, body } => {
-            // Java TransformBlock.accept（TransformBlock.java:64-85）→
-            // env.visitAndTransform（Environment.java:495-543）：getWriter 先产出
-            // 变换自身输出（?interpret 即 include 解释模板），body 写入变换 writer
-            // （StandardCompress 等压缩/转义 body），close 时变换输出
-            let m = eval::eval(env, expr)?;
-            if m.is_nothing() {
-                return Err(TemplateError::invalid_reference(expr_desc(expr)));
-            }
-            let Some(ttm) = env.as_transform(&m) else {
-                return Err(TemplateError::type_mismatch("transform", m.type_name));
-            };
-            let signal = ttm.transform_with_body(env, &HashMap::new(), body)?;
-            match signal {
-                RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-                _ => Ok(ExecOutcome::Done),
-            }
+            crate::core::transform_block::TransformBlock::new(expr.clone(), body.clone()).exec(env)
         }
         ElementKind::Visit { expr, .. } => {
             // Java VisitNode.accept → Environment.visit（:2885-2940）：
@@ -1569,41 +1513,6 @@ fn exec_switch(
 /// `<#attempt>/<#recover>` —— 对应 Java `Environment.visitAttemptRecover`（:3542-3573）：
 /// try 输出捕获；错误（非 Flow/Return——Java 中它们是 RuntimeException 不被捕获）→ 丢弃
 /// 输出并执行 recover；attemptExceptionReporter v1 忽略。
-fn exec_attempt(
-    env: &mut crate::core::Environment,
-    try_: &[Element],
-    recover: &[Element],
-) -> Result<ExecOutcome> {
-    let captured = env.capture(|env| {
-        env.attempt_depth += 1;
-        let r = env.run(try_);
-        env.attempt_depth -= 1;
-        r
-    });
-    match captured {
-        Ok((RunSignal::Completed, text)) => {
-            env.emit(&text)?;
-            Ok(ExecOutcome::Done)
-        }
-        // Java：Return/Flow 是 RuntimeException，attempt 不捕获（visitAttemptRecover 只捕 TemplateException）
-        Ok((RunSignal::Returned(v), _)) => Ok(ExecOutcome::ReturnValue(v)),
-        Err(TemplateError::Flow(k)) => Err(TemplateError::Flow(k)),
-        Err(e) => {
-            // 错误 → recover（Java :3557-3567）；错误消息压入 recoveredErrorStack 供
-            // `.error` 读取，recover 渲染结束弹出（Environment.java:575-578 的 finally
-            // ——嵌套 attempt 的内层 recover 结束后 `.error` 恢复为外层错误）
-            env.recovered_errors.push(e.to_string());
-            let r = match env.run(recover) {
-                Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
-                Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
-                Err(e2) => Err(e2),
-            };
-            env.recovered_errors.pop();
-            r
-        }
-    }
-}
-
 /// `<#setting>` —— 对应 Java `PropertySetting.accept`（PropertySetting.java:136-155）+
 /// `Configurable.setSetting`（未知键 → IllegalArgumentException → v1 报错）
 /// 插值内容类型错误 → Java `For "${...}" content: ... ==> {expr}` 形式
@@ -1788,13 +1697,6 @@ pub(crate) fn strip_text<'a>(
 
 /// 空白压缩 —— 对应 Java `<#compress>`（CompressedBlock.accept :40-44 →
 /// StandardCompress.INSTANCE 变换）：Java 逐字符状态机（utility_transforms.rs）
-fn compress_text(s: &str) -> String {
-    crate::template::utility::standard_compress_text(s, false)
-}
-
-/// Java Include.getYesNo :233-242 + StringUtil.getYesNo :695-709
-/// （parse="y"/"n"/"t"/"f"/"yes"/"no"/"true"/"false"，忽略大小写；前导 `"` 剥除——
-/// 历史遗留；非法值 → _MiscTemplateException 消息，_DelayedJQuote 原样引用）
 fn get_yes_no(_exp: &crate::core::Expr, s: &str) -> Result<bool> {
     let s2 = if s.starts_with('"') && s.len() >= 2 {
         &s[1..s.len() - 1]
