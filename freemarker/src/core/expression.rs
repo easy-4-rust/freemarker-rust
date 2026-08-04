@@ -2,16 +2,23 @@
 //! （产生式映射见 docs/03 §3；此文件是解析器与渲染引擎的共享契约 +
 //! expression/ 子目录的聚合模块——各表达式类独立文件，一文件一 Java 对象）
 //! 各 variant 对应 Java 类：Add→AddConcatExpression（expression/add_concat_expression.rs）、
-//! And→AndExpression、Or→OrExpression、Range→Range、
+//! And→AndExpression、Or→OrExpression、Sub/Mul/Div/Mod→ArithmeticExpression
+//! （expression/arithmetic_expression.rs）、Eq/NotEq/Gt/Gte/Lt/Lte→ComparisonExpression
+//! （expression/comparison_expression.rs）、Range→Range、
 //! BuiltIn→BuiltIn、Lambda→LocalLambdaExpression、Dot→DotVariable、
 //! DynKey→DynamicKey、Default→DefaultToExpression、Exists→ExistsExpression 等
 
 mod add_concat_expression;
 mod and_expression;
+mod arithmetic_expression;
+mod comparison_expression;
 mod or_expression;
 
 pub use add_concat_expression::AddConcatExpression;
 pub use and_expression::AndExpression;
+pub use arithmetic_expression::{ArithmeticExpression, NumOp};
+pub(crate) use comparison_expression::compare_numbers;
+pub use comparison_expression::{compare_models, CmpOp, ComparisonExpression};
 pub use or_expression::OrExpression;
 
 use crate::span::Span;

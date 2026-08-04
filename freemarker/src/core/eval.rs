@@ -12,6 +12,7 @@
 //!   HashLit → HashLiteral；Lambda → LocalLambdaExpression；Paren → ParentheticalExpression
 
 use crate::core::environment::{expr_desc, lambda_model, model_to_string};
+use crate::core::expression::{ArithmeticExpression, ComparisonExpression, NumOp};
 use crate::core::{
     ArithmeticEngine, BigDecimalEngine, BuiltinVar, Expr, ExprKind, RangeKind, StrPart,
 };
@@ -24,9 +25,7 @@ use crate::template::{
 use crate::value::{DateType, DateValue, TNumber};
 use bigdecimal::ToPrimitive;
 use indexmap::IndexMap;
-use std::cmp::Ordering;
 use std::rc::Rc;
-use unicode_normalization::UnicodeNormalization;
 
 /// 表达式求值 —— 对应 Java `Expression.eval(Environment)`（docs/04 §5）。
 /// 求值失败一律 Err（Java 抛 TemplateException 族）；缺失变量为
@@ -88,16 +87,36 @@ fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel>
             crate::core::expression::AddConcatExpression::new((**a).clone(), (**b).clone())
                 .eval(env)
         }
-        ExprKind::Sub(a, b) => eval_binary_number(env, a, b, NumOp::Sub),
-        ExprKind::Mul(a, b) => eval_binary_number(env, a, b, NumOp::Mul),
-        ExprKind::Div(a, b) => eval_binary_number(env, a, b, NumOp::Div),
-        ExprKind::Mod(a, b) => eval_binary_number(env, a, b, NumOp::Mod),
-        ExprKind::Eq(a, b) => eval_compare(env, a, b, CmpOp::Eq),
-        ExprKind::NotEq(a, b) => eval_compare(env, a, b, CmpOp::NotEq),
-        ExprKind::Gt(a, b) => eval_compare(env, a, b, CmpOp::Gt),
-        ExprKind::Gte(a, b) => eval_compare(env, a, b, CmpOp::Gte),
-        ExprKind::Lt(a, b) => eval_compare(env, a, b, CmpOp::Lt),
-        ExprKind::Lte(a, b) => eval_compare(env, a, b, CmpOp::Lte),
+        ExprKind::Sub(a, b) => {
+            ArithmeticExpression::new((**a).clone(), (**b).clone(), NumOp::Sub).eval(env)
+        }
+        ExprKind::Mul(a, b) => {
+            ArithmeticExpression::new((**a).clone(), (**b).clone(), NumOp::Mul).eval(env)
+        }
+        ExprKind::Div(a, b) => {
+            ArithmeticExpression::new((**a).clone(), (**b).clone(), NumOp::Div).eval(env)
+        }
+        ExprKind::Mod(a, b) => {
+            ArithmeticExpression::new((**a).clone(), (**b).clone(), NumOp::Mod).eval(env)
+        }
+        ExprKind::Eq(a, b) => {
+            ComparisonExpression::new((**a).clone(), (**b).clone(), CmpOp::Eq).eval(env)
+        }
+        ExprKind::NotEq(a, b) => {
+            ComparisonExpression::new((**a).clone(), (**b).clone(), CmpOp::NotEq).eval(env)
+        }
+        ExprKind::Gt(a, b) => {
+            ComparisonExpression::new((**a).clone(), (**b).clone(), CmpOp::Gt).eval(env)
+        }
+        ExprKind::Gte(a, b) => {
+            ComparisonExpression::new((**a).clone(), (**b).clone(), CmpOp::Gte).eval(env)
+        }
+        ExprKind::Lt(a, b) => {
+            ComparisonExpression::new((**a).clone(), (**b).clone(), CmpOp::Lt).eval(env)
+        }
+        ExprKind::Lte(a, b) => {
+            ComparisonExpression::new((**a).clone(), (**b).clone(), CmpOp::Lte).eval(env)
+        }
         // Java AndExpression / OrExpression（expression/and_expression.rs、
         // expression/or_expression.rs：短路语义）
         ExprKind::And(a, b) => {
@@ -840,276 +859,13 @@ fn eval_call(env: &mut crate::core::Environment, callee: &Expr, args: &[Expr]) -
     )))
 }
 
-/// 数值运算（Java ArithmeticExpression.java:48-57 `_eval` → ArithmeticEngine）
-enum NumOp {
-    Sub,
-    Mul,
-    Div,
-    Mod,
-}
-
-impl NumOp {
-    fn symbol(&self) -> &'static str {
-        match self {
-            NumOp::Sub => "-",
-            NumOp::Mul => "*",
-            NumOp::Div => "/",
-            NumOp::Mod => "%",
-        }
-    }
-}
-
-fn eval_binary_number(
-    env: &mut crate::core::Environment,
-    a: &Expr,
-    b: &Expr,
-    op: NumOp,
-) -> Result<TModel> {
-    // Java ArithmeticExpression._eval（:50-51）：lho.evalToNumber → rho.evalToNumber；
-    // 操作数 null → Expression.modelToNumber（:154-160）→ NonNumericalException(blamed, null)
-    // → UnexpectedTypeException 对 null 模型输出 "The following has evaluated to null or missing"
-    let l = eval(env, a)?;
-    if l.is_nothing() {
-        return Err(TemplateError::invalid_reference(
-            crate::core::environment::expr_desc(a),
-        ));
-    }
-    let r = eval(env, b)?;
-    if r.is_nothing() {
-        return Err(TemplateError::invalid_reference(
-            crate::core::environment::expr_desc(b),
-        ));
-    }
-    // Java ArithmeticExpression._eval：操作数类型失败时 blame 对应操作数——
-    // `For "-" left-hand operand: Expected a number, ... ==> lho` /
-    // `For "-" right-hand operand: ... ==> rho`（位置 = 操作数表达式起始）
-    let l = l
-        .get_number()
-        .map_err(|e| blame_number_operand(e, env, op.symbol(), "left-hand operand", a))?;
-    let r = r
-        .get_number()
-        .map_err(|e| blame_number_operand(e, env, op.symbol(), "right-hand operand", b))?;
-    let engine = BigDecimalEngine::default();
-    let out = match op {
-        NumOp::Sub => engine.sub(&l, &r)?,
-        NumOp::Mul => engine.mul(&l, &r)?,
-        NumOp::Div => engine.div(&l, &r)?,
-        NumOp::Mod => engine.mod_op(&l, &r)?,
-    };
-    Ok(TModel::from_number(out))
-}
-
-/// 数字操作数类型错误 → Java `For "{op}" {side}: ... ==> {expr}` 形式
-/// （NonNumericalException 的 blamer/blame 表达式/位置）
-fn blame_number_operand(
-    e: TemplateError,
-    env: &crate::core::Environment,
-    op: &str,
-    side: &str,
-    blamed: &Expr,
-) -> TemplateError {
-    match e {
-        TemplateError::TypeMismatch {
-            expected,
-            actual,
-            ctx,
-        } => TemplateError::TypeMismatch {
-            expected,
-            actual,
-            ctx: Box::new(crate::error::ErrorCtx {
-                blamer: Some(format!("For \"{op}\" {side}: ")),
-                blamed_expr: Some(crate::core::environment::expr_desc(blamed)),
-                span: blamed.span,
-                template_name: Some(env.current_template_name.clone()),
-                ..*ctx
-            }),
-        },
-        other => other,
-    }
-}
-
-/// 比较运算（Java ComparisonExpression.java:92-97 → EvalUtil.compare :183-317）
-/// pub(crate)：`<#switch>` case 比较复用（Java SwitchBlock :66-71 同源）
-#[derive(Clone, Copy)]
-pub enum CmpOp {
-    Eq,
-    NotEq,
-    Gt,
-    Gte,
-    Lt,
-    Lte,
-}
-
-fn eval_compare(
-    env: &mut crate::core::Environment,
-    a: &Expr,
-    b: &Expr,
-    op: CmpOp,
-) -> Result<TModel> {
-    let l = eval(env, a)?;
-    let r = eval(env, b)?;
-    let ord = compare_models(env, &l, &r, op)?;
-    Ok(TModel::from_boolean(ord))
-}
-
-/// 模型比较 —— 对照 Java `EvalUtil.compare`（EvalUtil.java:183-317）：
-/// - 数字 vs 数字：按 BigDecimal 数值比较（Java ArithmeticEngine.compareNumbers）；
-/// - 日期 vs 日期：类型必须一致（:239-250 报错），按时间戳比较；
-/// - 字符串 vs 字符串：只允许 == 和 !=（:261-267 报错），按 NFKC 归一化后 compareTo
-///   （v1 用 UTF-16 码元字典序近似，注释见下）；
-/// - 布尔 vs 布尔：只允许 == 和 !=（:269-275 报错）；
-/// - 跨类型：报 "Can't compare values of these types..."（:307-326，classic 模式除外——v1 不支持）。
-///   供 exec.rs 的 `<#switch>` case 比较复用。
-pub fn compare_models(
-    _env: &mut crate::core::Environment,
-    l: &TModel,
-    r: &TModel,
-    op: CmpOp,
-) -> Result<bool> {
-    let order = if l.is_number() && r.is_number() {
-        // Java ArithmeticEngine.compareNumbers（:295-360）：先按符号判定（无穷可比较），
-        // 同类型直接 compareTo，其余转 BigDecimal
-        compare_numbers(&l.get_number()?, &r.get_number()?)
-    } else if l.is_date() && r.is_date() {
-        let ld = l.get_date()?;
-        let rd = r.get_date()?;
-        if ld.kind != rd.kind {
-            // Java :240-250：Can't compare dates of different types.
-            return Err(TemplateError::misc(format!(
-                "Can't compare dates of different types. Left date type is {}, right date type is {}.",
-                ld.kind.name(),
-                rd.kind.name()
-            )));
-        }
-        ld.dt.cmp(&rd.dt)
-    } else if l.is_scalar() && r.is_scalar() {
-        if !matches!(op, CmpOp::Eq | CmpOp::NotEq) {
-            // Java :262-266：Can't use operator ">" on string values.
-            return Err(TemplateError::misc(format!(
-                "Can't use operator \"{}\" on string values.",
-                cmp_op_str(op)
-            )));
-        }
-        // Java 2.3.34（IcI >= 2.3.33）：NFKC 归一化后 compareTo（:282-286）。
-        // v1 近似：UTF-16 码元字典序（encode_utf16 逐码元比较；NFKC 归一化属 P4）。
-        let ls = l.get_scalar()?;
-        let rs = r.get_scalar()?;
-        // Java 2.3.34（IcI >= 2.3.33）：Normalizer.normalize(NFKC) 后 compareTo
-        // （EvalUtil.java:282-286）——`'á' == 'a\u0301'` 规范化后相等
-        let ln: String = ls.chars().nfkc().collect();
-        let rn: String = rs.chars().nfkc().collect();
-        utf16_cmp(&ln, &rn)
-    } else if l.is_boolean() && r.is_boolean() {
-        if !matches!(op, CmpOp::Eq | CmpOp::NotEq) {
-            return Err(TemplateError::misc(format!(
-                "Can't use operator \"{}\" on boolean values.",
-                cmp_op_str(op)
-            )));
-        }
-        let lb = l.get_boolean()?;
-        let rb = r.get_boolean()?;
-        lb.cmp(&rb)
-    } else {
-        // Java :307-326：Can't compare values of these types.
-        return Err(TemplateError::misc(
-            "Can't compare values of these types. Allowed comparisons are between two numbers, two strings, two dates, or two booleans.",
-        ));
-    };
-    Ok(match op {
-        CmpOp::Eq => order == Ordering::Equal,
-        CmpOp::NotEq => order != Ordering::Equal,
-        CmpOp::Gt => order == Ordering::Greater,
-        CmpOp::Gte => order != Ordering::Less,
-        CmpOp::Lt => order == Ordering::Less,
-        CmpOp::Lte => order != Ordering::Greater,
-    })
-}
-
-/// 数字比较（Java ArithmeticEngine.compareNumbers 的 v1 复刻：符号优先，
-/// 避免无穷/NaN 转 BigDecimal 失败——Java 注释 "Infinity > 0" 不会失败）
-pub(crate) fn compare_numbers(a: &crate::value::TNumber, b: &crate::value::TNumber) -> Ordering {
-    use crate::value::TNumber as N;
-    let sa = number_signum(a);
-    let sb = number_signum(b);
-    if sa != sb {
-        return sa.cmp(&sb);
-    }
-    if sa == 0 && sb == 0 {
-        return Ordering::Equal;
-    }
-    match (a, b) {
-        (N::Float(x), N::Float(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
-        (N::Double(x), N::Double(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
-        (N::Int(x), N::Int(y)) => x.cmp(y),
-        (N::Long(x), N::Long(y)) => x.cmp(y),
-        (N::BigInt(x), N::BigInt(y)) => x.cmp(y),
-        (N::Float(x), N::Double(y)) => (*x as f64).partial_cmp(y).unwrap_or(Ordering::Equal),
-        (N::Double(x), N::Float(y)) => x.partial_cmp(&(*y as f64)).unwrap_or(Ordering::Equal),
-        _ => a.as_big_decimal().cmp(&b.as_big_decimal()),
-    }
-}
-
-/// 数值符号（-1/0/1；Java NumberUtil.getSignum）
-fn number_signum(n: &crate::value::TNumber) -> i32 {
-    use crate::value::TNumber as N;
-    match n {
-        N::Int(v) => v.signum(),
-        N::Long(v) => v.signum() as i32,
-        N::BigInt(v) => match v.sign() {
-            num_bigint::Sign::Minus => -1,
-            num_bigint::Sign::NoSign => 0,
-            num_bigint::Sign::Plus => 1,
-        },
-        N::Decimal(d) => match d.sign() {
-            num_bigint::Sign::Minus => -1,
-            num_bigint::Sign::NoSign => 0,
-            num_bigint::Sign::Plus => 1,
-        },
-        N::Float(v) => {
-            if *v > 0.0 {
-                1
-            } else if *v < 0.0 {
-                -1
-            } else {
-                0
-            }
-        }
-        N::Double(v) => {
-            if *v > 0.0 {
-                1
-            } else if *v < 0.0 {
-                -1
-            } else {
-                0
-            }
-        }
-    }
-}
-
-fn cmp_op_str(op: CmpOp) -> &'static str {
-    match op {
-        CmpOp::Eq => "==",
-        CmpOp::NotEq => "!=",
-        CmpOp::Gt => ">",
-        CmpOp::Gte => ">=",
-        CmpOp::Lt => "<",
-        CmpOp::Lte => "<=",
-    }
-}
-
-/// UTF-16 码元字典序（近似 Java String.compareTo 的 UTF-16 char 比较；
-/// 常见 BMP 文本与 Rust str 字节序一致，非 BMP 字符差异属 P4 对齐项）
-fn utf16_cmp(a: &str, b: &str) -> Ordering {
-    let au: Vec<u16> = a.encode_utf16().collect();
-    let bu: Vec<u16> = b.encode_utf16().collect();
-    for (x, y) in au.iter().zip(bu.iter()) {
-        match x.cmp(y) {
-            Ordering::Equal => {}
-            o => return o,
-        }
-    }
-    au.len().cmp(&bu.len())
-}
+// Java ArithmeticExpression / ComparisonExpression（实现已拆至
+// expression/arithmetic_expression.rs、expression/comparison_expression.rs）——
+// CmpOp/compare_models 供 exec.rs `<#switch>` 与 lazy.rs 复用（Java SwitchBlock :66-71
+// 同源），compare_numbers 供 builtins/sequences.rs 排序复用；保持
+// `crate::core::eval::` 旧路径不变（core/mod.rs 亦从中公开重导出）
+pub(crate) use crate::core::expression::compare_numbers;
+pub use crate::core::expression::{compare_models, CmpOp};
 
 /// 范围（Java Range.java:52-63 `_eval` → BoundedRangeModel / ListableRightUnboundedRangeModel）
 /// - `a..b` 含端；`a..<b` 排端；`a..*n` 从 a 起 n 个（Java END_SIZE_LIMITED：begin+rho 为末端）；
