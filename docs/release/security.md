@@ -19,6 +19,9 @@ freemarker-rust 是一款**模板渲染引擎**，处理**用户提供的模板�
 | 内建 `?new` | `utility_transforms::new_utility_class` | 任意类实例化（已硬编码 6 类白名单） |
 | 模板加载 | `cache::TemplateCache` | 路径遍历（由 `TemplateLoader` 链负责） |
 | 编码 | `transcode_output` | 编码错误处理（`?` 替换） |
+| 自动 include/import | `Environment` 三层（Configuration/Environment） | 配置驱动的模板加载（与 Java 同语义；模板文本不可篡改配置） |
+| markup 双槽模型 | `TModel.markup_format/markup_plain` | 插值/`?esc` 跨格式重转义（Java DollarVariable/CommonMarkupOutputFormat 同语义） |
+| 组合输出格式 | `?c "HTML+XML"` | 逐层转义（纯转义组合，无注入面） |
 
 ## 3. 受限子集（决策 1：JVM 反射不实现）
 
@@ -87,6 +90,9 @@ PASS）；roxmltree 解析不加载外部实体（无 XXE 面）。
 | proptest 解析器/渲染 fuzz | ✅ | `freemarker-test/tests/robustness_fuzz_smoke.rs` |
 | `cargo public-api` 基线 diff | ✅ | `docs/release/api-baseline.txt` + CI |
 | 多 OS 矩阵（ubuntu/macos/windows + MSRV 1.85） | ✅ | `.github/workflows/ci.yml` |
+| auto include/import 仅从配置读取（模板文本不可控制加载列表；与 Java 一致） | ✅ | `configurable.rs` + `environment.rs` |
+| markup 捕获/跨格式转义与 Java 逐字节对齐（972 测试锁定） | ✅ | `block_assignment.rs`/`apply_escape`/`markup_outputs.rs` |
+| `?new` 设置解析剥引号（SettingStringParser 语义；白名单不变） | ✅ | `template_class_resolver.rs` |
 
 ## 5. 剩余风险与未实现
 
@@ -121,3 +127,6 @@ PASS）；roxmltree 解析不加载外部实体（无 XXE 面）。
 - 2026-08-03：决策 3（全修 BLOCKED）—— 阶段 B 修复 4 项工程量缺口（output-encoding2/3、
   number-literal、bean-maps）+ 1 项文档同步（identifier-escaping）+ 1 项 NOT_APPLICABLE
   登记（transforms）。
+- 2026-08-04：复查（1.0 晋级条件 8）—— 新增语义安全评审通过：auto include/import
+  分层仅配置驱动、markup 双槽与组合格式为纯转义路径、`?new` 剥引号不改白名单；
+  无新注入面，0 unsafe 保持。覆盖率审计见 docs/测试/覆盖率审计报告.md。
