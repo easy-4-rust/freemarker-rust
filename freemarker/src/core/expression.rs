@@ -4,22 +4,39 @@
 //! 各 variant 对应 Java 类：Add→AddConcatExpression（expression/add_concat_expression.rs）、
 //! And→AndExpression、Or→OrExpression、Sub/Mul/Div/Mod→ArithmeticExpression
 //! （expression/arithmetic_expression.rs）、Eq/NotEq/Gt/Gte/Lt/Lte→ComparisonExpression
-//! （expression/comparison_expression.rs）、Range→Range、
-//! BuiltIn→BuiltIn、Lambda→LocalLambdaExpression、Dot→DotVariable、
+//! （expression/comparison_expression.rs）、Str/InterpStr→StringLiteral、
+//! Num→NumberLiteral、Bool→BooleanLiteral、Ident→Identifier、ListLit→ListLiteral、
+//! HashLit→HashLiteral（expression/hash_literal.rs）、Paren→ParentheticalExpression、
+//! Range→Range、BuiltIn→BuiltIn、Lambda→LocalLambdaExpression、Dot→DotVariable、
 //! DynKey→DynamicKey、Default→DefaultToExpression、Exists→ExistsExpression 等
 
 mod add_concat_expression;
 mod and_expression;
 mod arithmetic_expression;
+mod boolean_literal;
 mod comparison_expression;
+mod hash_literal;
+mod identifier;
+mod list_literal;
+mod number_literal;
 mod or_expression;
+mod parenthetical_expression;
+mod string_literal;
 
 pub use add_concat_expression::AddConcatExpression;
 pub use and_expression::AndExpression;
 pub use arithmetic_expression::{ArithmeticExpression, NumOp};
+pub use boolean_literal::BooleanLiteral;
 pub(crate) use comparison_expression::compare_numbers;
 pub use comparison_expression::{compare_models, CmpOp, ComparisonExpression};
+pub use hash_literal::HashLiteral;
+pub use identifier::Identifier;
+pub use list_literal::ListLiteral;
+pub use number_literal::NumberLiteral;
 pub use or_expression::OrExpression;
+pub use parenthetical_expression::ParentheticalExpression;
+pub(crate) use string_literal::eval_interp_str;
+pub use string_literal::StringLiteral;
 
 use crate::span::Span;
 use crate::value::TNumber;

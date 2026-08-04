@@ -12,10 +12,11 @@
 //!   HashLit → HashLiteral；Lambda → LocalLambdaExpression；Paren → ParentheticalExpression
 
 use crate::core::environment::{expr_desc, lambda_model, model_to_string};
-use crate::core::expression::{ArithmeticExpression, ComparisonExpression, NumOp};
-use crate::core::{
-    ArithmeticEngine, BigDecimalEngine, BuiltinVar, Expr, ExprKind, RangeKind, StrPart,
+use crate::core::expression::{
+    eval_interp_str, ArithmeticExpression, BooleanLiteral, ComparisonExpression, HashLiteral,
+    Identifier, ListLiteral, NumOp, NumberLiteral, ParentheticalExpression, StringLiteral,
 };
+use crate::core::{ArithmeticEngine, BigDecimalEngine, BuiltinVar, Expr, ExprKind, RangeKind};
 use crate::error::{Result, TemplateError};
 use crate::span::Span;
 use crate::template::utility::java_trim;
@@ -24,7 +25,6 @@ use crate::template::{
 };
 use crate::value::{DateType, DateValue, TNumber};
 use bigdecimal::ToPrimitive;
-use indexmap::IndexMap;
 use std::rc::Rc;
 
 /// 表达式求值 —— 对应 Java `Expression.eval(Environment)`（docs/04 §5）。
@@ -55,11 +55,11 @@ fn attach_eval_location(
 
 fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel> {
     match &expr.kind {
-        ExprKind::Str(s) => Ok(TModel::from_scalar(s.clone())),
+        ExprKind::Str(s) => StringLiteral::new(s.clone()).eval(env),
         ExprKind::InterpStr(parts) => eval_interp_str(env, parts),
-        ExprKind::Num(n) => Ok(TModel::from_number(n.clone())),
-        ExprKind::Bool(b) => Ok(TModel::from_boolean(*b)),
-        ExprKind::Ident(name) => env.get_variable(name),
+        ExprKind::Num(n) => NumberLiteral::new(n.clone()).eval(env),
+        ExprKind::Bool(b) => BooleanLiteral::new(*b).eval(env),
+        ExprKind::Ident(name) => Identifier::new(name.clone()).eval(env),
         ExprKind::BuiltinVar(v) => eval_builtin_var(env, *v),
         ExprKind::Dot { target, name } => eval_dot(env, target, name),
         ExprKind::DynKey { target, key } => eval_dyn_key(env, target, key),
@@ -129,20 +129,13 @@ fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel>
         ExprKind::Default { target, default } => eval_default_to(env, target, default),
         ExprKind::Exists(t) => eval_exists(env, t),
         ExprKind::BuiltIn { target, name, args } => eval_builtin(env, target, name, args),
-        ExprKind::ListLit(items) => {
-            // Java ListLiteral：逐元素求值 → SimpleSequence
-            let mut v = Vec::with_capacity(items.len());
-            for i in items {
-                v.push(eval(env, i)?);
-            }
-            Ok(TModel::from_sequence(v))
-        }
-        ExprKind::HashLit(pairs) => eval_hash_lit(env, pairs),
+        ExprKind::ListLit(items) => ListLiteral::new(items.clone()).eval(env),
+        ExprKind::HashLit(pairs) => HashLiteral::new(pairs.clone()).eval(env),
         ExprKind::Lambda { params, body } => {
             // Java LocalLambdaExpression：v1 仅构造槽位模型（?map/?filter 消费方由内建智能体扩展）
             Ok(lambda_model(params.clone(), Rc::new((**body).clone())))
         }
-        ExprKind::Paren(inner) => eval(env, inner),
+        ExprKind::Paren(inner) => ParentheticalExpression::new((**inner).clone()).eval(env),
     }
 }
 
@@ -177,30 +170,6 @@ pub(crate) fn model_to_boolean(env: &crate::core::Environment, m: &TModel) -> Re
 }
 
 /// 插值字符串（Java StringLiteral 的插值片段拼接；各片段按输出字符串规则转换）
-fn eval_interp_str(env: &mut crate::core::Environment, parts: &[StrPart]) -> Result<TModel> {
-    let mut out = String::new();
-    for part in parts {
-        match part {
-            StrPart::Text(t) => out.push_str(t),
-            StrPart::Interp(e) => {
-                let m = eval(env, e)?;
-                if m.is_nothing() {
-                    // Java EvalUtil.coerceModelToTextualCommon：tm == null 时 classic 兼容
-                    // 模式回退空串（EvalUtil.java:486-489），否则 InvalidReferenceException。
-                    if env.settings.classic_compatible {
-                        continue;
-                    }
-                    return Err(TemplateError::invalid_reference(
-                        crate::core::environment::expr_desc(e),
-                    ));
-                }
-                out.push_str(&model_to_string(env, &m)?);
-            }
-        }
-    }
-    Ok(TModel::from_scalar(out))
-}
-
 /// 内置变量 —— 对应 Java `BuiltinVariable._eval`（BuiltinVariable.java:186-300）
 /// 语义对照见 expression.rs BuiltinVar 各 variant 注释
 fn eval_builtin_var(env: &mut crate::core::Environment, v: BuiltinVar) -> Result<TModel> {
@@ -1130,34 +1099,6 @@ fn eval_exists(env: &mut crate::core::Environment, t: &Expr) -> Result<TModel> {
 }
 
 /// 哈希字面量（Java HashLiteral：键求值为标量）
-fn eval_hash_lit(env: &mut crate::core::Environment, pairs: &[(Expr, Expr)]) -> Result<TModel> {
-    // Java HashLiteral → SimpleHash(LinkedHashMap)：插入序即键序
-    let mut map = IndexMap::new();
-    let mut raw: Vec<(String, TModel)> = Vec::new();
-    for (k, v) in pairs {
-        // Java HashLiteral：键按 EvalUtil 强制转字符串（数字 "123"、布尔按 boolean_format）
-        let km = eval(env, k)?;
-        let key = model_to_string(env, &km)?;
-        let value = eval(env, v)?;
-        map.insert(key.clone(), value.clone());
-        raw.push((key, value));
-    }
-    // Java HashLiteral.java:116-151：ICI ≥ 2.3.21 → LinkedHashMap（重复键覆盖）；
-    // ICI < 2.3.21 → legacy 分支（SequenceHash 保留重复键——?keys/?values/
-    // `#list h as k, v` 输出全部字面量对，h[key] 仍取最后值）
-    if env.settings.incompatible_improvements.to_int() < 2_003_021 {
-        let h = Rc::new(crate::core::hash_literal::LegacyHashLiteral::new(raw));
-        return Ok(TModel {
-            hash: Some(h.clone()),
-            hash_ex: Some(h),
-            type_name: "hash",
-            kind: crate::template::ModelKind::Hash,
-            ..TModel::nothing()
-        });
-    }
-    Ok(TModel::from_hash(map))
-}
-
 /// 数值截断（Java `Number.intValue()/longValue()` 向零截断语义）
 pub(crate) fn trunc_i64(n: &TNumber) -> Option<i64> {
     match n {
@@ -2359,6 +2300,7 @@ mod tests {
     use super::*;
     use crate::cache::StringLoader;
     use crate::template::{Configuration, DynValue, ObjectWrapper, SimpleObjectWrapper};
+    use indexmap::IndexMap;
     use std::sync::Arc;
 
     /// 渲染 `${expr}` 返回输出字符串（表达式单元测试统一入口）
