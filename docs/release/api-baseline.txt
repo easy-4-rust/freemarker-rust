@@ -335,6 +335,8 @@ pub fn freemarker::builtins::strings_encoding::rtf(&mut freemarker::Environment<
 pub fn freemarker::builtins::strings_encoding::url(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::url_path(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::xhtml(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub mod freemarker::builtins::strings_misc
+pub fn freemarker::builtins::strings_misc::eval_json(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::strings_regexp
 pub struct freemarker::builtins::strings_regexp::FlagSet
 pub freemarker::builtins::strings_regexp::FlagSet::case_insensitive: bool

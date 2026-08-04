@@ -496,21 +496,7 @@ fn builtin_impl(
             let s = m.get_scalar()?;
             Ok(Some(TModel::from_number(parse_number(&s)?)))
         }
-        "eval_json" => {
-            // Java evalJsonBI（BuiltInsForStringsMisc.java:116-131）：JSON 字符串
-            // 解析为模型；失败消息 = "Failed to "?eval_json" string with this error:"
-            // + EMBEDDED_MESSAGE 段 + "The failing expression:"（源码拼接，jar 实测
-            // 格式）。内嵌消息用 serde_json 原文（Java JSONParser 逐字消息无 golden/
-            // parity 场景覆盖——文档化偏差）
-            let m = eval(env, target)?;
-            let s = m.get_scalar()?;
-            match serde_json::from_str::<serde_json::Value>(&s) {
-                Ok(v) => Ok(Some(json_value_to_model(&v))),
-                Err(e) => Err(TemplateError::misc(format!(
-                    "Failed to \"?eval_json\" string with this error:\n\n---begin-message---\n{e}\n---end-message---\n\nThe failing expression:"
-                ))),
-            }
-        }
+        "eval_json" => crate::builtins::strings_misc::eval_json(env, target, args.exprs),
         "boolean" => {
             // Java booleanBI（BuiltInsForStringsMisc.java:37）：布尔原样；字符串仅接受
             // 精确 "true"/"false" 或当前 boolean_format 的 true/false 串
@@ -1095,37 +1081,6 @@ fn arg_expr<'a>(args: &'a BuiltinArgs, idx: usize, err: &str) -> Result<&'a Expr
 /// JSON 值 → 模型（Java JSONParser.parse 的类型映射：object→hash、array→sequence、
 /// 数字→Integer/Long/Double、字符串/布尔/null 直映；与 freemarker-test 的
 /// json_to_model 同口径）
-fn json_value_to_model(v: &serde_json::Value) -> TModel {
-    match v {
-        serde_json::Value::Null => TModel::nothing(),
-        serde_json::Value::Bool(b) => TModel::from_boolean(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                TModel::from_number(crate::value::TNumber::from_i64(i))
-            } else if let Some(f) = n.as_f64() {
-                if f.fract() == 0.0 && f.is_finite() {
-                    TModel::from_number(crate::value::TNumber::from_i64(f as i64))
-                } else {
-                    TModel::from_number(crate::value::TNumber::Double(f))
-                }
-            } else {
-                TModel::nothing()
-            }
-        }
-        serde_json::Value::String(s) => TModel::from_scalar(s.clone()),
-        serde_json::Value::Array(arr) => {
-            TModel::from_sequence(arr.iter().map(json_value_to_model).collect())
-        }
-        serde_json::Value::Object(obj) => {
-            let mut map = indexmap::IndexMap::new();
-            for (k, v) in obj {
-                map.insert(k.clone(), json_value_to_model(v));
-            }
-            TModel::from_hash(map)
-        }
-    }
-}
-
 /// 从字符下标切出子串（Java String.substring 语义近似；下标为 char 计数）
 /// ?join 逐项拼接（Java BIMethodForCollection.exec :216-247）：null 项跳过
 /// （idx 仍递增）；非 null 项间插 separator；转换错误包装

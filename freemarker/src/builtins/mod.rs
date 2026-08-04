@@ -32,6 +32,7 @@ pub mod numbers;
 pub mod sequences;
 pub mod strings;
 pub mod strings_encoding;
+pub mod strings_misc;
 pub mod strings_regexp;
 
 use crate::core::{Environment, Expr};
@@ -80,6 +81,8 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "no_esc" => Some(markup_outputs::no_esc),
         // ---- 正则（BuiltInsForStringsRegexp.java）----
         "matches" => Some(strings_regexp::matches),
+        // ---- 字符串杂项（BuiltInsForStringsMisc.java）----
+        "eval_json" => Some(strings_misc::eval_json),
         "groups" => Some(strings_regexp::groups),
         "replace" => Some(strings_regexp::replace),
         "replace_re" => Some(strings_regexp::replace),
