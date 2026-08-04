@@ -96,10 +96,10 @@ mod get_source_test;
 mod header_parsing;
 #[path = "java_ported/html_output_format_test.rs"]
 mod html_output_format_test;
-#[path = "java_ported/include_and_import_test.rs"]
-mod include_and_import_test;
 #[path = "java_ported/include_and_import_configurable_layers_test.rs"]
 mod include_and_import_configurable_layers_test;
+#[path = "java_ported/include_and_import_test.rs"]
+mod include_and_import_test;
 #[path = "java_ported/incude_from_nameless_test.rs"]
 mod incude_from_nameless_test;
 #[path = "java_ported/interpolation_syntax.rs"]

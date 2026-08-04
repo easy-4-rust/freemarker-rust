@@ -23,8 +23,12 @@ pub struct Configuration {
     pub shared_vars: HashMap<String, TModel>,
     /// 自动导入（ns 名 → 模板路径）—— 对应 Java `Configuration.addAutoImport`
     /// （autoImports 映射；每次渲染前 importLib，Environment.process :322
-    /// doAutoImportsAndIncludes）
+    /// doAutoImportsAndIncludes → Configuration.doAutoImports :3687-3713）
     pub auto_imports: Vec<(String, String)>,
+    /// 自动包含 —— 对应 Java `Configuration.addAutoInclude`（autoIncludes 列表；
+    /// doAutoIncludes :3715-3742；addAutoInclude 同层去重——先 remove 再 add，
+    /// Configurable.java:2098-2112）
+    pub auto_includes: Vec<String>,
     /// per-template 配置工厂 —— 对应 Java `Configuration.setTemplateConfigurations`
     /// （@since 2.3.24；模板加载时按源名匹配，结果应用到模板渲染设置；
     /// Java 的 factory 绑定 Configuration 机制 Rust 侧无对应——Arc 共享持有，
@@ -42,6 +46,7 @@ impl Clone for Configuration {
             cache: Mutex::new(TemplateCache::default()),
             shared_vars: self.shared_vars.clone(),
             auto_imports: self.auto_imports.clone(),
+            auto_includes: self.auto_includes.clone(),
             template_configurations: self.template_configurations.clone(),
         }
     }
@@ -80,6 +85,7 @@ impl Default for Configuration {
             cache: Mutex::new(TemplateCache::default()),
             shared_vars,
             auto_imports: Vec::new(),
+            auto_includes: Vec::new(),
             template_configurations: None,
         }
     }
@@ -102,6 +108,46 @@ impl Configuration {
 
     pub fn set_shared_variable(&mut self, name: &str, model: TModel) {
         self.shared_vars.insert(name.to_string(), model);
+    }
+
+    /// 添加自动导入 —— 对应 Java `Configuration.addAutoImport(String, String)`
+    /// （Configurable.java:1944-1960）：同名先移除再追加（移到插入序末尾；
+    /// autoImports 顺序即 import 执行顺序）
+    pub fn add_auto_import(&mut self, namespace_var_name: &str, template_name: &str) {
+        self.auto_imports.retain(|(n, _)| n != namespace_var_name);
+        self.auto_imports
+            .push((namespace_var_name.to_string(), template_name.to_string()));
+    }
+
+    /// 移除自动导入 —— 对应 Java `Configuration.removeAutoImport`（Configurable.java
+    /// :1966-1974：不存在则无事发生）
+    pub fn remove_auto_import(&mut self, namespace_var_name: &str) {
+        self.auto_imports.retain(|(n, _)| n != namespace_var_name);
+    }
+
+    /// 添加自动包含 —— 对应 Java `Configuration.addAutoInclude(String)`
+    /// （Configurable.java:2083-2096 → :2098-2112：同层去重——已存在先移除再追加）
+    pub fn add_auto_include(&mut self, template_name: &str) {
+        self.auto_includes.retain(|n| n != template_name);
+        self.auto_includes.push(template_name.to_string());
+    }
+
+    /// 移除自动包含 —— 对应 Java `Configuration.removeAutoInclude`（Configurable.java
+    /// :2175-2186）
+    pub fn remove_auto_include(&mut self, template_name: &str) {
+        self.auto_includes.retain(|n| n != template_name);
+    }
+
+    /// 设置 lazyImports —— 对应 Java `Configuration.setLazyImports(boolean)`
+    /// （Configurable.java:1882-1889；写入 settings，Environment::new 继承）
+    pub fn set_lazy_imports(&mut self, lazy: bool) {
+        self.settings.lazy_imports = lazy;
+    }
+
+    /// 设置 lazyAutoImports —— 对应 Java `Configuration.setLazyAutoImports(Boolean)`
+    /// （Configurable.java:1912-1920；null = 未设置 → 回退 lazyImports）
+    pub fn set_lazy_auto_imports(&mut self, lazy: Option<bool>) {
+        self.settings.lazy_auto_imports = lazy;
     }
 
     /// 设置 per-template 配置工厂 —— 对应 Java `Configuration.setTemplateConfigurations`

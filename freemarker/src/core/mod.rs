@@ -8,6 +8,7 @@ mod auto_esc_block;
 mod block_assignment;
 mod body_instruction;
 mod break_instruction;
+mod combined_markup_output_format;
 mod comment;
 mod common_markup_output_format;
 mod compressed_block;
@@ -70,6 +71,7 @@ mod xhtml_output_format;
 mod xml_output_format;
 
 pub use arithmetic_engine::{ArithmeticEngine, BigDecimalEngine};
+pub use combined_markup_output_format::{CombinedMarkupOutputFormat, CombinedMarkupOutputModel};
 pub use configurable::{canonical_setting_key, java_time_zone_id, Settings, TzSetting};
 pub use environment::{render, Environment, MacroValue, Namespace};
 pub use eval::{compare_models, eval, CmpOp};
@@ -83,7 +85,9 @@ pub use expression::{
     StrPart,
 };
 pub use macro_def::{MacroDef, MacroParam};
-pub use output_format::{AutoEscaping, OutputFormatKind};
+pub use output_format::{
+    escape_markup, mime_type, parse_combined_markup_format, AutoEscaping, OutputFormatKind,
+};
 pub use range_model::RangeSpec;
 pub use template_class_resolver::{NewBuiltinClassResolver, OptInClassResolver};
 pub use template_configuration::TemplateConfiguration;

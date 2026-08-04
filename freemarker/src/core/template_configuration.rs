@@ -27,6 +27,20 @@ pub struct TemplateConfiguration {
     pub auto_escaping: Option<AutoEscaping>,
     pub c_format: Option<CFormatKind>,
     pub classic_compatible: Option<bool>,
+    /// 模板层 auto imports —— 对应 Java `TemplateConfiguration.autoImports`
+    /// （TemplateConfiguration extends Configurable，继承 addAutoImport；apply(Template)
+    /// 时合并进 Template 对象，TemplateConfiguration.java:399-402——Rust 侧由
+    /// Environment::new 复制为 t 层数据，doAutoImportsAndIncludes 使用）
+    pub auto_imports: Vec<(String, String)>,
+    /// 模板层 auto includes（Java TemplateConfiguration.java:404-406 同构）
+    pub auto_includes: Vec<String>,
+    /// 模板层 lazyImports —— 对应 Java `TemplateConfiguration.lazyImports`
+    /// （apply 时仅当 Template 未自行设置才覆盖，:383-385；Rust 侧 apply_to 直接覆盖，
+    /// 与现有其它设置项一致——v1 简化）
+    pub lazy_imports: Option<bool>,
+    /// 模板层 lazyAutoImports（Java TemplateConfiguration.java:386-388 同构；
+    /// None = 未设置）
+    pub lazy_auto_imports: Option<bool>,
 }
 
 impl TemplateConfiguration {
@@ -78,6 +92,12 @@ impl TemplateConfiguration {
         if let Some(v) = &self.classic_compatible {
             s.classic_compatible = *v;
         }
+        if let Some(v) = &self.lazy_imports {
+            s.lazy_imports = *v;
+        }
+        if let Some(v) = &self.lazy_auto_imports {
+            s.lazy_auto_imports = Some(*v);
+        }
     }
 
     /// 合并（Java `merge`，TemplateConfiguration.java:163-：参数中**已设置**
@@ -128,6 +148,19 @@ impl TemplateConfiguration {
         if other.classic_compatible.is_some() {
             self.classic_compatible = other.classic_compatible;
         }
+        // 列表/惰性设置：非空（已设置）→ 覆盖（Java merge 语义同"已设置项覆盖"）
+        if !other.auto_imports.is_empty() {
+            self.auto_imports = other.auto_imports.clone();
+        }
+        if !other.auto_includes.is_empty() {
+            self.auto_includes = other.auto_includes.clone();
+        }
+        if other.lazy_imports.is_some() {
+            self.lazy_imports = other.lazy_imports;
+        }
+        if other.lazy_auto_imports.is_some() {
+            self.lazy_auto_imports = other.lazy_auto_imports;
+        }
     }
 
     /// 是否有任何设置（Java `hasAnyConfigurableSet`，:676-；Factory 判定
@@ -148,6 +181,35 @@ impl TemplateConfiguration {
             && self.auto_escaping.is_none()
             && self.c_format.is_none()
             && self.classic_compatible.is_none()
+            && self.auto_imports.is_empty()
+            && self.auto_includes.is_empty()
+            && self.lazy_imports.is_none()
+            && self.lazy_auto_imports.is_none()
+    }
+
+    /// 添加模板层自动导入 —— 对应 Java `TemplateConfiguration.addAutoImport`
+    /// （Configurable.java:1944-1960：同名先移除再追加）
+    pub fn add_auto_import(&mut self, namespace_var_name: &str, template_name: &str) {
+        self.auto_imports.retain(|(n, _)| n != namespace_var_name);
+        self.auto_imports
+            .push((namespace_var_name.to_string(), template_name.to_string()));
+    }
+
+    /// 添加模板层自动包含 —— 对应 Java `TemplateConfiguration.addAutoInclude`
+    /// （Configurable.java:2083-2096 → :2098-2112：同层去重）
+    pub fn add_auto_include(&mut self, template_name: &str) {
+        self.auto_includes.retain(|n| n != template_name);
+        self.auto_includes.push(template_name.to_string());
+    }
+
+    /// 设置模板层 lazyImports（Java `TemplateConfiguration.setLazyImports`）
+    pub fn set_lazy_imports(&mut self, lazy: bool) {
+        self.lazy_imports = Some(lazy);
+    }
+
+    /// 设置模板层 lazyAutoImports（Java `TemplateConfiguration.setLazyAutoImports(Boolean)`）
+    pub fn set_lazy_auto_imports(&mut self, lazy: Option<bool>) {
+        self.lazy_auto_imports = lazy;
     }
 }
 
