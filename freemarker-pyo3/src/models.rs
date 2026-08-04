@@ -368,7 +368,7 @@ impl TemplateCollectionModel for PyObjectModel {
 /// 参数逐个 unwrap 回 Python 对象后调用 __call__（0 参 / 1 参 / n 参统一以
 /// 元组 call1 表达；Java 分支等价）；结果 wrap 回 TModel（null → nothing）。
 impl TemplateMethodModelEx for PyObjectModel {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut freemarker::core::Environment, args: Vec<TModel>) -> Result<TModel> {
         self.with_py(|py, obj| {
             let mut pyargs = Vec::with_capacity(args.len());
             for a in &args {

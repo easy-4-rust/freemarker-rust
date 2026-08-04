@@ -8,9 +8,12 @@
 
 use crate::errors;
 use crate::wrapper::PyObjectWrapperInner;
-use freemarker::template::TModel;
+use freemarker::core::Environment;
+use freemarker::template::{Configuration, TModel, Template};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyInt, PyTuple};
+use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// 通用适配器 —— 对应 Java TemplateModelToJythonAdapter（JythonWrapper.java:172-276）
@@ -92,8 +95,15 @@ impl TemplateModelAdapter {
                 None => models.push(TModel::nothing()),
             }
         }
+        // Python 侧直接调用方法模型：无渲染上下文（Java ThreadLocal env 为
+        // null 时同样不可用）——构造最小空环境供 exec 使用（对应 Java
+        // JythonWrapper 渲染期间调用时 ThreadLocal env 存在的场景）
+        let mut sink = Vec::new();
+        let cfg = Rc::new(Configuration::new());
+        let t = Template::new("python-call".to_string(), Vec::new(), HashMap::new(), cfg);
+        let mut env = Environment::new(&t, TModel::nothing(), &mut sink);
         let result = method
-            .exec(models)
+            .exec(&mut env, models)
             .map_err(errors::template_error_to_pyerr)?;
         self.wrapper.unwrap(py, &result)
     }
@@ -147,7 +157,11 @@ mod tests {
     /// 两数相加的方法模型（exec 参数为模板侧 TNumber）
     struct AddMethod;
     impl TemplateMethodModelEx for AddMethod {
-        fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+        fn exec(
+            &self,
+            _env: &mut freemarker::core::Environment,
+            args: Vec<TModel>,
+        ) -> Result<TModel> {
             let a = args[0].get_number()?.as_i64().unwrap();
             let b = args[1].get_number()?.as_i64().unwrap();
             Ok(TModel::from_number(TNumber::from_i64(a + b)))

@@ -5159,6 +5159,8 @@ pub freemarker::template::TModel::hash: core::option::Option<alloc::rc::Rc<dyn f
 pub freemarker::template::TModel::hash_ex: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateHashModelEx>>
 pub freemarker::template::TModel::internal: core::option::Option<alloc::rc::Rc<dyn core::any::Any>>
 pub freemarker::template::TModel::kind: freemarker::template::ModelKind
+pub freemarker::template::TModel::markup_format: core::option::Option<freemarker::core::OutputFormatKind>
+pub freemarker::template::TModel::markup_plain: core::option::Option<alloc::string::String>
 pub freemarker::template::TModel::method: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateMethodModelEx>>
 pub freemarker::template::TModel::method_indexable: bool
 pub freemarker::template::TModel::node: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateNodeModel>>
@@ -6171,6 +6173,8 @@ pub freemarker::TModel::hash: core::option::Option<alloc::rc::Rc<dyn freemarker:
 pub freemarker::TModel::hash_ex: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateHashModelEx>>
 pub freemarker::TModel::internal: core::option::Option<alloc::rc::Rc<dyn core::any::Any>>
 pub freemarker::TModel::kind: freemarker::template::ModelKind
+pub freemarker::TModel::markup_format: core::option::Option<freemarker::core::OutputFormatKind>
+pub freemarker::TModel::markup_plain: core::option::Option<alloc::string::String>
 pub freemarker::TModel::method: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateMethodModelEx>>
 pub freemarker::TModel::method_indexable: bool
 pub freemarker::TModel::node: core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateNodeModel>>
