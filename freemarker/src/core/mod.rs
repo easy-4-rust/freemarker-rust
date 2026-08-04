@@ -19,6 +19,8 @@ mod fallback_instruction;
 mod flush_instruction;
 mod ftl_header;
 mod get_optional_template_method;
+mod global_assignment;
+mod local_assignment;
 mod hash_literal;
 mod macro_def;
 mod no_auto_esc_block;
