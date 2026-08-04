@@ -251,6 +251,7 @@ pub fn freemarker::builtins::loop_vars::item_parity(&mut freemarker::Environment
 pub fn freemarker::builtins::loop_vars::item_parity_cap(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::markup_outputs
 pub fn freemarker::builtins::markup_outputs::esc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::builtins::markup_outputs::markup_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::markup_outputs::no_esc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::multi
 pub fn freemarker::builtins::multi::absolute_template_name(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
@@ -262,7 +263,6 @@ pub fn freemarker::builtins::multi::is_date_only(&mut freemarker::Environment<'_
 pub fn freemarker::builtins::multi::is_datetime(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::multi::is_time(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::multi::is_unknown_date_like(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::markup_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::multi::namespace(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::multi::string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::nodes
@@ -1047,6 +1047,7 @@ pub fn freemarker::cache::MultiSource::from(T) -> T
 pub struct freemarker::cache::NameFormatDefault020300
 impl freemarker::cache::TemplateNameFormat for freemarker::cache::NameFormatDefault020300
 pub fn freemarker::cache::NameFormatDefault020300::normalize_root_based_name(&self, &str) -> freemarker::Result<alloc::string::String>
+pub fn freemarker::cache::NameFormatDefault020300::root_based_name_to_absolute_name(&self, &str) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::NameFormatDefault020300::to_root_based_name(&self, &str, &str) -> freemarker::Result<alloc::string::String>
 impl core::marker::Freeze for freemarker::cache::NameFormatDefault020300
 impl core::marker::Send for freemarker::cache::NameFormatDefault020300
@@ -1074,6 +1075,7 @@ pub fn freemarker::cache::NameFormatDefault020300::from(T) -> T
 pub struct freemarker::cache::NameFormatDefault020400
 impl freemarker::cache::TemplateNameFormat for freemarker::cache::NameFormatDefault020400
 pub fn freemarker::cache::NameFormatDefault020400::normalize_root_based_name(&self, &str) -> freemarker::Result<alloc::string::String>
+pub fn freemarker::cache::NameFormatDefault020400::root_based_name_to_absolute_name(&self, &str) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::NameFormatDefault020400::to_root_based_name(&self, &str, &str) -> freemarker::Result<alloc::string::String>
 impl core::marker::Freeze for freemarker::cache::NameFormatDefault020400
 impl core::marker::Send for freemarker::cache::NameFormatDefault020400
@@ -1625,12 +1627,15 @@ impl freemarker::cache::TemplateLookupStrategy for freemarker::cache::LookupStra
 pub fn freemarker::cache::LookupStrategyDefault020300::lookup(&self, &str, core::option::Option<&str>, freemarker::cache::FindFn<'_>) -> freemarker::Result<core::option::Option<freemarker::cache::LookupResult>>
 pub trait freemarker::cache::TemplateNameFormat
 pub fn freemarker::cache::TemplateNameFormat::normalize_root_based_name(&self, &str) -> freemarker::Result<alloc::string::String>
+pub fn freemarker::cache::TemplateNameFormat::root_based_name_to_absolute_name(&self, &str) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::TemplateNameFormat::to_root_based_name(&self, &str, &str) -> freemarker::Result<alloc::string::String>
 impl freemarker::cache::TemplateNameFormat for freemarker::cache::NameFormatDefault020300
 pub fn freemarker::cache::NameFormatDefault020300::normalize_root_based_name(&self, &str) -> freemarker::Result<alloc::string::String>
+pub fn freemarker::cache::NameFormatDefault020300::root_based_name_to_absolute_name(&self, &str) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::NameFormatDefault020300::to_root_based_name(&self, &str, &str) -> freemarker::Result<alloc::string::String>
 impl freemarker::cache::TemplateNameFormat for freemarker::cache::NameFormatDefault020400
 pub fn freemarker::cache::NameFormatDefault020400::normalize_root_based_name(&self, &str) -> freemarker::Result<alloc::string::String>
+pub fn freemarker::cache::NameFormatDefault020400::root_based_name_to_absolute_name(&self, &str) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::cache::NameFormatDefault020400::to_root_based_name(&self, &str, &str) -> freemarker::Result<alloc::string::String>
 pub trait freemarker::cache::TemplateSource
 pub fn freemarker::cache::TemplateSource::as_any(&self) -> core::option::Option<&dyn core::any::Any>
@@ -1772,6 +1777,8 @@ pub fn freemarker::core::AutoEscaping::from(T) -> T
 pub enum freemarker::core::BuiltinVar
 pub freemarker::core::BuiltinVar::Args
 pub freemarker::core::BuiltinVar::AutoEsc
+pub freemarker::core::BuiltinVar::CallerTemplateName
+pub freemarker::core::BuiltinVar::CallerTemplateNameCc
 pub freemarker::core::BuiltinVar::CurrentTemplateName
 pub freemarker::core::BuiltinVar::DataModel
 pub freemarker::core::BuiltinVar::Error
@@ -2543,6 +2550,105 @@ impl<T> core::clone::CloneToUninit for freemarker::core::CaseDef where T: core::
 pub unsafe fn freemarker::core::CaseDef::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for freemarker::core::CaseDef
 pub fn freemarker::core::CaseDef::from(T) -> T
+pub struct freemarker::core::CombinedMarkupOutputFormat
+pub freemarker::core::CombinedMarkupOutputFormat::components: alloc::vec::Vec<freemarker::core::OutputFormatKind>
+impl freemarker::core::CombinedMarkupOutputFormat
+pub fn freemarker::core::CombinedMarkupOutputFormat::concat(&self, &freemarker::core::CombinedMarkupOutputModel, &freemarker::core::CombinedMarkupOutputModel) -> freemarker::core::CombinedMarkupOutputModel
+pub fn freemarker::core::CombinedMarkupOutputFormat::escape_plain_text(&self, &str) -> alloc::string::String
+pub fn freemarker::core::CombinedMarkupOutputFormat::from_markup(&self, alloc::string::String) -> freemarker::core::CombinedMarkupOutputModel
+pub fn freemarker::core::CombinedMarkupOutputFormat::from_plain_text_by_escaping(&self, alloc::string::String) -> freemarker::core::CombinedMarkupOutputModel
+pub fn freemarker::core::CombinedMarkupOutputFormat::get_markup_string(&self, &freemarker::core::CombinedMarkupOutputModel) -> alloc::string::String
+pub fn freemarker::core::CombinedMarkupOutputFormat::is_markup(&self) -> bool
+pub fn freemarker::core::CombinedMarkupOutputFormat::mime_type(&self) -> &'static str
+pub fn freemarker::core::CombinedMarkupOutputFormat::name(&self) -> alloc::string::String
+pub fn freemarker::core::CombinedMarkupOutputFormat::new(alloc::vec::Vec<freemarker::core::OutputFormatKind>) -> Self
+pub fn freemarker::core::CombinedMarkupOutputFormat::output(&self, &str) -> alloc::string::String
+pub fn freemarker::core::CombinedMarkupOutputFormat::output_model(&self, &freemarker::core::CombinedMarkupOutputModel) -> alloc::string::String
+impl core::clone::Clone for freemarker::core::CombinedMarkupOutputFormat
+pub fn freemarker::core::CombinedMarkupOutputFormat::clone(&self) -> freemarker::core::CombinedMarkupOutputFormat
+impl core::cmp::Eq for freemarker::core::CombinedMarkupOutputFormat
+impl core::cmp::PartialEq for freemarker::core::CombinedMarkupOutputFormat
+pub fn freemarker::core::CombinedMarkupOutputFormat::eq(&self, &freemarker::core::CombinedMarkupOutputFormat) -> bool
+impl core::fmt::Debug for freemarker::core::CombinedMarkupOutputFormat
+pub fn freemarker::core::CombinedMarkupOutputFormat::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for freemarker::core::CombinedMarkupOutputFormat
+impl core::marker::Freeze for freemarker::core::CombinedMarkupOutputFormat
+impl core::marker::Send for freemarker::core::CombinedMarkupOutputFormat
+impl core::marker::Sync for freemarker::core::CombinedMarkupOutputFormat
+impl core::marker::Unpin for freemarker::core::CombinedMarkupOutputFormat
+impl core::marker::UnsafeUnpin for freemarker::core::CombinedMarkupOutputFormat
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::core::CombinedMarkupOutputFormat
+impl core::panic::unwind_safe::UnwindSafe for freemarker::core::CombinedMarkupOutputFormat
+impl<Q, K> equivalent::Equivalent<K> for freemarker::core::CombinedMarkupOutputFormat where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputFormat::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for freemarker::core::CombinedMarkupOutputFormat where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputFormat::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for freemarker::core::CombinedMarkupOutputFormat where U: core::convert::From<T>
+pub fn freemarker::core::CombinedMarkupOutputFormat::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::core::CombinedMarkupOutputFormat where U: core::convert::Into<T>
+pub type freemarker::core::CombinedMarkupOutputFormat::Error = core::convert::Infallible
+pub fn freemarker::core::CombinedMarkupOutputFormat::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::core::CombinedMarkupOutputFormat where U: core::convert::TryFrom<T>
+pub type freemarker::core::CombinedMarkupOutputFormat::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::core::CombinedMarkupOutputFormat::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for freemarker::core::CombinedMarkupOutputFormat where T: core::clone::Clone
+pub type freemarker::core::CombinedMarkupOutputFormat::Owned = T
+pub fn freemarker::core::CombinedMarkupOutputFormat::clone_into(&self, &mut T)
+pub fn freemarker::core::CombinedMarkupOutputFormat::to_owned(&self) -> T
+impl<T> core::any::Any for freemarker::core::CombinedMarkupOutputFormat where T: 'static + ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputFormat::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::core::CombinedMarkupOutputFormat where T: ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputFormat::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::core::CombinedMarkupOutputFormat where T: ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputFormat::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for freemarker::core::CombinedMarkupOutputFormat where T: core::clone::Clone
+pub unsafe fn freemarker::core::CombinedMarkupOutputFormat::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for freemarker::core::CombinedMarkupOutputFormat
+pub fn freemarker::core::CombinedMarkupOutputFormat::from(T) -> T
+pub struct freemarker::core::CombinedMarkupOutputModel
+pub freemarker::core::CombinedMarkupOutputModel::markup: core::option::Option<alloc::string::String>
+pub freemarker::core::CombinedMarkupOutputModel::plain_text: core::option::Option<alloc::string::String>
+impl core::clone::Clone for freemarker::core::CombinedMarkupOutputModel
+pub fn freemarker::core::CombinedMarkupOutputModel::clone(&self) -> freemarker::core::CombinedMarkupOutputModel
+impl core::cmp::Eq for freemarker::core::CombinedMarkupOutputModel
+impl core::cmp::PartialEq for freemarker::core::CombinedMarkupOutputModel
+pub fn freemarker::core::CombinedMarkupOutputModel::eq(&self, &freemarker::core::CombinedMarkupOutputModel) -> bool
+impl core::fmt::Debug for freemarker::core::CombinedMarkupOutputModel
+pub fn freemarker::core::CombinedMarkupOutputModel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for freemarker::core::CombinedMarkupOutputModel
+impl core::marker::Freeze for freemarker::core::CombinedMarkupOutputModel
+impl core::marker::Send for freemarker::core::CombinedMarkupOutputModel
+impl core::marker::Sync for freemarker::core::CombinedMarkupOutputModel
+impl core::marker::Unpin for freemarker::core::CombinedMarkupOutputModel
+impl core::marker::UnsafeUnpin for freemarker::core::CombinedMarkupOutputModel
+impl core::panic::unwind_safe::RefUnwindSafe for freemarker::core::CombinedMarkupOutputModel
+impl core::panic::unwind_safe::UnwindSafe for freemarker::core::CombinedMarkupOutputModel
+impl<Q, K> equivalent::Equivalent<K> for freemarker::core::CombinedMarkupOutputModel where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputModel::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for freemarker::core::CombinedMarkupOutputModel where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputModel::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for freemarker::core::CombinedMarkupOutputModel where U: core::convert::From<T>
+pub fn freemarker::core::CombinedMarkupOutputModel::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for freemarker::core::CombinedMarkupOutputModel where U: core::convert::Into<T>
+pub type freemarker::core::CombinedMarkupOutputModel::Error = core::convert::Infallible
+pub fn freemarker::core::CombinedMarkupOutputModel::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for freemarker::core::CombinedMarkupOutputModel where U: core::convert::TryFrom<T>
+pub type freemarker::core::CombinedMarkupOutputModel::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn freemarker::core::CombinedMarkupOutputModel::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for freemarker::core::CombinedMarkupOutputModel where T: core::clone::Clone
+pub type freemarker::core::CombinedMarkupOutputModel::Owned = T
+pub fn freemarker::core::CombinedMarkupOutputModel::clone_into(&self, &mut T)
+pub fn freemarker::core::CombinedMarkupOutputModel::to_owned(&self) -> T
+impl<T> core::any::Any for freemarker::core::CombinedMarkupOutputModel where T: 'static + ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputModel::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for freemarker::core::CombinedMarkupOutputModel where T: ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputModel::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for freemarker::core::CombinedMarkupOutputModel where T: ?core::marker::Sized
+pub fn freemarker::core::CombinedMarkupOutputModel::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for freemarker::core::CombinedMarkupOutputModel where T: core::clone::Clone
+pub unsafe fn freemarker::core::CombinedMarkupOutputModel::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for freemarker::core::CombinedMarkupOutputModel
+pub fn freemarker::core::CombinedMarkupOutputModel::from(T) -> T
 pub struct freemarker::core::Element
 pub freemarker::core::Element::kind: freemarker::core::ElementKind
 pub freemarker::core::Element::span: freemarker::span::Span
@@ -2586,6 +2692,18 @@ pub freemarker::core::Environment::out: &'a mut dyn core::io::write::Write
 pub freemarker::core::Environment::root: freemarker::TModel
 pub freemarker::core::Environment::template: &'a freemarker::Template
 impl<'a> freemarker::Environment<'a>
+pub fn freemarker::Environment<'a>::add_auto_import(&mut self, &str, &str)
+pub fn freemarker::Environment<'a>::add_auto_include(&mut self, &str)
+pub fn freemarker::Environment<'a>::do_auto_imports_and_includes(&mut self) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::get_custom_state(&self, &str) -> core::option::Option<freemarker::TModel>
+pub fn freemarker::Environment<'a>::get_lazy_auto_imports(&self) -> core::option::Option<bool>
+pub fn freemarker::Environment<'a>::get_lazy_imports(&self) -> bool
+pub fn freemarker::Environment<'a>::remove_auto_import(&mut self, &str)
+pub fn freemarker::Environment<'a>::remove_auto_include(&mut self, &str)
+pub fn freemarker::Environment<'a>::set_custom_state(&mut self, &str, core::option::Option<freemarker::TModel>) -> core::option::Option<freemarker::TModel>
+pub fn freemarker::Environment<'a>::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
+pub fn freemarker::Environment<'a>::set_lazy_imports(&mut self, bool)
+impl<'a> freemarker::Environment<'a>
 pub fn freemarker::Environment<'a>::as_macro(&self, &freemarker::TModel) -> core::option::Option<alloc::rc::Rc<freemarker::core::MacroValue>>
 pub fn freemarker::Environment<'a>::as_namespace(&self, &freemarker::TModel) -> core::option::Option<alloc::rc::Rc<freemarker::core::Namespace>>
 pub fn freemarker::Environment<'a>::as_transform(&self, &freemarker::TModel) -> core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateTransformModel>>
@@ -2599,6 +2717,7 @@ pub fn freemarker::Environment<'a>::get_macro(&self, &str) -> core::option::Opti
 pub fn freemarker::Environment<'a>::get_main_namespace(&self) -> alloc::rc::Rc<freemarker::core::Namespace>
 pub fn freemarker::Environment<'a>::get_variable(&self, &str) -> freemarker::Result<freemarker::TModel>
 pub fn freemarker::Environment<'a>::import_lib(&mut self, &str, &str) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::import_lib_explicit(&mut self, &str, &str, bool) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::include_named(&mut self, &str, bool, bool, core::option::Option<alloc::string::String>) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::include_template(&mut self, &freemarker::Template) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::new(&'a freemarker::Template, freemarker::TModel, &'a mut dyn core::io::write::Write) -> Self
@@ -2680,6 +2799,7 @@ pub freemarker::core::MacroDef::name: alloc::string::String
 pub freemarker::core::MacroDef::namespace: core::option::Option<alloc::string::String>
 pub freemarker::core::MacroDef::params: alloc::vec::Vec<freemarker::core::MacroParam>
 pub freemarker::core::MacroDef::span: freemarker::span::Span
+pub freemarker::core::MacroDef::template_name: alloc::string::String
 impl core::clone::Clone for freemarker::core::MacroDef
 pub fn freemarker::core::MacroDef::clone(&self) -> freemarker::core::MacroDef
 impl core::fmt::Debug for freemarker::core::MacroDef
@@ -2928,6 +3048,8 @@ pub freemarker::core::Settings::delay: u64
 pub freemarker::core::Settings::fallback_on_null_loop_variable: bool
 pub freemarker::core::Settings::incompatible_improvements: freemarker::template::Version
 pub freemarker::core::Settings::input_encoding: core::option::Option<alloc::string::String>
+pub freemarker::core::Settings::lazy_auto_imports: core::option::Option<bool>
+pub freemarker::core::Settings::lazy_imports: bool
 pub freemarker::core::Settings::locale: alloc::string::String
 pub freemarker::core::Settings::localized_lookup: bool
 pub freemarker::core::Settings::lookup_strategy: freemarker::cache::LookupStrategyKind
@@ -2979,12 +3101,16 @@ impl<T> core::convert::From<T> for freemarker::core::Settings
 pub fn freemarker::core::Settings::from(T) -> T
 pub struct freemarker::core::TemplateConfiguration
 pub freemarker::core::TemplateConfiguration::auto_escaping: core::option::Option<freemarker::core::AutoEscaping>
+pub freemarker::core::TemplateConfiguration::auto_imports: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
+pub freemarker::core::TemplateConfiguration::auto_includes: alloc::vec::Vec<alloc::string::String>
 pub freemarker::core::TemplateConfiguration::boolean_format: core::option::Option<alloc::string::String>
 pub freemarker::core::TemplateConfiguration::c_format: core::option::Option<freemarker::builtins::format::CFormatKind>
 pub freemarker::core::TemplateConfiguration::classic_compatible: core::option::Option<bool>
 pub freemarker::core::TemplateConfiguration::date_format: core::option::Option<alloc::string::String>
 pub freemarker::core::TemplateConfiguration::date_time_format: core::option::Option<alloc::string::String>
 pub freemarker::core::TemplateConfiguration::encoding: core::option::Option<alloc::string::String>
+pub freemarker::core::TemplateConfiguration::lazy_auto_imports: core::option::Option<bool>
+pub freemarker::core::TemplateConfiguration::lazy_imports: core::option::Option<bool>
 pub freemarker::core::TemplateConfiguration::locale: core::option::Option<alloc::string::String>
 pub freemarker::core::TemplateConfiguration::number_format: core::option::Option<alloc::string::String>
 pub freemarker::core::TemplateConfiguration::output_encoding: core::option::Option<alloc::string::String>
@@ -2994,9 +3120,13 @@ pub freemarker::core::TemplateConfiguration::time_format: core::option::Option<a
 pub freemarker::core::TemplateConfiguration::url_escaping_charset: core::option::Option<alloc::string::String>
 pub freemarker::core::TemplateConfiguration::whitespace_stripping: core::option::Option<bool>
 impl freemarker::core::TemplateConfiguration
+pub fn freemarker::core::TemplateConfiguration::add_auto_import(&mut self, &str, &str)
+pub fn freemarker::core::TemplateConfiguration::add_auto_include(&mut self, &str)
 pub fn freemarker::core::TemplateConfiguration::apply_to(&self, &mut freemarker::core::Settings)
 pub fn freemarker::core::TemplateConfiguration::is_empty(&self) -> bool
 pub fn freemarker::core::TemplateConfiguration::merge(&mut self, &freemarker::core::TemplateConfiguration)
+pub fn freemarker::core::TemplateConfiguration::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
+pub fn freemarker::core::TemplateConfiguration::set_lazy_imports(&mut self, bool)
 impl core::clone::Clone for freemarker::core::TemplateConfiguration
 pub fn freemarker::core::TemplateConfiguration::clone(&self) -> freemarker::core::TemplateConfiguration
 impl core::default::Default for freemarker::core::TemplateConfiguration
@@ -3053,10 +3183,13 @@ pub fn freemarker::core::canonical_setting_key(&str) -> &str
 pub fn freemarker::core::check_arg_count(&str, core::option::Option<&[freemarker::core::Expr]>, usize, usize) -> freemarker::Result<()>
 pub fn freemarker::core::coerce_to_string(&mut freemarker::Environment<'_>, &freemarker::TModel) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::core::compare_models(&mut freemarker::Environment<'_>, &freemarker::TModel, &freemarker::TModel, freemarker::core::CmpOp) -> freemarker::Result<bool>
+pub fn freemarker::core::escape_markup(freemarker::core::OutputFormatKind, &str) -> alloc::string::String
 pub fn freemarker::core::eval(&mut freemarker::Environment<'_>, &freemarker::core::Expr) -> freemarker::Result<freemarker::TModel>
 pub fn freemarker::core::exec(&mut freemarker::Environment<'_>, &freemarker::core::Element) -> freemarker::Result<freemarker::core::ExecOutcome>
 pub fn freemarker::core::java_time_zone_id(&str) -> alloc::string::String
+pub fn freemarker::core::mime_type(freemarker::core::OutputFormatKind) -> &'static str
 pub fn freemarker::core::models_equal(&freemarker::TModel, &freemarker::TModel) -> freemarker::Result<bool>
+pub fn freemarker::core::parse_combined_markup_format(&str) -> core::option::Option<alloc::vec::Vec<freemarker::core::OutputFormatKind>>
 pub fn freemarker::core::render(&freemarker::Template, freemarker::TModel, &mut dyn core::io::write::Write) -> freemarker::Result<()>
 pub fn freemarker::core::target_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr) -> freemarker::Result<alloc::string::String>
 pub mod freemarker::error
@@ -4258,17 +4391,24 @@ impl<T> core::convert::From<T> for freemarker::template::ModelNumber
 pub fn freemarker::template::ModelNumber::from(T) -> T
 pub struct freemarker::template::Configuration
 pub freemarker::template::Configuration::auto_imports: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
+pub freemarker::template::Configuration::auto_includes: alloc::vec::Vec<alloc::string::String>
 pub freemarker::template::Configuration::cache: std::sync::poison::mutex::Mutex<freemarker::cache::TemplateCache>
 pub freemarker::template::Configuration::settings: freemarker::core::Settings
 pub freemarker::template::Configuration::shared_vars: std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>
 pub freemarker::template::Configuration::template_configurations: core::option::Option<alloc::sync::Arc<dyn freemarker::cache::TemplateConfigurationFactory>>
 pub freemarker::template::Configuration::template_loader: alloc::sync::Arc<dyn freemarker::cache::TemplateLoader>
 impl freemarker::Configuration
+pub fn freemarker::Configuration::add_auto_import(&mut self, &str, &str)
+pub fn freemarker::Configuration::add_auto_include(&mut self, &str)
 pub fn freemarker::Configuration::clear_template_cache(&self)
 pub fn freemarker::Configuration::get_template(&self, &str) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
 pub fn freemarker::Configuration::get_template_encoded(&self, &str, core::option::Option<&str>) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
 pub fn freemarker::Configuration::get_template_localized(&self, &str, core::option::Option<&str>) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
 pub fn freemarker::Configuration::new() -> Self
+pub fn freemarker::Configuration::remove_auto_import(&mut self, &str)
+pub fn freemarker::Configuration::remove_auto_include(&mut self, &str)
+pub fn freemarker::Configuration::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
+pub fn freemarker::Configuration::set_lazy_imports(&mut self, bool)
 pub fn freemarker::Configuration::set_shared_variable(&mut self, &str, freemarker::TModel)
 pub fn freemarker::Configuration::set_template_configurations(&mut self, core::option::Option<alloc::sync::Arc<dyn freemarker::cache::TemplateConfigurationFactory>>)
 pub fn freemarker::Configuration::version() -> freemarker::template::Version
@@ -5902,17 +6042,24 @@ impl<T> core::convert::From<T> for freemarker::TemplateError
 pub fn freemarker::TemplateError::from(T) -> T
 pub struct freemarker::Configuration
 pub freemarker::Configuration::auto_imports: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>
+pub freemarker::Configuration::auto_includes: alloc::vec::Vec<alloc::string::String>
 pub freemarker::Configuration::cache: std::sync::poison::mutex::Mutex<freemarker::cache::TemplateCache>
 pub freemarker::Configuration::settings: freemarker::core::Settings
 pub freemarker::Configuration::shared_vars: std::collections::hash::map::HashMap<alloc::string::String, freemarker::TModel>
 pub freemarker::Configuration::template_configurations: core::option::Option<alloc::sync::Arc<dyn freemarker::cache::TemplateConfigurationFactory>>
 pub freemarker::Configuration::template_loader: alloc::sync::Arc<dyn freemarker::cache::TemplateLoader>
 impl freemarker::Configuration
+pub fn freemarker::Configuration::add_auto_import(&mut self, &str, &str)
+pub fn freemarker::Configuration::add_auto_include(&mut self, &str)
 pub fn freemarker::Configuration::clear_template_cache(&self)
 pub fn freemarker::Configuration::get_template(&self, &str) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
 pub fn freemarker::Configuration::get_template_encoded(&self, &str, core::option::Option<&str>) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
 pub fn freemarker::Configuration::get_template_localized(&self, &str, core::option::Option<&str>) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
 pub fn freemarker::Configuration::new() -> Self
+pub fn freemarker::Configuration::remove_auto_import(&mut self, &str)
+pub fn freemarker::Configuration::remove_auto_include(&mut self, &str)
+pub fn freemarker::Configuration::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
+pub fn freemarker::Configuration::set_lazy_imports(&mut self, bool)
 pub fn freemarker::Configuration::set_shared_variable(&mut self, &str, freemarker::TModel)
 pub fn freemarker::Configuration::set_template_configurations(&mut self, core::option::Option<alloc::sync::Arc<dyn freemarker::cache::TemplateConfigurationFactory>>)
 pub fn freemarker::Configuration::version() -> freemarker::template::Version
@@ -5954,6 +6101,18 @@ pub freemarker::Environment::out: &'a mut dyn core::io::write::Write
 pub freemarker::Environment::root: freemarker::TModel
 pub freemarker::Environment::template: &'a freemarker::Template
 impl<'a> freemarker::Environment<'a>
+pub fn freemarker::Environment<'a>::add_auto_import(&mut self, &str, &str)
+pub fn freemarker::Environment<'a>::add_auto_include(&mut self, &str)
+pub fn freemarker::Environment<'a>::do_auto_imports_and_includes(&mut self) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::get_custom_state(&self, &str) -> core::option::Option<freemarker::TModel>
+pub fn freemarker::Environment<'a>::get_lazy_auto_imports(&self) -> core::option::Option<bool>
+pub fn freemarker::Environment<'a>::get_lazy_imports(&self) -> bool
+pub fn freemarker::Environment<'a>::remove_auto_import(&mut self, &str)
+pub fn freemarker::Environment<'a>::remove_auto_include(&mut self, &str)
+pub fn freemarker::Environment<'a>::set_custom_state(&mut self, &str, core::option::Option<freemarker::TModel>) -> core::option::Option<freemarker::TModel>
+pub fn freemarker::Environment<'a>::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
+pub fn freemarker::Environment<'a>::set_lazy_imports(&mut self, bool)
+impl<'a> freemarker::Environment<'a>
 pub fn freemarker::Environment<'a>::as_macro(&self, &freemarker::TModel) -> core::option::Option<alloc::rc::Rc<freemarker::core::MacroValue>>
 pub fn freemarker::Environment<'a>::as_namespace(&self, &freemarker::TModel) -> core::option::Option<alloc::rc::Rc<freemarker::core::Namespace>>
 pub fn freemarker::Environment<'a>::as_transform(&self, &freemarker::TModel) -> core::option::Option<alloc::rc::Rc<dyn freemarker::template::TemplateTransformModel>>
@@ -5967,6 +6126,7 @@ pub fn freemarker::Environment<'a>::get_macro(&self, &str) -> core::option::Opti
 pub fn freemarker::Environment<'a>::get_main_namespace(&self) -> alloc::rc::Rc<freemarker::core::Namespace>
 pub fn freemarker::Environment<'a>::get_variable(&self, &str) -> freemarker::Result<freemarker::TModel>
 pub fn freemarker::Environment<'a>::import_lib(&mut self, &str, &str) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::import_lib_explicit(&mut self, &str, &str, bool) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::include_named(&mut self, &str, bool, bool, core::option::Option<alloc::string::String>) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::include_template(&mut self, &freemarker::Template) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::new(&'a freemarker::Template, freemarker::TModel, &'a mut dyn core::io::write::Write) -> Self
