@@ -35,9 +35,9 @@ Rust 按主题分组）——均为合理的 Rust 特有组织，满足"可以�
 
 | 分类 | 数量 | 说明 |
 |---|---|---|
-| MAPPED（含合并） | 310 | Java 类在 Rust 中有等价实现（多数多个 Java 类合并为一个 Rust 文件/enum） |
+| MAPPED（含合并） | 422 | Java 类在 Rust 中有等价实现；2026-08-04 文件级拆分后新增 112 个镜像文件（expression/ 26 + 指令类 38 + 异常 17 + 格式/输出模型 14 + builtins 3 + xml 12 + 若干，见 §5b） |
 | MISSING（真实缺口） | 4（3 个功能块） | 见 §3（模板后处理钩子 3 + 组合输出格式 1；DOCTYPE 见 xml/ 头注释） |
-| NA-DESIGN | 227 | 设计决策不实现（JVM 反射 75 + 第三方集成 6 + 平台工具 28 + 内部桥 10 + 文档 20 等） |
+| NA-DESIGN | 115 | 设计决策不实现（JVM 反射 75 + 第三方集成 6 + 平台工具 28 + 内部桥 10 等；异常/格式/输出模型/指令/AST 原合并项已转 MAPPED） |
 | **合计** | **561** | ✓ 与磁盘计数一致 |
 
 ## 3. MISSING 清单（原 9 个功能块 28 个文件；已补 6 块，剩 3 块 4 文件）
@@ -84,6 +84,22 @@ Rust 按主题分组）——均为合理的 Rust 特有组织，满足"可以�
 | TemplateLookupContext/Result | `cache/template_lookup_strategy.rs` | 文件头自注"合并存放" |
 | StatefulTemplateLoader | `cache/template_loader.rs::reset_state` 默认钩子 | Java 可选接口 instanceof 检查 → 默认空操作 + 虚分派（见 §3 #8） |
 | StringUtil（glob 部分） | `utility/string_util.rs::glob_to_regex` | 一文件一对象（glob_to_regex 为 StringUtil 方法） |
+
+## 5b. 文件级拆分执行记录（2026-08-04，一文件一 Java 对象）
+
+| 区域 | 新增文件 | 对应 Java |
+|---|---|---|
+| `core/expression/`（26） | add_concat/and/or/arithmetic/comparison/string/number/boolean_literal、identifier、list/hash_literal、parenthetical/not/unary_plus_minus/exists/default_to/local_lambda/method_call/dot/dynamic_key_name/range/bounded_range_model/listable+nonlistable_right_unbounded_range_model/builtin_variable/built_in | Expression 家族各 Java 类 |
+| `core/` 指令类（38） | flush/break/continue/return/stop_instruction、comment、ftl_header、trim_instruction、property_setting、fallback_instruction、text_block、dollar_variable、escape/no_escape/auto_esc/no_auto_esc_block、output_format_block、compressed_block、transform_block、attempt_block、assignment(_instruction)/block/global/local_assignment、if_block、iterator_block、items、sep、switch_block、macro（r#macro）、unified_call、body_instruction、include、library_load、visit_node、recurse_node、on | TemplateElement 家族各 Java 类 |
+| `error/` 异常（17） | invalid_reference/unexpected_type_exception、non_*_exception ×8、_misc/misc_template_exception、template_exception、stop/return/break_or_continue_exception、template_not_found/template_model/parse_exception | Java 异常层级 |
+| `core/` 格式/输出模型（14） | html/xml/xhtml/javascript/json/css/rtf/plain_text/undefined_output_format、common_markup/markup_output_format、template_output/template_markup_output/template_plain_output_model | OutputFormat 家族 + 输出模型接口 |
+| `builtins/`（3 + 补全） | hashes、markup_outputs、strings_misc；sequences 迁入 join/reverse/seq_contains | BuiltInsForHashes/MarkupOutputs/StringsMisc/Sequences.java |
+| `xml/`（12） | xml_dom_string_util（真实逻辑）+ 11 模型类锚点 | freemarker.ext.dom 各文件 |
+
+**做法**：聚合枚举（ExprKind/ElementKind/TemplateError/OutputFormatKind）保留为聚合 API，
+各 Java 类建立镜像文件（struct + new + exec/eval 方法或构造器锚点），dispatch 切换为
+struct 方法调用；`TemplateError` 构造方法全部委托镜像文件（460 处调用点零改动）。
+public-api baseline 除 builtins 新增 pub fn（与兄弟模块一致）外零差异。
 
 ## 6. 结构优化建议（执行清单）
 
