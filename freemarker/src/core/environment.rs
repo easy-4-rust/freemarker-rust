@@ -1217,17 +1217,35 @@ impl<'a> Environment<'a> {
                 }
             }
         }
-        // Java DollarVariable.accept（DollarVariable.java:62-99）：插值结果已是
-        // markup 输出（?esc/?no_esc/捕获提升产物）且输出格式一致 → **原样输出**，
-        // 不按 autoEsc 二次转义（Java :72-77 moOF == outputFormat → moOF.output(mo)）；
-        // 跨格式转换（:78-92）v1 简化——markup 无格式槽位，一律按同格式处理
-        // （testConvert 等跨格式断言保留 ENGINE_GAP，见 examples_test.rs 头注）
+        // Java DollarVariable.accept（DollarVariable.java:62-99）：
+        // 插值结果已是 markup 输出（?esc/?no_esc/捕获提升产物）时：
+        // - 输出格式一致（moOF == outputFormat）→ 原样输出，不按 autoEsc 二次转义
+        //   （Java :72-77 moOF.output(mo)）；
+        // - 当前格式允许混合（UndefinedOutputFormat，:84-95）→ 原样输出；
+        // - 跨格式（HTML→XML/RTF 等，:78-92）：markup 有源纯文本 → 按当前格式
+        //   重转义（getSourcePlainText → markupOutputFormat.output）；无源纯文本
+        //   （fromMarkup/捕获产物）→ 报错（#attempt 可捕获 → recover）。
         let final_model = value.as_ref().unwrap_or(m);
         let s = model_to_string(self, final_model)?;
         if final_model.is_markup_output() {
-            return Ok(s);
-        }
-        if self.auto_escape {
+            let mo_fmt = final_model
+                .markup_format
+                .unwrap_or(self.settings.output_format);
+            let cur_fmt = self.settings.output_format;
+            if mo_fmt == cur_fmt || crate::builtins::markup_outputs::format_mixing_allowed(cur_fmt)
+            {
+                return Ok(s);
+            }
+            match &final_model.markup_plain {
+                Some(plain) => Ok(crate::core::escape_markup(cur_fmt, plain)),
+                None => Err(TemplateError::misc(format!(
+                    "The value to print is in {} format, which differs from the current \
+                     output format, {}. Format conversion wasn't possible.",
+                    mo_fmt.name(),
+                    cur_fmt.name()
+                ))),
+            }
+        } else if self.auto_escape {
             // Java AutoEscBlock：按 outputFormat 转义（v1：html/xml；其余格式 P4 TODO）
             match self.settings.output_format {
                 crate::core::OutputFormatKind::Html | crate::core::OutputFormatKind::XHtml => {

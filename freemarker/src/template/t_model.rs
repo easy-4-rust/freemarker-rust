@@ -98,6 +98,13 @@ pub struct TModel {
     /// 内部扩展槽位（渲染引擎专用，docs/04 §1）：承载宏/函数值、lambda、命名空间等
     /// Rust 特有设计（Java 中这些是 `TemplateModel` 实现类，Rust 侧统一用 `Any` 下沉）。
     pub internal: Option<Rc<dyn std::any::Any>>,
+    /// markup 输出的创建时输出格式（对应 Java `TemplateMarkupOutputModel.getOutputFormat`
+    /// / `CommonTemplateMarkupOutputModel`；kind == Markup 时非 None）
+    pub markup_format: Option<crate::core::OutputFormatKind>,
+    /// markup 输出的源纯文本（Java `CommonTemplateMarkupOutputModel.getPlainTextContent`；
+    /// `?esc` 产物 = 原始文本；`?no_esc`/块捕获（fromMarkup）产物 = None ——
+    /// 跨格式转换不可逆时插值报错，见 DollarVariable.java:78-92）
+    pub markup_plain: Option<String>,
     /// 用户可见的类型描述（错误消息 `has evaluated to a {actual}` 使用）
     pub type_name: &'static str,
     pub kind: ModelKind,
@@ -132,6 +139,8 @@ impl TModel {
             node_hash: None,
             api: None,
             internal: None,
+            markup_format: None,
+            markup_plain: None,
             type_name: "nothing",
             kind: ModelKind::Nothing,
         }

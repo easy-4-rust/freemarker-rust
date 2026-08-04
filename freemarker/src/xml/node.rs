@@ -645,6 +645,10 @@ impl XmlNode {
                     Ok(TModel::from_scalar(self.node_name().unwrap_or_default()))
                 }
             }
+            // @@nodeName：节点名（元素标签名/文本 "@text"/文档 "@document" 等，
+            // 与 ?node_name 内建一致 —— Java getNodeName 语义；2.3.34 的 AtAtKey
+            // 无此键，本实现按任务清单作为扩展键提供，见 tests/xml_coverage.rs）
+            "@@nodeName" => Ok(TModel::from_scalar(self.node_name().unwrap_or_default())),
             "@@name" => Ok(TModel::from_scalar(self.node_name().unwrap_or_default())),
             "@@type" => Ok(TModel::from_scalar(self.node_type())),
             _ => Err(TemplateError::misc(format!("Unsupported @@ key: {key}"))),
@@ -714,23 +718,27 @@ impl XmlNode {
             return self.filter_child_by_name(env, rest);
         }
         if let Some(rest) = key.strip_prefix("//") {
-            // 后代元素匹配（descendant-or-self::node()/child::X —— 不含自身）
-            let (prefix, local, wildcard) = split_qname(rest)?;
-            let ns_uri = resolve_prefix(env, prefix.as_deref())?; // Option<String>；None = 无命名空间
+            // 后代元素匹配（descendant-or-self::node()/child::X —— 不含自身）。
+            // 名称匹配用 ElementModel.matchesName（DomStringUtil.matchesName，
+            // DomStringUtil.java:73-90）：无前缀名在元素命名空间 == 模板默认命名
+            // 空间（ns_prefixes 声明的 D）时匹配——Java Jaxen 的 customNamespaceContext
+            // 把无前缀名解析为 getNamespaceForPrefix("") = 默认 NS
+            // （JaxenXPathSupport.java customNamespaceContext + Template.java
+            // getNamespaceForPrefix("")）。`//*` 通配匹配全部元素（XPath 1.0 的
+            // `*` 名称测试与命名空间无关）。
+            let (_, _, wildcard) = split_qname(rest)?;
             let mut matches = Vec::new();
             for d in self.node().descendants() {
                 if !d.is_element() {
                     continue;
                 }
-                if wildcard || d.tag_name().name() == local {
-                    let d_ns = d.tag_name().namespace();
-                    if ns_uri.as_deref() == d_ns {
-                        matches.push(XmlNode {
-                            tree: self.tree.clone(),
-                            node_id: d.id(),
-                            attr: None,
-                        });
-                    }
+                let d_node = XmlNode {
+                    tree: self.tree.clone(),
+                    node_id: d.id(),
+                    attr: None,
+                };
+                if wildcard || d_node.matches_name(env, rest) {
+                    matches.push(d_node);
                 }
             }
             let models: Vec<TModel> = matches.into_iter().map(|m| m.into_model()).collect();
@@ -1029,22 +1037,6 @@ fn split_qname(s: &str) -> Result<(Option<String>, String, bool)> {
             "Unsupported XPath query: //{s}"
         ))),
         None => Ok((None, s.to_string(), false)),
-    }
-}
-
-/// 解析 XPath 前缀（Java XalanXPathSupport.CUSTOM_PREFIX_RESOLVER：D → defaultNS；
-/// 其余 → getNamespaceForPrefix；未注册 → 报错）
-fn resolve_prefix(env: &mut Environment, prefix: Option<&str>) -> Result<Option<String>> {
-    let prefixes = env.current_ns_prefixes();
-    match prefix {
-        None => Ok(None), // XPath 无前缀名 = 无命名空间
-        Some("D") => Ok(prefixes.get_default_ns().map(str::to_string)),
-        Some(p) => match prefixes.get_namespace_for_prefix(p) {
-            Some(uri) if !uri.is_empty() => Ok(Some(uri.to_string())),
-            _ => Err(TemplateError::misc(format!(
-                "namespace prefix \"{p}\" has not been declared"
-            ))),
-        },
     }
 }
 

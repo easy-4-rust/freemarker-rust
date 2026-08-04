@@ -10,6 +10,8 @@ use crate::error::Result;
 use crate::template::TModel;
 use indexmap::IndexMap;
 
+use crate::builtins::markup_outputs::escape_plain_text;
+
 /// 加/拼接表达式（对应 AddConcatExpression.java；解析器经 `ExprKind::Add` 承载）
 pub struct AddConcatExpression {
     pub left: Expr,
@@ -86,35 +88,78 @@ pub(crate) fn eval_add(env: &mut crate::core::Environment, a: &Expr, b: &Expr) -
     }
     // 字符串拼接（Java EvalUtil.coerceModelToStringOrMarkup + AddConcatExpression._eval
     // :98-136 —— 任一侧是 markup 输出 → 结果**提升为 markup**：markup 部分原样、
-    // 字符串部分按输出格式转义（concatMarkupOutputs / fromPlainTextByEscaping 语义，
-    // CommonMarkupOutputFormat.java:77-99；Java 中 ?esc 的纯文本存储与 ?no_esc 的
-    // markup 存储在输出期等价，v1 统一按已转义内容处理））
+    // 字符串部分按 markup 侧格式转义（concatMarkupOutputs / fromPlainTextByEscaping
+    // 语义，AddConcatExpression.java:118-129 + CommonMarkupOutputFormat.java:77-99；
+    // 跨格式拼接一侧有源纯文本时可转成对方格式，均无 → 报错，EvalUtil.java:577-593）；
+    // 源纯文本槽在双方可逆时保留（Java concat 的 pc3 = pc1+pc2 条件），否则 None）
     let l_markup = l.is_markup_output();
     let r_markup = r.is_markup_output();
-    let ls = model_to_string(env, &l)?;
-    let rs = model_to_string(env, &r)?;
     if l_markup || r_markup {
-        let mut out = String::new();
-        match (l_markup, r_markup) {
+        let ls = model_to_string(env, &l)?;
+        let rs = model_to_string(env, &r)?;
+        let (fmt, out, plain) = match (l_markup, r_markup) {
             (true, true) => {
-                out.push_str(&ls);
-                out.push_str(&rs);
+                let lf = l.markup_format.unwrap_or(env.settings.output_format);
+                let rf = r.markup_format.unwrap_or(env.settings.output_format);
+                if lf == rf {
+                    (
+                        lf,
+                        format!("{ls}{rs}"),
+                        concat_plain(&l.markup_plain, &r.markup_plain),
+                    )
+                } else if let Some(rp) = &r.markup_plain {
+                    (
+                        lf,
+                        format!("{ls}{}", escape_plain_text(lf, rp)),
+                        concat_plain(&l.markup_plain, &r.markup_plain),
+                    )
+                } else if let Some(lp) = &l.markup_plain {
+                    (
+                        rf,
+                        format!("{}{rs}", escape_plain_text(rf, lp)),
+                        concat_plain(&l.markup_plain, &r.markup_plain),
+                    )
+                } else {
+                    return Err(crate::error::TemplateError::misc(format!(
+                        "Concatenation left hand operand is in {} format, while the right \
+                         hand operand is in {}. Conversion to common format wasn't possible.",
+                        lf.name(),
+                        rf.name()
+                    )));
+                }
             }
             (true, false) => {
-                out.push_str(&ls);
-                out.push_str(&crate::builtins::markup_outputs::escape_plain_text(
-                    env, &rs,
-                ));
+                let lf = l.markup_format.unwrap_or(env.settings.output_format);
+                (
+                    lf,
+                    format!("{ls}{}", escape_plain_text(lf, &rs)),
+                    l.markup_plain.as_ref().map(|p| format!("{p}{rs}")),
+                )
             }
             (false, true) => {
-                out.push_str(&crate::builtins::markup_outputs::escape_plain_text(
-                    env, &ls,
-                ));
-                out.push_str(&rs);
+                let rf = r.markup_format.unwrap_or(env.settings.output_format);
+                (
+                    rf,
+                    format!("{}{rs}", escape_plain_text(rf, &ls)),
+                    r.markup_plain.as_ref().map(|p| format!("{ls}{p}")),
+                )
             }
             (false, false) => unreachable!(),
-        }
-        return Ok(crate::builtins::markup_outputs::markup_model(out));
+        };
+        return Ok(crate::builtins::markup_outputs::markup_model_with(
+            out, plain, fmt,
+        ));
     }
+    let ls = model_to_string(env, &l)?;
+    let rs = model_to_string(env, &r)?;
     Ok(TModel::from_scalar(ls + &rs))
+}
+
+/// Java CommonMarkupOutputFormat.concat 的纯文本槽合并（:89-93）：
+/// pc3 = pc1 != null && pc2 != null ? pc1 + pc2 : null
+fn concat_plain(a: &Option<String>, b: &Option<String>) -> Option<String> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(format!("{x}{y}")),
+        _ => None,
+    }
 }

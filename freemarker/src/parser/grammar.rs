@@ -4153,12 +4153,19 @@ fn first_leaf(el: &Element) -> Option<Term> {
             heeds: false,
             line: el.span.line,
         }),
+        // Java：块赋值与宏一样视为叶（TemplateElement.getFirstLeaf :488-495 的
+        // `!(te instanceof BlockAssignment)` 特例），heedsOpeningWhitespace=false ——
+        // 不深入 body，其后文本的行首空白照剥（BlockAssignment 的捕获输出不参与
+        // 相邻文本的空白剥离判定；同因影响 examples_test.rs 的 testCapture 等）
+        ElementKind::BlockAssign { .. } => Some(Term {
+            heeds: false,
+            line: el.span.line,
+        }),
         ElementKind::Trim(b)
         | ElementKind::Compress(b)
         | ElementKind::NoEscape(b)
         | ElementKind::AutoEsc(b)
         | ElementKind::NoAutoEsc(b)
-        | ElementKind::BlockAssign { body: b, .. }
         | ElementKind::Items { body: b, .. }
         | ElementKind::Sep { body: b }
         | ElementKind::Transform { body: b, .. }
@@ -4239,12 +4246,17 @@ fn last_leaf(el: &Element) -> Option<Term> {
             heeds: false,
             line: el.span.line,
         }),
+        // Java：块赋值视为叶（TemplateElement.getLastLeaf :497-504 的
+        // `!(te instanceof BlockAssignment)` 特例），heedsOpeningWhitespace=false
+        ElementKind::BlockAssign { .. } => Some(Term {
+            heeds: false,
+            line: el.span.line,
+        }),
         ElementKind::Trim(b)
         | ElementKind::Compress(b)
         | ElementKind::NoEscape(b)
         | ElementKind::AutoEsc(b)
         | ElementKind::NoAutoEsc(b)
-        | ElementKind::BlockAssign { body: b, .. }
         | ElementKind::Items { body: b, .. }
         | ElementKind::Sep { body: b }
         | ElementKind::Transform { body: b, .. }

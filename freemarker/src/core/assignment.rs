@@ -63,26 +63,7 @@ pub(crate) fn exec_assign(
 ) -> Result<ExecOutcome> {
     // Java Assignment.accept :102-122：`in nsExp` 子句——nsExp 为任意表达式，
     // eval 后检查类型（NonNamespaceException）/ null（InvalidReference）
-    let target_ns: Option<Rc<crate::core::environment::Namespace>> = match namespace {
-        None => None,
-        Some(ns_exp) => {
-            let m = eval::eval(env, ns_exp)?;
-            if m.is_nothing() {
-                return Err(TemplateError::invalid_reference(
-                    crate::core::environment::expr_desc(ns_exp),
-                ));
-            }
-            Some(env.as_namespace(&m).ok_or_else(|| {
-                // Java NonNamespaceException（Assignment.java:115-118）：
-                // "For \"#assign\" namespace: Expected a namespace, but this has evaluated to a ..."
-                TemplateError::misc(format!(
-                    "For \"#assign\" namespace: Expected a namespace, but this has evaluated to a {}: ==> {}",
-                    m.type_name,
-                    crate::core::environment::expr_desc(ns_exp)
-                ))
-            })?)
-        }
-    };
+    let target_ns = resolve_target_ns(env, namespace)?;
     let value = if *op == AssignOp::Equals {
         // Java :99-110（Assignment.java:136-142）：= 右侧为 null → classic 兼容模式
         // 赋空串（TemplateScalarModel.EMPTY_STRING）；strict → InvalidReference
@@ -191,6 +172,58 @@ pub(crate) fn exec_assign(
         }
     };
     // Java :159-165：写入目标
+    write_assign_value(env, target, value, &target_ns, scope)
+}
+
+/// `in nsExp` 目标命名空间解析（Java Assignment.accept :102-122：eval 后检查
+/// 类型（NonNamespaceException）/ null（InvalidReference））
+fn resolve_target_ns(
+    env: &mut crate::core::Environment,
+    namespace: Option<&crate::core::Expr>,
+) -> Result<Option<Rc<crate::core::environment::Namespace>>> {
+    match namespace {
+        None => Ok(None),
+        Some(ns_exp) => {
+            let m = eval::eval(env, ns_exp)?;
+            if m.is_nothing() {
+                return Err(TemplateError::invalid_reference(
+                    crate::core::environment::expr_desc(ns_exp),
+                ));
+            }
+            Ok(Some(env.as_namespace(&m).ok_or_else(|| {
+                // Java NonNamespaceException（Assignment.java:115-118）：
+                // "For \"#assign\" namespace: Expected a namespace, but this has evaluated to a ..."
+                TemplateError::misc(format!(
+                    "For \"#assign\" namespace: Expected a namespace, but this has evaluated to a {}: ==> {}",
+                    m.type_name,
+                    crate::core::environment::expr_desc(ns_exp)
+                ))
+            })?))
+        }
+    }
+}
+
+/// 预计算值写入目标 —— 块捕获赋值（Java BlockAssignment.accept :70-84）与
+/// exec_assign 尾部共用（Java :159-165 作用域写入）
+pub(crate) fn exec_assign_value(
+    env: &mut crate::core::Environment,
+    target: &str,
+    value: TModel,
+    namespace: Option<&crate::core::Expr>,
+    scope: AssignScope,
+) -> Result<ExecOutcome> {
+    let target_ns = resolve_target_ns(env, namespace)?;
+    write_assign_value(env, target, value, &target_ns, scope)
+}
+
+fn write_assign_value(
+    env: &mut crate::core::Environment,
+    target: &str,
+    value: TModel,
+    target_ns: &Option<Rc<crate::core::environment::Namespace>>,
+    scope: AssignScope,
+) -> Result<ExecOutcome> {
+    // Java :159-165：写入目标
     match scope {
         AssignScope::Local => {
             env.set_local_variable(target, value)?;
@@ -198,7 +231,7 @@ pub(crate) fn exec_assign(
         AssignScope::Global => {
             env.set_global_variable(target, value);
         }
-        AssignScope::Namespace => match &target_ns {
+        AssignScope::Namespace => match target_ns {
             Some(ns) => ns.put_var(target.to_string(), value),
             None => env.set_variable(target, value),
         },

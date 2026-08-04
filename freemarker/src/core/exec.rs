@@ -118,14 +118,12 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
         ElementKind::BlockAssign {
             target,
             body,
-            op,
             namespace,
+            ..
         } => crate::core::block_assignment::BlockAssignment::new(
             target.clone(),
             body.clone(),
-            *op,
             namespace.clone(),
-            el.span,
         )
         .exec(env),
         ElementKind::Global {

@@ -82,11 +82,18 @@ fn attribute_access() {
     assert_eq!(render_expr(BOOK_XML, r#"node.book.title[0].@lang"#), "en");
 }
 
-/// @@key 特殊键（Java AtAtKey：@@text/@@markup 等；@@nodeName 未实现——
-/// 引擎 atat_key 键集缺口，用 ?node_name 等价断言）
+/// @@key 特殊键（Java AtAtKey：@@text/@@markup 等；@@nodeName 为扩展键——
+/// 返回节点名（元素标签名），与 ?node_name 一致）
 #[test]
 fn at_at_key() {
-    assert_eq!(render_expr(BOOK_XML, "node.book?node_name"), "book");
+    // @@nodeName：节点名（元素标签名），与 ?node_name 一致
+    assert_eq!(render_expr(BOOK_XML, "node.book.@@nodeName"), "book");
+    // @@nodeName 的文档/文本节点等价（?node_name 语义：@document/@text）
+    assert_eq!(render_expr(BOOK_XML, "node.@@nodeName"), "@document");
+    assert_eq!(
+        render_expr(BOOK_XML, "node.book.author.@@nodeName"),
+        "author"
+    );
     // @@text：元素文本内容拼接
     assert_eq!(
         render_expr(BOOK_XML, "node.book.author.@@text"),
@@ -106,17 +113,33 @@ fn wildcard_children() {
     );
 }
 
-/// XPath 子集 //name 后代查找（无命名空间文档；
-/// 带默认命名空间时 // 匹配差异见 ENGINE_GAP 注）
+/// XPath 子集 //name 后代查找（Java Jaxen：无前缀名经
+/// translateNamespacePrefixToUri("") 解析为模板默认命名空间
+/// （JaxenXPathSupport.customNamespaceContext + Template.getNamespaceForPrefix("")）
+/// → 元素命名空间 == 默认命名空间时匹配；同名多元素返回序列）
 #[test]
 fn xpath_descendant() {
-    let plain = r#"<book><title>Everyday Italian</title><author>Giada</author></book>"#;
+    // BOOK_XML 元素在默认命名空间 http://example.com/book（ns_prefixes 声明 D）
     assert_eq!(
-        render_expr(plain, r#"node['//title'][0]?node_name"#),
+        render_expr(BOOK_XML, r#"node['//title'][0]?node_name"#),
         "title"
     );
-    // 单个匹配返回节点（Java NodeListModel 单元素语义）
-    assert_eq!(render_expr(plain, r#"node['//title']?node_name"#), "title");
+    // 单个匹配返回节点（Java NodeListModel 单元素语义；author 全文档唯一）
+    assert_eq!(
+        render_expr(BOOK_XML, r#"node['//author']?node_name"#),
+        "author"
+    );
+    // 多匹配 → 序列；`//para` 在默认命名空间下同样命中
+    assert_eq!(render_expr(BOOK_XML, r#"node['//para']?size"#), "2");
+    // 无命名空间元素在模板声明默认命名空间时不匹配无前缀名（Java matchesName：
+    // 无 ns 元素须用 N: 前缀，DomStringUtil.java:79-84）
+    let plain = r#"<book><title>Everyday Italian</title></book>"#;
+    assert_eq!(render_expr(plain, r#"node['//title']?size"#), "0");
+    // `//D:title` 显式前缀同样命中默认命名空间元素
+    assert_eq!(
+        render_expr(BOOK_XML, r#"node['//D:title'][0]?node_name"#),
+        "title"
+    );
 }
 
 /// 数字键 [n] 索引（Java DynamicKeyName 数字键 → 序列下标）

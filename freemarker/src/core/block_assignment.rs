@@ -1,38 +1,28 @@
 //! 块赋值指令 —— 对应 Java `freemarker.core.BlockAssignment`
-//! （块输出捕获为字符串后赋值）
+//! （块输出捕获：markup 输出格式下捕获为 markup 模型，否则字符串，赋值）
 
-use crate::core::assignment::{exec_assign, AssignScope};
+use crate::core::assignment::{exec_assign_value, AssignScope};
 use crate::core::environment::RunSignal;
 use crate::core::exec::ExecOutcome;
-use crate::core::{AssignOp, Element, Expr};
+use crate::core::{Element, Expr};
 use crate::error::Result;
-use crate::span::Span;
+use crate::template::TModel;
 
-/// `<#assign name>body</#assign>` 块捕获（对应 BlockAssignment.java）
+/// `<#assign name>body</#assign>` 块捕获（对应 BlockAssignment.java；
+/// 捕获值在 markup 输出格式下为 markup 模型，见 exec）
 pub struct BlockAssignment {
     pub target: String,
     pub body: Vec<Element>,
-    pub op: AssignOp,
     pub namespace: Option<Expr>,
-    /// 元素源码位置（Java 以 BlockAssignment 元素位置 blame）
-    pub span: Span,
 }
 
 impl BlockAssignment {
     /// 构造（Java 构造器；Rust 侧由解析器产生）
-    pub fn new(
-        target: String,
-        body: Vec<Element>,
-        op: AssignOp,
-        namespace: Option<Expr>,
-        span: Span,
-    ) -> Self {
+    pub fn new(target: String, body: Vec<Element>, namespace: Option<Expr>) -> Self {
         BlockAssignment {
             target,
             body,
-            op,
             namespace,
-            span,
         }
     }
 
@@ -42,13 +32,29 @@ impl BlockAssignment {
         match sig {
             RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
             RunSignal::Completed => {
-                let placeholder =
-                    crate::core::Expr::new(crate::core::ExprKind::Str(text), self.span);
-                exec_assign(
+                // Java BlockAssignment.capturedStringToModel（BlockAssignment.java:86-88）：
+                // 解析期输出格式为 markup 格式 → fromMarkup(captured)（markup 模型，
+                // 插值时不再转义）；否则 SimpleScalar（普通字符串）。markup 格式集合
+                // 对应 Java `instanceof MarkupOutputFormat`（HTML/XHTML/XML/RTF；
+                // CSS/JS/JSON 非 markup，Undefined/PlainText 非 markup）。
+                let fmt = env.settings.output_format;
+                let value = if matches!(
+                    fmt,
+                    crate::core::OutputFormatKind::Html
+                        | crate::core::OutputFormatKind::XHtml
+                        | crate::core::OutputFormatKind::Xml
+                        | crate::core::OutputFormatKind::Rtf
+                ) {
+                    // Java fromMarkup：仅存 markup 内容，无源纯文本槽（跨格式转换
+                    // 不可逆 → 插值于其他 markup 格式时报错，DollarVariable.java:78-92）
+                    crate::builtins::markup_outputs::markup_model_with(text, None, fmt)
+                } else {
+                    TModel::from_scalar(text)
+                };
+                exec_assign_value(
                     env,
                     &self.target,
-                    &placeholder,
-                    &self.op,
+                    value,
                     self.namespace.as_ref(),
                     AssignScope::Namespace,
                 )

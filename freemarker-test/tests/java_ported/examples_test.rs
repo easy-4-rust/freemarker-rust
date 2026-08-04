@@ -16,17 +16,14 @@
 //!   → AutoEscapingExample 用 `<#outputFormat 'HTML'>` + `<#autoEsc>` 包裹等价翻译
 //!   （同 output_format_test.rs 的模式）。
 //!
-//! ENGINE_GAP: testCapture/testConvert —— v1 捕获输出为普通字符串（Java 捕获块
-//!   输出 markup 模型，插值时不再转义）：capture 的 "Captured output: <b>Test</b>"
-//!   在 autoEsc 下仍被转义；另有 BlockAssign 末叶链空白剥离差异（行首多 "\n"）；
-//!   testConvert —— ?esc 的 markup 无格式槽位，跨 XML/RTF 格式转换（&apos;/\{\}）
-//!   不产生、<#attempt> 捕获段不因格式转换失败（?esc/?no_esc 单格式语义已对齐，
-//!   DollarVariable.java:72-92 的跨格式分支未实现）；
-//!   testConvert2 —— 空白剥离差异：Java getLastLeaf 停在 BlockAssignment（视为
-//!   叶、heedsOpeningWhitespace=false，TextBlock.java:488-504），块后换行被剥离；
-//!   v1 last_leaf 深入 assign body 到捕获文本（heeds=true）→ 行首多 3 个换行
-//!   （其余内容逐字一致）；另有引擎末叶链对 BlockAssign 无 Macro/BlockAssignment
-//!   特例（同因影响 testCapture 行首 "\n"）。
+//! ENGINE_GAP（已修复）：testCapture/testConvert/testConvert2 —— 曾因 v1 无
+//! markup 输出模型（捕获输出为普通字符串，autoEsc 下再被转义；?esc 无格式槽位，
+//! 跨 XML/RTF 格式转换不产生；<#attempt> 捕获段不因格式转换失败）与 BlockAssign
+//! 末叶链空白剥离差异（Java getLastLeaf 停在 BlockAssignment，TemplateElement.java
+//! :488-504）而 #[ignore]。现已按 Java 原语义实现：块捕获在 markup 输出格式下
+//! 产生 markup 模型（fromMarkup）、插值跨格式按源纯文本重转义或报错
+//! （DollarVariable.java:78-92）、BlockAssign 视为空白剥离叶 —— 三个测试全部
+//! 解锁（断言即 Java 原文）。
 //! NOT_APPLICABLE: testConfigureOutputFormatExamples / CustomFormatsExample 三个
 //!   方法 / testGettingStartedMain / TemplateConfigurationExamples 的
 //!   getOutputFormat/getEncoding 断言 —— Java 依赖 Template.getOutputFormat() 公开
@@ -124,13 +121,11 @@ fn test_info_box() {
 /// assertOutputForNamed("AutoEscapingExample-capture.ftlh")
 /// （HTML autoEsc：字符串字面量插值转义；捕获输出（markup）不转义）
 #[test]
-#[ignore = "引擎差异：v1 无 markup 输出模型——捕获输出在 autoEsc 下被转义（实际 \"&lt;b&gt;Test&lt;/b&gt;\"）；另有 BlockAssign 末叶链空白剥离差异（行首多 \"\\n\"）；断言保留 Java 原文"]
 fn test_capture() {
     let (c, loader) = test_config();
-    // 引擎差异：Java 捕获块输出为 markup 模型，插值时不再转义；v1 捕获输出
-    // 为普通字符串，autoEsc 下会被转义（output_format_test.rs 头注）→ 第二段
-    // "Captured output: <b>Test</b>" 在 v1 实际输出 "&lt;b&gt;Test&lt;/b&gt;"；
-    // 行首 "\n" 差异同 testConvert2 的 BlockAssignment 末叶链空白剥离差异。
+    // Java 语义：<#assign> 块捕获在 markup 输出格式（HTML）下产生 markup 模型
+    // （BlockAssignment.capturedStringToModel → fromMarkup），插值时不再转义；
+    // 字符串字面量插值按 autoEsc 转义。
     let ftl = html_autoesc_ftl(
         "<#assign captured><b>Test</b></#assign>\n\
          Just a string: ${\"<b>Test</b>\"}\n\
@@ -166,11 +161,12 @@ fn test_markup() {
 /// assertOutputForNamed("AutoEscapingExample-convert.ftlh")
 /// （?esc 的 markup 输出在 XML/RTF 格式下转换转义；捕获输出在各格式下失败）
 #[test]
-#[ignore = "引擎差异：v1 无 markup 输出模型——?esc 结果为普通字符串（autoEsc 下再被转义），XML(&apos;)/RTF(\\{\\}) 格式转换不产生，<#attempt> 捕获段不因格式转换失败；断言保留 Java 原文"]
 fn test_convert() {
     let (c, loader) = test_config();
-    // 引擎差异：v1 无 markup 输出模型——?esc 结果为普通字符串，跨格式转换
-    // （XML: &apos; / RTF: \{\}）不会发生；<#attempt> 捕获段 v1 无格式转换失败。
+    // Java 语义：?esc 产物带源纯文本槽（fromPlainTextByEscaping）——跨格式插值
+    // 时按当前格式重转义（HTML &#39; → XML &apos; → RTF \{）；块捕获产物为
+    // fromMarkup（无源纯文本）——跨格式转换不可行 → 报错，<#attempt> recover
+    // 输出 "Failed"（DollarVariable.java:78-92）。
     let ftl = html_autoesc_ftl(
         "<#assign mo1 = \"Foo's bar {}\"?esc>\n\
          HTML: ${mo1}\n\
@@ -191,13 +187,14 @@ fn test_convert() {
 /// assertOutputForNamed("AutoEscapingExample-convert2.ftl")
 /// （outputformat 块内捕获为各格式 markup，在 undefined 输出格式下按原样输出）
 #[test]
-#[ignore = "引擎差异：空白剥离——Java getLastLeaf 停在 BlockAssignment（视为叶，heedsOpeningWhitespace=false，TemplateElement.java:488-504），块后换行被剥离；v1 last_leaf 深入 assign body 到捕获文本（heeds=true）→ 行首多 3 个换行（其余内容逐字一致，捕获文本本身原样输出）；断言保留 Java 原文"]
 fn test_convert2() {
     let (c, loader) = test_config();
     // .ftl 文件（非 .ftlh）：Java "undefined" 输出格式，无 autoEsc。
-    // 引擎差异：v1 无 markup 模型——块内捕获为普通字符串，undefined 格式下
-    // 原样输出（Java 语义：markup 在 undefined 下输出 markup 原文，观察一致）；
-    // 但块后换行的空白剥离与 Java 不同（见 #[ignore] 原因），整体保留 Java 期望。
+    // 引擎差异：Java getLastLeaf 停在 BlockAssignment（视为叶，
+    // heedsOpeningWhitespace=false，TemplateElement.java:488-504）→ 块后换行被
+    // 剥离；v1 last_leaf 曾深入 assign body 到捕获文本 → 行首多 3 个换行。
+    // 已修复（BlockAssign 视为叶）；markup 在 undefined 格式下原样输出（Java
+    // UndefinedOutputFormat.isOutputFormatMixingAllowed=true → moOF.output(mo)）。
     let ftl = "<#outputformat \"HTML\"><#assign htmlMO><p>Test</#assign></#outputformat>\n\
                <#outputformat \"XML\"><#assign xmlMO><p>Test</p></#assign></#outputformat>\n\
                <#outputformat \"RTF\"><#assign rtfMO>\\par Test</#assign></#outputformat>\n\
@@ -207,6 +204,30 @@ fn test_convert2() {
                RTF:  ${rtfMO}";
     let expected = "HTML: <p>Test\nXML:  <p>Test</p>\nRTF:  \\par Test";
     assert_output(&c, &loader, ftl, expected);
+}
+
+/// VALUE_ADD：?esc/?no_esc 在目标已是 markup 且跨格式时的行为 —— 对应 Java
+/// BuiltInsForOutputFormatRelated.AbstractConverterBI（:52-74）：目标格式 == 当前
+/// 格式 → 原样绕过；否则目标有源纯文本 → 按当前格式重转义（fromPlainTextByEscaping）；
+/// 无源纯文本 → 报错。注：?esc/?no_esc 的格式 Java 在解析期绑定（FTL.jj 解析
+/// <#outputformat> 块体时切换解析期 outputFormat），本实现按求值期
+/// env.settings.output_format 绑定——在格式块内直接使用时二者一致（块内求值格式
+/// 即块格式）；差异仅存在于宏定义解析格式 ≠ 调用期格式的角落（v1 文档化偏差，
+/// 同 check_legacy_escaping_ban 的解析期/求值期差异）。
+#[test]
+fn test_esc_foreign_reconvert() {
+    let (c, loader) = test_config();
+    let ftl = html_autoesc_ftl(
+        "<#assign mo = \"Foo & bar\"?esc>\n\
+         XML: <#outputformat 'XML'>${mo?esc}</#outputformat>\n\
+         RTF: <#outputformat 'RTF'>${mo?esc}</#outputformat>\n\
+         NoPlain: <#outputformat 'XML'>${(\"<b>x</b>\"?no_esc)}</#outputformat>",
+    );
+    // mo 是 HTML markup（源纯文本 "Foo & bar"）：XML 块内 ?esc 重转义 &
+    // → &amp;；RTF 块内 & 无需转义 → 原样；?no_esc 在 XML 块内创建 XML markup
+    // （解析期/求值期均绑定块格式）→ 插值同格式原样输出
+    let expected = "XML: Foo &amp; bar\nRTF: Foo & bar\nNoPlain: <b>x</b>";
+    assert_output(&c, &loader, &ftl, expected);
 }
 
 /// Java AutoEscapingExample.testStringLiteral ——
