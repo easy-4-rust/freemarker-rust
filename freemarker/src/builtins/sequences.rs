@@ -1,6 +1,6 @@
 //! 序列内建 —— 对应 Java `BuiltInsForSequences.java`（本文件为 eval.rs 内建集未覆盖的
 //! 子集：chunk/filter/map/take_while/drop_while/sort/sort_by/min/max/seq_index_of/
-//! seq_last_index_of；first/last/join/reverse/seq_contains 在 eval.rs）。
+//! seq_last_index_of 等；join/reverse/seq_contains 自 built_in.rs 迁入（2026-08-04））。
 //!
 //! 语义要点（Java 对照）：
 //! - filter/map/take_while/drop_while 消费 lambda（Java ElementTransformer →
@@ -19,6 +19,7 @@
 //!   字符串/布尔上的 > 运算报错（EvalUtil.compare :262-277）。
 
 use crate::core::environment::{model_to_string, BodyCtx, LambdaValue, LocalEntry};
+use crate::core::eval;
 use crate::core::eval_util::{arg_count, check_arg_count};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
@@ -968,6 +969,162 @@ pub fn sequence(
         "?sequence is not applicable to a {} value",
         t.type_name
     )))
+}
+
+/// ?join —— Java joinBI（BuiltInsForSequences.java:191-265）：1-3 参数
+/// （separator / whenEmpty / afterLast，checkMethodArgCount(args, 1, 3)）；
+/// null（nothing）元素跳过（:225 `if (item != null)`，idx 仍递增）；
+/// 逐项字符串转换错误包装失败索引（:230-238，EMBEDDED_MESSAGE_BEGIN/END）；
+/// 右无界数值范围拒绝（:256 checkNotRightUnboundedNumericalRange，:929-935）
+pub fn join(
+    env: &mut crate::core::Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    // Java joinBI（BuiltInsForSequences.java:191-265）：1-3 参数
+    // （separator / whenEmpty / afterLast，checkMethodArgCount(args, 1, 3)）；
+    // null（nothing）元素跳过（:225 `if (item != null)`，idx 仍递增）；
+    // 逐项字符串转换错误包装失败索引（:230-238，EMBEDDED_MESSAGE_BEGIN/END）；
+    // 右无界数值范围拒绝（:256 checkNotRightUnboundedNumericalRange，:929-935）
+    if let Some(a) = args {
+        if a.is_empty() || a.len() > 3 {
+            // Java _MessageUtil.newArgCntError（BuiltIn.java:450-452）：
+            // "?join(...) expects 1 to 3 arguments but has received none./{n}."
+            return Err(TemplateError::misc(format!(
+                "?join(...) expects 1 to 3 arguments but has received {}.",
+                if a.is_empty() {
+                    "none".to_string()
+                } else {
+                    a.len().to_string()
+                }
+            )));
+        }
+    }
+    let arg = args.and_then(|a| a.first()).ok_or_else(|| {
+        TemplateError::misc("?join(...) expects 1 to 3 arguments but has received none.")
+    })?;
+    let m = eval(env, target)?;
+    if m.range.as_ref().is_some_and(|r| r.unbounded) {
+        return Err(TemplateError::misc(
+                    "The input sequence is a right-unbounded numerical range, thus, it's infinitely long, and can't processed with this built-in.",
+                ));
+    }
+    let sep = eval(env, arg)?.get_scalar()?;
+    let when_empty = match args.and_then(|a| a.get(1)) {
+        Some(a) => Some(eval(env, a)?.get_scalar()?),
+        None => None,
+    };
+    let after_last = match args.and_then(|a| a.get(2)) {
+        Some(a) => Some(eval(env, a)?.get_scalar()?),
+        None => None,
+    };
+    let mut out = String::new();
+    let mut had_item = false;
+    let mut idx = 0usize;
+    // Java :251-263：TemplateCollectionModel 优先 → 惰性迭代器；
+    // 其次 TemplateSequenceModel → CollectionAndSequence 包装
+    if let Some(c) = &m.collection {
+        for v in c.iterator()? {
+            join_append_item(env, &v?, &mut out, &sep, &mut had_item, idx)?;
+            idx += 1;
+        }
+    } else if let Some(s) = &m.sequence {
+        let n = s.size()?;
+        for i in 0..n {
+            let item = s.get(i)?;
+            join_append_item(env, &item, &mut out, &sep, &mut had_item, idx)?;
+            idx += 1;
+        }
+    } else {
+        return Err(TemplateError::misc(format!(
+            "?join is not applicable to a {} value",
+            m.type_name
+        )));
+    }
+    // Java :242-246：hadItem → afterLast；否则 → whenEmpty
+    if had_item {
+        if let Some(al) = after_last {
+            out.push_str(&al);
+        }
+    } else if let Some(we) = when_empty {
+        out.push_str(&we);
+    }
+    Ok(Some(TModel::from_scalar(out)))
+}
+
+/// ?reverse —— Java reverseBI（BuiltInsForSequences.java）：序列倒序/字符串倒序
+pub fn reverse(
+    env: &mut crate::core::Environment,
+    target: &Expr,
+    _args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    let m = eval(env, target)?;
+    if let Some(seq) = &m.sequence {
+        let n = seq.size()?;
+        let mut v = Vec::with_capacity(n);
+        for i in (0..n).rev() {
+            v.push(seq.get(i)?);
+        }
+        return Ok(Some(TModel::from_sequence(v)));
+    }
+    if let Some(sc) = &m.scalar {
+        return Ok(Some(TModel::from_scalar(
+            sc.as_string()?.chars().rev().collect(),
+        )));
+    }
+    Err(TemplateError::misc(format!(
+        "?reverse is not applicable to a {} value",
+        m.type_name
+    )))
+}
+
+/// ?seq_contains —— Java seq_containsBI（BuiltInsForSequences.java:308-380）：
+/// checkMethodArgCount(1)；序列优先（2.3.x BC），否则集合迭代；
+/// 参数缺失变量 → null → modelsEqual false
+pub fn seq_contains(
+    env: &mut crate::core::Environment,
+    target: &Expr,
+    args: Option<&[Expr]>,
+) -> Result<Option<TModel>> {
+    // Java seq_containsBI（BuiltInsForSequences.java:308-380）：checkMethodArgCount(1)；
+    // 序列优先（2.3.x BC），否则集合迭代；参数缺失变量 → null → modelsEqual false
+    crate::core::eval_util::check_arg_count("seq_contains", args, 1, 1)?;
+    let m = eval(env, target)?;
+    let needle = crate::builtins::sequences::eval_arg_lenient(env, args, 0)?;
+    let items = crate::builtins::sequences::seq_or_collection_items(&m, "seq_contains")?;
+    for (i, item) in items.iter().enumerate() {
+        if crate::builtins::sequences::models_equal(i, item, &needle, Some(env))? {
+            return Ok(Some(TModel::from_boolean(true)));
+        }
+    }
+    Ok(Some(TModel::from_boolean(false)))
+}
+
+fn join_append_item(
+    env: &mut crate::core::Environment,
+    item: &TModel,
+    out: &mut String,
+    sep: &str,
+    had_item: &mut bool,
+    idx: usize,
+) -> Result<()> {
+    if item.is_nothing() {
+        return Ok(());
+    }
+    if *had_item {
+        out.push_str(sep);
+    } else {
+        *had_item = true;
+    }
+    match model_to_string(env, item) {
+        Ok(s) => {
+            out.push_str(&s);
+            Ok(())
+        }
+        Err(e) => Err(TemplateError::misc(format!(
+            "\"?join\" failed at index {idx} with this error:\n\n---begin-message---\n{e}\n---end-message---"
+        ))),
+    }
 }
 
 #[cfg(test)]

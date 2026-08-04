@@ -611,113 +611,9 @@ fn builtin_impl(
                 m.type_name
             )))
         }
-        "join" => {
-            // Java joinBI（BuiltInsForSequences.java:191-265）：1-3 参数
-            // （separator / whenEmpty / afterLast，checkMethodArgCount(args, 1, 3)）；
-            // null（nothing）元素跳过（:225 `if (item != null)`，idx 仍递增）；
-            // 逐项字符串转换错误包装失败索引（:230-238，EMBEDDED_MESSAGE_BEGIN/END）；
-            // 右无界数值范围拒绝（:256 checkNotRightUnboundedNumericalRange，:929-935）
-            if let Some(a) = args.exprs {
-                if a.is_empty() || a.len() > 3 {
-                    // Java _MessageUtil.newArgCntError（BuiltIn.java:450-452）：
-                    // "?join(...) expects 1 to 3 arguments but has received none./{n}."
-                    return Err(TemplateError::misc(format!(
-                        "?join(...) expects 1 to 3 arguments but has received {}.",
-                        if a.is_empty() {
-                            "none".to_string()
-                        } else {
-                            a.len().to_string()
-                        }
-                    )));
-                }
-            }
-            let arg = arg_expr(
-                args,
-                0,
-                "?join(...) expects 1 to 3 arguments but has received none.",
-            )?;
-            let m = eval(env, target)?;
-            if m.range.as_ref().is_some_and(|r| r.unbounded) {
-                return Err(TemplateError::misc(
-                    "The input sequence is a right-unbounded numerical range, thus, it's infinitely long, and can't processed with this built-in.",
-                ));
-            }
-            let sep = eval(env, arg)?.get_scalar()?;
-            let when_empty = match args.exprs.and_then(|a| a.get(1)) {
-                Some(a) => Some(eval(env, a)?.get_scalar()?),
-                None => None,
-            };
-            let after_last = match args.exprs.and_then(|a| a.get(2)) {
-                Some(a) => Some(eval(env, a)?.get_scalar()?),
-                None => None,
-            };
-            let mut out = String::new();
-            let mut had_item = false;
-            let mut idx = 0usize;
-            // Java :251-263：TemplateCollectionModel 优先 → 惰性迭代器；
-            // 其次 TemplateSequenceModel → CollectionAndSequence 包装
-            if let Some(c) = &m.collection {
-                for v in c.iterator()? {
-                    join_append_item(env, &v?, &mut out, &sep, &mut had_item, idx)?;
-                    idx += 1;
-                }
-            } else if let Some(s) = &m.sequence {
-                let n = s.size()?;
-                for i in 0..n {
-                    let item = s.get(i)?;
-                    join_append_item(env, &item, &mut out, &sep, &mut had_item, idx)?;
-                    idx += 1;
-                }
-            } else {
-                return Err(TemplateError::misc(format!(
-                    "?join is not applicable to a {} value",
-                    m.type_name
-                )));
-            }
-            // Java :242-246：hadItem → afterLast；否则 → whenEmpty
-            if had_item {
-                if let Some(al) = after_last {
-                    out.push_str(&al);
-                }
-            } else if let Some(we) = when_empty {
-                out.push_str(&we);
-            }
-            Ok(Some(TModel::from_scalar(out)))
-        }
-        "reverse" => {
-            let m = eval(env, target)?;
-            if let Some(seq) = &m.sequence {
-                let n = seq.size()?;
-                let mut v = Vec::with_capacity(n);
-                for i in (0..n).rev() {
-                    v.push(seq.get(i)?);
-                }
-                return Ok(Some(TModel::from_sequence(v)));
-            }
-            if let Some(sc) = &m.scalar {
-                return Ok(Some(TModel::from_scalar(
-                    sc.as_string()?.chars().rev().collect(),
-                )));
-            }
-            Err(TemplateError::misc(format!(
-                "?reverse is not applicable to a {} value",
-                m.type_name
-            )))
-        }
-        "seq_contains" => {
-            // Java seq_containsBI（BuiltInsForSequences.java:308-380）：checkMethodArgCount(1)；
-            // 序列优先（2.3.x BC），否则集合迭代；参数缺失变量 → null → modelsEqual false
-            crate::core::eval_util::check_arg_count("seq_contains", args.exprs, 1, 1)?;
-            let m = eval(env, target)?;
-            let needle = crate::builtins::sequences::eval_arg_lenient(env, args.exprs, 0)?;
-            let items = crate::builtins::sequences::seq_or_collection_items(&m, "seq_contains")?;
-            for (i, item) in items.iter().enumerate() {
-                if crate::builtins::sequences::models_equal(i, item, &needle, Some(env))? {
-                    return Ok(Some(TModel::from_boolean(true)));
-                }
-            }
-            Ok(Some(TModel::from_boolean(false)))
-        }
+        "join" => crate::builtins::sequences::join(env, target, args.exprs),
+        "reverse" => crate::builtins::sequences::reverse(env, target, args.exprs),
+        "seq_contains" => crate::builtins::sequences::seq_contains(env, target, args.exprs),
         // ---- 哈希（Java BuiltInsForHashes.java）----
         "keys" => crate::builtins::hashes::keys(env, target, args.exprs),
         "values" => crate::builtins::hashes::values(env, target, args.exprs),
@@ -1086,33 +982,6 @@ fn arg_expr<'a>(args: &'a BuiltinArgs, idx: usize, err: &str) -> Result<&'a Expr
 /// （idx 仍递增）；非 null 项间插 separator；转换错误包装
 /// `"?join" failed at index {idx} with this error:...`（:230-238，
 /// _MessageUtil.EMBEDDED_MESSAGE_BEGIN/END = "---begin-message---\\n" / "\\n---end-message---"）
-fn join_append_item(
-    env: &mut crate::core::Environment,
-    item: &TModel,
-    out: &mut String,
-    sep: &str,
-    had_item: &mut bool,
-    idx: usize,
-) -> Result<()> {
-    if item.is_nothing() {
-        return Ok(());
-    }
-    if *had_item {
-        out.push_str(sep);
-    } else {
-        *had_item = true;
-    }
-    match model_to_string(env, item) {
-        Ok(s) => {
-            out.push_str(&s);
-            Ok(())
-        }
-        Err(e) => Err(TemplateError::misc(format!(
-            "\"?join\" failed at index {idx} with this error:\n\n---begin-message---\n{e}\n---end-message---"
-        ))),
-    }
-}
-
 fn char_index_from(s: &str, from: usize) -> Option<&str> {
     let mut chars = 0;
     for (i, _) in s.char_indices() {
