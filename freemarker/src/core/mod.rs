@@ -1,8 +1,11 @@
 //! 对应 Java `freemarker.core` 包：解析器产物、渲染引擎、算术引擎、设置项
 
 mod arithmetic_engine;
+mod assignment;
+mod assignment_instruction;
 mod attempt_block;
 mod auto_esc_block;
+mod block_assignment;
 mod break_instruction;
 mod comment;
 mod compressed_block;
@@ -20,8 +23,8 @@ mod flush_instruction;
 mod ftl_header;
 mod get_optional_template_method;
 mod global_assignment;
-mod local_assignment;
 mod hash_literal;
+mod local_assignment;
 mod macro_def;
 mod no_auto_esc_block;
 mod no_escape_block;

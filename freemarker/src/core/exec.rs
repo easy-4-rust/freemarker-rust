@@ -16,7 +16,7 @@
 
 use crate::core::environment::{expr_desc, model_to_string, LocalEntry, LoopCtx, RunSignal};
 use crate::core::eval;
-use crate::core::{ArithmeticEngine, AssignOp, CallTarget, Element, ElementKind, OutputFormatKind};
+use crate::core::{CallTarget, Element, ElementKind, OutputFormatKind};
 use crate::error::{FlowKind, Result, TemplateError};
 use crate::span::Span;
 use crate::template::{TModel, TemplateDirectiveBody};
@@ -102,8 +102,7 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
         ElementKind::Items { var, var2, body } => exec_items(env, var, var2, body),
         ElementKind::Sep { body } => exec_sep(env, body),
         ElementKind::Assignments(els) => {
-            crate::core::assignment_instruction::AssignmentInstruction::new(els.clone())
-                .exec(env)
+            crate::core::assignment_instruction::AssignmentInstruction::new(els.clone()).exec(env)
         }
         ElementKind::Assign {
             target,
@@ -324,6 +323,147 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
         ElementKind::Fallback => {
             crate::core::fallback_instruction::FallbackInstruction::new().exec(env)
         }
+    }
+}
+
+/// `<#if>` 执行（elseif 链扁平化下钻；借用版：命中分支克隆返回）
+/// `span`：当前 case 的源码位置（`<#elseif>` 下钻时更新为各 case 自身 span）
+/// `<#if>` 条件类型错误 → Java `For "#if" condition: ... ==> {cond}` 形式
+/// （NonBooleanException 的 blamer/blame/位置）
+fn blame_if_condition(
+    e: TemplateError,
+    env: &mut crate::core::Environment,
+    cond: &crate::core::Expr,
+) -> TemplateError {
+    if let TemplateError::TypeMismatch { ctx, .. } = &e {
+        if ctx.blamer.is_none() {
+            return e.with_blame_at(
+                "#if",
+                "condition",
+                &crate::core::environment::expr_desc(cond),
+                &env.current_template_name,
+                cond.span,
+            );
+        }
+    }
+    crate::core::environment::attach_location(e, &env.current_template_name, cond.span)
+}
+
+fn exec_if(
+    env: &mut crate::core::Environment,
+    span: Span,
+    cond: &crate::core::Expr,
+    then: &[Element],
+    else_: &Option<Vec<Element>>,
+) -> Result<ExecOutcome> {
+    let mut cur_span = span;
+    let mut cond = cond;
+    let mut then = then;
+    let mut else_ = else_;
+    loop {
+        let cm = eval::eval(env, cond).map_err(|e| {
+            crate::core::environment::attach_location(e, &env.current_template_name, cur_span)
+        })?;
+        // Java IfBlock.accept → condition.evalToBoolean：条件类型错误 blame 条件表达式
+        // —— `For "#if" condition: Expected a boolean, but this has evaluated to a
+        // {type}: ==> {cond}`（位置 = 条件表达式起始）
+        let b = eval::model_to_boolean(env, &cm).map_err(|e| blame_if_condition(e, env, cond))?;
+        if b {
+            return Ok(ExecOutcome::Next(then.to_vec()));
+        }
+        match else_ {
+            Some(v) if v.len() == 1 => {
+                if let ElementKind::If {
+                    cond: c2,
+                    then: t2,
+                    else_: e2,
+                } = &v[0].kind
+                {
+                    cur_span = v[0].span;
+                    cond = c2;
+                    then = t2;
+                    else_ = e2;
+                    continue;
+                }
+                return Ok(ExecOutcome::Next(v.clone()));
+            }
+            Some(v) => return Ok(ExecOutcome::Next(v.clone())),
+            None => return Ok(ExecOutcome::Done),
+        }
+    }
+}
+
+/// 所有权版指令执行 —— run_slice 的 mini 栈路径使用：命中分支/调用 body
+/// 直接移动（零克隆）。非热路径 variant 委托 exec(&Element)（借用语义一致）。
+pub(crate) fn exec_owned(env: &mut crate::core::Environment, el: Element) -> Result<ExecOutcome> {
+    let span = el.span;
+    match el.kind {
+        // `<#if>`：分支 Vec 移动（零克隆）+ elseif 链下钻
+        ElementKind::If { cond, then, else_ } => {
+            let mut cur_span = span;
+            let mut cond = cond;
+            let mut then = then;
+            let mut else_ = else_;
+            loop {
+                let cm = eval::eval(env, &cond).map_err(|e| {
+                    crate::core::environment::attach_location(
+                        e,
+                        &env.current_template_name,
+                        cur_span,
+                    )
+                })?;
+                let b = eval::model_to_boolean(env, &cm).map_err(|e| {
+                    crate::core::environment::attach_location(
+                        e,
+                        &env.current_template_name,
+                        cur_span,
+                    )
+                })?;
+                if b {
+                    return Ok(ExecOutcome::Next(then));
+                }
+                match else_ {
+                    Some(v) if v.len() == 1 => match v.into_iter().next().unwrap() {
+                        Element {
+                            kind:
+                                ElementKind::If {
+                                    cond: c2,
+                                    then: t2,
+                                    else_: e2,
+                                },
+                            span: s2,
+                        } => {
+                            cur_span = s2;
+                            cond = c2;
+                            then = t2;
+                            else_ = e2;
+                            continue;
+                        }
+                        e => return Ok(ExecOutcome::Next(vec![e])),
+                    },
+                    Some(v) => return Ok(ExecOutcome::Next(v)),
+                    None => return Ok(ExecOutcome::Done),
+                }
+            }
+        }
+        // 多赋值：元素所有权逐个传递
+        ElementKind::Assignments(els) => {
+            for e in els {
+                let outcome = exec_owned(env, e)?;
+                if !matches!(outcome, ExecOutcome::Done) {
+                    return Ok(outcome);
+                }
+            }
+            Ok(ExecOutcome::Done)
+        }
+        // `<@...>` 调用：body/body_params 移动（避免每调用一次 to_vec 克隆）
+        ElementKind::Call {
+            callee,
+            args,
+            body,
+            body_params,
+        } => exec_call_impl(env, &callee, &args, body, body_params, span),
+        other => exec(env, &Element { kind: other, span }),
     }
 }
 
