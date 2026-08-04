@@ -16,15 +16,13 @@ use crate::core::expression::{
     eval_interp_str, ArithmeticExpression, BooleanLiteral, ComparisonExpression,
     DefaultToExpression, Dot, DynamicKeyName, ExistsExpression, HashLiteral, Identifier,
     ListLiteral, LocalLambdaExpression, MethodCall, NotExpression, NumOp, NumberLiteral,
-    ParentheticalExpression, StringLiteral, UnaryPlusMinusExpression,
+    ParentheticalExpression, Range, StringLiteral, UnaryPlusMinusExpression,
 };
-use crate::core::{BuiltinVar, Expr, ExprKind, RangeKind};
+use crate::core::{BuiltinVar, Expr, ExprKind};
 use crate::error::{Result, TemplateError};
 use crate::span::Span;
 use crate::template::utility::java_trim;
-use crate::template::{
-    TModel, TemplateCollectionModel, TemplateHashModel, TemplateHashModelEx, TemplateSequenceModel,
-};
+use crate::template::{TModel, TemplateHashModel, TemplateHashModelEx};
 use crate::value::{DateType, DateValue, TNumber};
 use bigdecimal::ToPrimitive;
 use std::rc::Rc;
@@ -114,7 +112,12 @@ fn eval_inner(env: &mut crate::core::Environment, expr: &Expr) -> Result<TModel>
         ExprKind::Or(a, b) => {
             crate::core::expression::OrExpression::new((**a).clone(), (**b).clone()).eval(env)
         }
-        ExprKind::Range { start, end, kind } => eval_range(env, start, end, *kind),
+        ExprKind::Range { start, end, kind } => Range::new(
+            (**start).clone(),
+            end.as_ref().map(|e| (**e).clone()),
+            *kind,
+        )
+        .eval(env),
         ExprKind::Default { target, default } => {
             DefaultToExpression::new((**target).clone(), default.as_ref().map(|d| (**d).clone()))
                 .eval(env)
@@ -444,229 +447,6 @@ fn join_append_item(
 // `crate::core::eval::` 旧路径不变（core/mod.rs 亦从中公开重导出）
 pub(crate) use crate::core::expression::compare_numbers;
 pub use crate::core::expression::{compare_models, CmpOp};
-
-/// 范围（Java Range.java:52-63 `_eval` → BoundedRangeModel / ListableRightUnboundedRangeModel）
-/// - `a..b` 含端；`a..<b` 排端；`a..*n` 从 a 起 n 个（Java END_SIZE_LIMITED：begin+rho 为末端）；
-///   有界范围实现为惰性 BoundedRangeSeq（Java BoundedRangeModel 是 TemplateSequenceModel）；
-/// - `a..*` 无界 → 惰性 RightUnboundedRange（v1 集合角色 + 迭代上限）。
-fn eval_range(
-    env: &mut crate::core::Environment,
-    start: &Expr,
-    end: &Option<Box<Expr>>,
-    kind: RangeKind,
-) -> Result<TModel> {
-    let s = eval(env, start)?.get_number()?;
-    let s_i = trunc_i64(&s).ok_or_else(|| {
-        TemplateError::misc(format!(
-            "The start of the range {} is not a representable integer",
-            s.to_plain_string()
-        ))
-    })?;
-    match end {
-        Some(e) => {
-            let e_m = eval(env, e)?.get_number()?;
-            let (count, ascending) = match kind {
-                // Java BoundedRangeModel(begin, lhoValue, inclusive, sizeLimited=false)
-                RangeKind::Inclusive => {
-                    let e_i = trunc_i64(&e_m).ok_or_else(|| {
-                        TemplateError::misc("Range end is not a representable integer")
-                    })?;
-                    (((e_i - s_i).abs() + 1) as usize, s_i <= e_i)
-                }
-                RangeKind::Exclusive => {
-                    let e_i = trunc_i64(&e_m).ok_or_else(|| {
-                        TemplateError::misc("Range end is not a representable integer")
-                    })?;
-                    ((e_i - s_i).unsigned_abs() as usize, s_i <= e_i)
-                }
-                // Java END_SIZE_LIMITED：end = begin + rho；size = |rho|
-                RangeKind::SizeLimited => {
-                    let n = trunc_i64(&e_m).ok_or_else(|| {
-                        TemplateError::misc("Range size is not a representable integer")
-                    })?;
-                    (n.unsigned_abs() as usize, n >= 0)
-                }
-            };
-            let mut m = bounded_range_model(s_i, count, ascending);
-            m.range = Some(std::rc::Rc::new(crate::core::RangeSpec {
-                start: s_i,
-                count,
-                ascending,
-                unbounded: false,
-                // Java：仅 END_SIZE_LIMITED（`..*`）自适应（Range.java:57-58）
-                adaptive: kind == RangeKind::SizeLimited,
-                // Java BoundedRangeModel：affectedByStringSlicingBug = inclusiveEnd
-                // （仅 `a..b` 闭区间；`..<`/`..!`/`..*` 不受影响，Range.java:56-58）
-                affected_by_string_slicing_bug: kind == RangeKind::Inclusive,
-            }));
-            Ok(m)
-        }
-        None => {
-            // `a..` 右无界（Java Range.java:44-47）：ICI ≥ 2.3.21 →
-            // ListableRightUnboundedRangeModel（size=Integer.MAX_VALUE、可索引）；
-            // ICI < 2.3.21 → NonListableRightUnboundedRangeModel（旧版兼容：size=0、
-            // 迭代为空，`(4..)?size` == 0）
-            if kind != RangeKind::SizeLimited {
-                return Err(TemplateError::misc("Malformed range expression"));
-            }
-            let mut m = if env.settings.incompatible_improvements.to_int() >= 2_003_021 {
-                listable_right_unbounded_range_model(s_i)
-            } else {
-                nonlistable_right_unbounded_range_model(s_i)
-            };
-            m.range = Some(std::rc::Rc::new(crate::core::RangeSpec {
-                start: s_i,
-                count: 0,
-                ascending: true,
-                unbounded: true,
-                adaptive: true, // 无界恒自适应（DynamicKeyName.java:204）
-                affected_by_string_slicing_bug: false, // RightUnboundedRangeModel.java:44
-            }));
-            Ok(m)
-        }
-    }
-}
-
-/// 有界范围序列 —— 对应 Java `BoundedRangeModel`（TemplateSequenceModel：get(i) = begin ± i，
-/// size 惰性计算；不急切物化，避免超大范围内存爆炸）
-pub(crate) struct BoundedRangeSeq {
-    start: i64,
-    count: usize,
-    ascending: bool,
-}
-
-fn bounded_range_model(start: i64, count: usize, ascending: bool) -> TModel {
-    let seq = Rc::new(BoundedRangeSeq {
-        start,
-        count,
-        ascending,
-    });
-    TModel {
-        sequence: Some(seq.clone()),
-        collection: Some(seq),
-        type_name: "sequence",
-        kind: crate::template::ModelKind::Sequence,
-        ..TModel::nothing()
-    }
-}
-
-impl TemplateSequenceModel for BoundedRangeSeq {
-    fn get(&self, index: usize) -> Result<TModel> {
-        if index >= self.count {
-            return Err(TemplateError::misc(format!(
-                "Sequence index out of bounds: {index}"
-            )));
-        }
-        let v = if self.ascending {
-            self.start + index as i64
-        } else {
-            self.start - index as i64
-        };
-        Ok(TModel::from_number(TNumber::from_i64(v)))
-    }
-    fn size(&self) -> Result<usize> {
-        Ok(self.count)
-    }
-}
-
-impl TemplateCollectionModel for BoundedRangeSeq {
-    fn iterator(&self) -> Result<Box<dyn Iterator<Item = Result<TModel>>>> {
-        let (start, count, ascending) = (self.start, self.count, self.ascending);
-        Ok(Box::new((0..count).map(move |i| {
-            let v = if ascending {
-                start + i as i64
-            } else {
-                start - i as i64
-            };
-            Ok(TModel::from_number(TNumber::from_i64(v)))
-        })))
-    }
-}
-
-/// 无界范围迭代上限（防呆；Java 为真正的无限惰性序列）
-const UNBOUNDED_RANGE_ITER_CAP: usize = 1_000_000;
-
-/// 右无界范围序列长度 —— Java `ListableRightUnboundedRangeModel.size()`
-/// 返回 `Integer.MAX_VALUE`（2147483647）
-const UNBOUNDED_RANGE_SIZE: usize = i32::MAX as usize;
-
-/// 右无界范围（ICI ≥ 2.3.21）—— 对应 Java `ListableRightUnboundedRangeModel`：
-/// 序列 + 集合双角色；`?size` = Integer.MAX_VALUE；`r[i]` = begin + i（越界抛
-/// "Range item index ... is out of bounds."）；迭代器带上限防呆
-pub(crate) struct ListableRightUnboundedRange {
-    start: i64,
-}
-
-fn listable_right_unbounded_range_model(start: i64) -> TModel {
-    let inner = Rc::new(ListableRightUnboundedRange { start });
-    let seq: Rc<dyn TemplateSequenceModel> = inner.clone();
-    let coll: Rc<dyn TemplateCollectionModel> = inner;
-    TModel {
-        sequence: Some(seq),
-        collection: Some(coll),
-        type_name: "sequence",
-        kind: crate::template::ModelKind::Sequence,
-        ..TModel::nothing()
-    }
-}
-
-impl TemplateSequenceModel for ListableRightUnboundedRange {
-    fn get(&self, index: usize) -> Result<TModel> {
-        if index >= UNBOUNDED_RANGE_SIZE {
-            return Err(TemplateError::misc(format!(
-                "Range item index {index} is out of bounds."
-            )));
-        }
-        Ok(TModel::from_number(TNumber::from_i64(
-            self.start + index as i64,
-        )))
-    }
-    fn size(&self) -> Result<usize> {
-        Ok(UNBOUNDED_RANGE_SIZE)
-    }
-}
-
-impl TemplateCollectionModel for ListableRightUnboundedRange {
-    fn iterator(&self) -> Result<Box<dyn Iterator<Item = Result<TModel>>>> {
-        let start = self.start;
-        Ok(Box::new((0..UNBOUNDED_RANGE_ITER_CAP).map(move |i| {
-            Ok(TModel::from_number(TNumber::from_i64(start + i as i64)))
-        })))
-    }
-}
-
-/// 右无界范围（ICI < 2.3.21）—— 对应 Java `NonListableRightUnboundedRangeModel`：
-/// 旧版兼容：size() = 0、迭代为空（`(4..)?size` == 0、`<#list 4.. as i>` 不执行、
-/// `(4..)[0]` 越界 → 数字键路径按 invalid reference 报错）
-pub(crate) struct NonListableRightUnboundedRange;
-
-fn nonlistable_right_unbounded_range_model(_start: i64) -> TModel {
-    // Java NonListable 同样持有 begin（构造函数），但 size=0 时无从可见
-    let seq: Rc<dyn TemplateSequenceModel> = Rc::new(NonListableRightUnboundedRange);
-    let coll: Rc<dyn TemplateCollectionModel> = Rc::new(NonListableRightUnboundedRange);
-    TModel {
-        sequence: Some(seq),
-        collection: Some(coll),
-        type_name: "sequence",
-        kind: crate::template::ModelKind::Sequence,
-        ..TModel::nothing()
-    }
-}
-
-impl TemplateSequenceModel for NonListableRightUnboundedRange {
-    fn get(&self, _index: usize) -> Result<TModel> {
-        Err(TemplateError::misc("Range item index is out of bounds."))
-    }
-    fn size(&self) -> Result<usize> {
-        Ok(0)
-    }
-}
-
-impl TemplateCollectionModel for NonListableRightUnboundedRange {
-    fn iterator(&self) -> Result<Box<dyn Iterator<Item = Result<TModel>>>> {
-        Ok(Box::new(std::iter::empty()))
-    }
-}
 
 /// 默认值（Java DefaultToExpression.java:84-105：目标缺失 → 求默认值（惰性）；
 /// 无默认值 → 空字符串模型 EMPTY_STRING_AND_SEQUENCE_AND_HASH（v1 简化为空字符串））
