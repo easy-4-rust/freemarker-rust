@@ -49,3 +49,21 @@ impl TextBlock {
         Ok(ExecOutcome::Done)
     }
 }
+
+/// `<#gt>` 特殊文本（Java 无 `<#gt>` 指令，v1 契约映射为字面 ">"）
+pub struct RawText {
+    pub text: String,
+}
+
+impl RawText {
+    /// 构造（Rust 侧由解析器产生）
+    pub fn new(text: String) -> Self {
+        RawText { text }
+    }
+
+    /// 执行：原样输出
+    pub(crate) fn exec(&self, env: &mut crate::core::Environment) -> Result<ExecOutcome> {
+        env.emit(&self.text)?;
+        Ok(ExecOutcome::Done)
+    }
+}
