@@ -21,7 +21,7 @@ use crate::value::{DateType, TNumber};
 // ---------------------------------------------------------------------------
 
 /// 内建函数参数表达式视图（惰性内建按需求值）
-struct BuiltinArgs<'a> {
+pub(crate) struct BuiltinArgs<'a> {
     exprs: Option<&'a [Expr]>,
 }
 
@@ -733,35 +733,8 @@ fn builtin_impl(
             Ok(Some(TModel::from_boolean(false)))
         }
         // ---- 哈希（Java BuiltInsForHashes.java）----
-        "keys" => {
-            let m = eval(env, target)?;
-            let h = m.hash_ex.clone().ok_or_else(|| {
-                TemplateError::misc(format!(
-                    "?keys is not applicable to a {} value",
-                    m.type_name
-                ))
-            })?;
-            // Java BuiltInsForHashes：SimpleHash(LinkedHashMap) 插入序
-            Ok(Some(TModel::from_sequence(
-                h.keys()?.into_iter().map(TModel::from_scalar).collect(),
-            )))
-        }
-        "values" => {
-            let m = eval(env, target)?;
-            let h = m.hash_ex.clone().ok_or_else(|| {
-                TemplateError::misc(format!(
-                    "?values is not applicable to a {} value",
-                    m.type_name
-                ))
-            })?;
-            // Java BuiltInsForHashes：按插入序取值（entries() 承载重复键模型的
-            // 原始键值对——legacy HashLiteral 的 valueList，HashLiteral.java:150）
-            let mut v = Vec::new();
-            for (_, value) in h.entries()? {
-                v.push(value);
-            }
-            Ok(Some(TModel::from_sequence(v)))
-        }
+        "keys" => crate::builtins::hashes::keys(env, target, args.exprs),
+        "values" => crate::builtins::hashes::values(env, target, args.exprs),
         // ---- 输出/格式化（Java BuiltInsForMultipleTypes.java）----
         "has_content" => {
             // Java hasContentBI：evalMaybeNonexistentTarget（仅括号目标抑制）→ isEmpty

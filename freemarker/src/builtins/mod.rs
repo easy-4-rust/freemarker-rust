@@ -20,10 +20,12 @@ pub mod callables;
 pub mod dates;
 pub mod existence;
 pub mod format;
+pub mod hashes;
 pub mod iso_date_format;
 pub mod java_date_format;
 pub mod lazy;
 pub mod loop_vars;
+pub mod markup_outputs;
 pub mod multi;
 pub mod nodes;
 pub mod numbers;
@@ -74,8 +76,8 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "url_path" => Some(strings_encoding::url_path),
         "rtf" => Some(strings_encoding::rtf),
         "xhtml" => Some(strings_encoding::xhtml),
-        "esc" => Some(strings_encoding::esc),
-        "no_esc" => Some(strings_encoding::no_esc),
+        "esc" => Some(markup_outputs::esc),
+        "no_esc" => Some(markup_outputs::no_esc),
         // ---- 正则（BuiltInsForStringsRegexp.java）----
         "matches" => Some(strings_regexp::matches),
         "groups" => Some(strings_regexp::groups),
@@ -95,6 +97,9 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "seq_index_of" => Some(sequences::seq_index_of),
         "seq_last_index_of" => Some(sequences::seq_last_index_of),
         "sequence" => Some(sequences::sequence),
+        // ---- 哈希（BuiltInsForHashes.java）----
+        "keys" => Some(hashes::keys),
+        "values" => Some(hashes::values),
         // ---- 数字（BuiltInsForNumbers.java）----
         "abs" => Some(numbers::abs),
         "ceiling" => Some(numbers::ceiling),

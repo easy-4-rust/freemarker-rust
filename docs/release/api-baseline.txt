@@ -134,6 +134,9 @@ pub fn freemarker::builtins::format::format_decimal(&freemarker::builtins::forma
 pub fn freemarker::builtins::format::format_number(&freemarker::Environment<'_>, &freemarker::value::TNumber) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::builtins::format::format_number_with(&str, &str, &freemarker::value::TNumber) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::builtins::format::parse_decimal_format(&str, &str) -> freemarker::Result<freemarker::builtins::format::DecimalFmt>
+pub mod freemarker::builtins::hashes
+pub fn freemarker::builtins::hashes::keys(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::builtins::hashes::values(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::iso_date_format
 pub enum freemarker::builtins::iso_date_format::Accuracy
 pub freemarker::builtins::iso_date_format::Accuracy::Hours
@@ -246,6 +249,9 @@ pub mod freemarker::builtins::loop_vars
 pub fn freemarker::builtins::loop_vars::item_cycle(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::loop_vars::item_parity(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::loop_vars::item_parity_cap(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub mod freemarker::builtins::markup_outputs
+pub fn freemarker::builtins::markup_outputs::esc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::builtins::markup_outputs::no_esc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::multi
 pub fn freemarker::builtins::multi::absolute_template_name(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::multi::api(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
@@ -320,13 +326,11 @@ pub fn freemarker::builtins::strings::truncate_w(&mut freemarker::Environment<'_
 pub fn freemarker::builtins::strings::truncate_w_m(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings::uncap_first(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::strings_encoding
-pub fn freemarker::builtins::strings_encoding::esc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::j_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::java_string_enc(&str) -> alloc::string::String
 pub fn freemarker::builtins::strings_encoding::js_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::js_string_enc(&str, bool) -> alloc::string::String
 pub fn freemarker::builtins::strings_encoding::json_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings_encoding::no_esc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::rtf(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::url(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::url_path(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
