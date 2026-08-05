@@ -53,6 +53,32 @@ fn exec_switch(
     default_pos: &Option<usize>,
 ) -> Result<ExecOutcome> {
     let searched = eval::eval(env, expr)?;
+    let mut r = ExecOutcome::Done;
+    // Java SwitchBlock.accept 的 usesOnDirective 分支（SwitchBlock.java:48-70）：
+    // #on 匹配后立即停止（无 fall-through）；default 恒在末尾（解析期保证）；
+    // 体内 break/continue **不捕获**——原样上抛（Java 注释 "on, doesn't have this
+    // bug."——#case 模式才把 continue 误当 break 捕获）
+    if cases.iter().any(|c| c.is_on) {
+        for c in cases {
+            let v = eval::eval(env, &c.value)?;
+            if eval::compare_models(env, &searched, &v, eval::CmpOp::Eq)? {
+                match env.run(&c.body) {
+                    Ok(RunSignal::Completed) => {}
+                    Ok(RunSignal::Returned(v)) => r = ExecOutcome::ReturnValue(v),
+                    Err(e) => return Err(e),
+                }
+                return Ok(r);
+            }
+        }
+        if let Some(d) = default {
+            match env.run(d) {
+                Ok(RunSignal::Completed) => {}
+                Ok(RunSignal::Returned(v)) => r = ExecOutcome::ReturnValue(v),
+                Err(e) => return Err(e),
+            }
+        }
+        return Ok(r);
+    }
     let mut matched: Option<usize> = None;
     for (i, c) in cases.iter().enumerate() {
         let v = eval::eval(env, &c.value)?;
@@ -61,7 +87,6 @@ fn exec_switch(
             break;
         }
     }
-    let mut r = ExecOutcome::Done;
     let mut stopped_by_flow = false;
     match matched {
         Some(start) => {

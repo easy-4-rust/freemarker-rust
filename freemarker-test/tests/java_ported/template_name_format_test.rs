@@ -5,8 +5,7 @@
 //! 引擎映射：`freemarker::cache::{NameFormatDefault020300, NameFormatDefault020400}`
 //! （trait 对象统一为 `TemplateNameFormat`）。
 //! 引擎差异：越界/非法名错误消息措辞与 Java 不同（Java "backing out from the root"、
-//! ':' 消息；v1 "doesn't stay within the template root directory" 等）；
-//! `rootBasedNameToAbsoluteName` 未实现。
+//! ':' 消息；v1 "doesn't stay within the template root directory" 等）。
 
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
@@ -210,16 +209,66 @@ fn test_normalize_root_based_name() {
     assert_norm_rb_name_throws_colon_on_24("a/b:/..");
 }
 
-/// Java testRootBasedNameToAbsoluteName：`rootBasedNameToAbsoluteName` 未实现
-/// （template_name_format.rs 头注：v1 未纳入），跳过并注释各断言。
+/// Java testRootBasedNameToAbsoluteName（TemplateNameFormatTest.java:226-242）：
+/// `rootBasedNameToAbsoluteName` —— 根相对名 → 绝对名换算
 #[test]
-#[ignore = "引擎差异：rootBasedNameToAbsoluteName 未实现（v1 无绝对名换算）"]
 fn test_root_based_name_to_absolute_name() {
-    // Java 断言：
-    // 两种格式：("foo/bar"→"/foo/bar")、("scheme://foo/bar"→"scheme://foo/bar")、
-    // ("/foo/bar"→"/foo/bar")；
-    // 2.3.0 宽松处理："a/b://c/d"→"a/b://c/d"、"b:/c/d"→"/b:/c/d"、"b:c/d"→"/b:c/d"；
-    // 2.4.0："a/b://c/d"→"/a/b://c/d"、"b:/c/d"→"b:/c/d"、"b:c/d"→"b:c/d"
+    for tnf in [
+        &NameFormatDefault020300 as &dyn TemplateNameFormat,
+        &NameFormatDefault020400 as &dyn TemplateNameFormat,
+    ] {
+        assert_eq!(
+            tnf.root_based_name_to_absolute_name("foo/bar").unwrap(),
+            "/foo/bar"
+        );
+        assert_eq!(
+            tnf.root_based_name_to_absolute_name("scheme://foo/bar")
+                .unwrap(),
+            "scheme://foo/bar"
+        );
+        assert_eq!(
+            tnf.root_based_name_to_absolute_name("/foo/bar").unwrap(),
+            "/foo/bar"
+        );
+    }
+    // 2.3.0 宽松处理（仅 "://" 视为 scheme）
+    assert_eq!(
+        NameFormatDefault020300
+            .root_based_name_to_absolute_name("a/b://c/d")
+            .unwrap(),
+        "a/b://c/d"
+    );
+    assert_eq!(
+        NameFormatDefault020300
+            .root_based_name_to_absolute_name("b:/c/d")
+            .unwrap(),
+        "/b:/c/d"
+    );
+    assert_eq!(
+        NameFormatDefault020300
+            .root_based_name_to_absolute_name("b:c/d")
+            .unwrap(),
+        "/b:c/d"
+    );
+    // 2.4.0 严格处理（findSchemeSectionEnd）
+    assert_eq!(
+        NameFormatDefault020400
+            .root_based_name_to_absolute_name("a/b://c/d")
+            .unwrap(),
+        "/a/b://c/d"
+    );
+    assert_eq!(
+        NameFormatDefault020400
+            .root_based_name_to_absolute_name("b:/c/d")
+            .unwrap(),
+        "b:/c/d"
+    );
+    assert_eq!(
+        NameFormatDefault020400
+            .root_based_name_to_absolute_name("b:c/d")
+            .unwrap(),
+        "b:c/d"
+    );
 }
 
 /// Java testBackslashNotSpecialWith23：2.3.0 名称格式把反斜杠当普通字符
