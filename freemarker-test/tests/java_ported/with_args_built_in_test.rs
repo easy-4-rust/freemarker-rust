@@ -4,11 +4,13 @@
 //! 引擎差异总览：
 //! - Java createConfiguration 用 setAutoIncludes(["callables.ftl"]) 自动注入宏/函数定义；
 //!   v1 无 autoIncludes → 每个内联模板前拼接 callables 内容（等效于自动 include）。
-//! - `?withArgs`/`?withArgsLast` 在 v1 仅支持**方法**模型（builtins/callables.rs：
-//!   "?with_args is only supported on methods in v1"），对宏/函数/指令调用报错；
-//!   且 v1 不做"序列展开"（Java 把单个序列/哈希实参展开为多个实参，v1 原样绑定一个）。
-//!   → 宏/函数/指令的 withArgs 断言按引擎实际错误调整，Java 期望值保留于注释；
-//!   测试端方法模型做展开适配（test_method/test_method_with_args_last/test_legacy_method）。
+//! - `?withArgs`/`?withArgsLast` 按 Java `BuiltInsForCallables`（with_argsBI/
+//!   withArgsLastBI）实现：宏/函数 → 预绑定参数合并（Environment.
+//!   setMacroContextLocalsFromArguments :919-1094）；方法 → 部分应用。v1 语法
+//!   差异：Java 的实参经方法调用 `x?withArgs(arg)` 传入，Rust 解析器把 `(...)`
+//!   视为内建参数 —— 行为等价。
+//! - 指令（TemplateDirectiveModel）的 `?withArgs`（Java BIMethodForDirective）v1
+//!   未实现（"only supported on methods in v1"，文档化差异，P4 项）。
 //! - Java bean 方法（MethodHolder）→ v1 用 TModel::from_method 多角色模型模拟。
 //! - LegacyMethodModel（旧 TemplateMethodModel 接口：参数为解包 Java 对象）→ v1
 //!   用 TemplateMethodModelEx 近似。
@@ -16,6 +18,7 @@
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
 use freemarker::cache::StringLoader;
+use freemarker::core::Environment;
 use freemarker::template::{Configuration, TModel, TemplateMethodModelEx};
 use freemarker::value::TNumber;
 use std::sync::Arc;
@@ -52,9 +55,10 @@ fn cfg() -> (Configuration, Arc<StringLoader>) {
     test_config()
 }
 
-/// 引擎差异：v1 的 ?withArgs/?withArgsLast 仅支持方法模型（builtins/callables.rs）；
-/// 对宏/函数/指令调用报 "?with_args(_last) is only supported on methods in v1"。
-/// 断言引擎实际错误；Java 期望输出值保留于各行注释。
+/// 引擎差异：v1 的 ?withArgs/?withArgsLast 对**指令**（TemplateDirectiveModel）未
+/// 实现（Java BIMethodForDirective，BuiltInsForCallables.java:187-254）——断言引擎
+/// 实际错误；宏/函数/方法已按 Java 语义实现（见各方法断言）。
+#[allow(dead_code)] // 引擎差异断言保留（?withArgs 对指令未实现），供后续补齐时复用
 fn assert_only_methods(c: &Configuration, loader: &Arc<StringLoader>, ftl: &str, last: bool) {
     let bi = if last {
         "?with_args_last"
@@ -75,59 +79,82 @@ fn assert_only_methods(c: &Configuration, loader: &Arc<StringLoader>, ftl: &str,
 #[test]
 fn test_macro_with_named_with_args() {
     let (c, loader) = cfg();
-    // 引擎差异：v1 无 autoIncludes，模板前拼接 callables.ftl 内容；且 ?withArgs 作用于
-    // 宏时 v1 报 "?with_args is only supported on methods in v1"（Java 正常展开）
     let p = |ftl: &str| format!("{CALLABLES}{ftl}");
     assert_output(&c, &loader, &p("<@m b=2 a=1 />"), "a=1; b=2; c=d3");
-    assert_only_methods(&c, &loader, &p("<@m?withArgs({'b': 2, 'a': 1}) />"), false); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgs({'b': 2, 'a': 1}) />"),
+        "a=1; b=2; c=d3",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgs({'b': 2, 'a': 1}) a=11 />"),
-        false,
-    ); // Java: "a=11; b=2; c=d3"
-    assert_only_methods(
+        "a=11; b=2; c=d3",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgs({'b': 2, 'a': 1}) a=11 b=22 />"),
-        false,
-    ); // Java: "a=11; b=22; c=d3"
-    assert_only_methods(
+        "a=11; b=22; c=d3",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgs({'b': 2, 'c': 3}) a=1 />"),
-        false,
-    ); // Java: "a=1; b=2; c=3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgs({}) b=2 c=3 a=1 />"), false); // Java: "a=1; b=2; c=3"
+        "a=1; b=2; c=3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgs({}) b=2 c=3 a=1 />"),
+        "a=1; b=2; c=3",
+    );
 
     assert_output(&c, &loader, &p("<@mCA a=1 b=2 />"), "a=1; b=2; o={}");
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2}) />"),
-        false,
-    ); // Java: "a=1; b=2; o={}"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs({'a': 1}) b=2 />"), false); // Java: "a=1; b=2; o={}"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs({}) a=1 b=2 />"), false); // Java: "a=1; b=2; o={}"
-    assert_only_methods(
+        "a=1; b=2; o={}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs({'a': 1}) b=2 />"),
+        "a=1; b=2; o={}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs({}) a=1 b=2 />"),
+        "a=1; b=2; o={}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2, 'c': 3}) />"),
-        false,
-    ); // Java: "a=1; b=2; o={c=3}"
-    assert_only_methods(
+        "a=1; b=2; o={c=3}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2}) c=3 />"),
-        false,
-    ); // Java: "a=1; b=2; o={c=3}"
-    assert_only_methods(
+        "a=1; b=2; o={c=3}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1}) b=2 c=3 />"),
-        false,
-    ); // Java: "a=1; b=2; o={c=3}"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs({}) a=1 b=2 c=3 />"), false); // Java: "a=1; b=2; o={c=3}"
+        "a=1; b=2; o={c=3}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs({}) a=1 b=2 c=3 />"),
+        "a=1; b=2; o={c=3}",
+    );
     assert_output(&c, &loader, &p("<@mCA a=1 b=2 c=3 />"), "a=1; b=2; o={c=3}");
     assert_output(
         &c,
@@ -135,57 +162,70 @@ fn test_macro_with_named_with_args() {
         &p("<@mCA a=1 b=2 c=3 d=4 />"),
         "a=1; b=2; o={c=3, d=4}",
     );
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2, 'c': 3, 'd': 4}) />"),
-        false,
-    ); // Java: "a=1; b=2; o={c=3, d=4}"
-    assert_only_methods(
+        "a=1; b=2; o={c=3, d=4}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2, 'c': 3, 'd': 4}) b=22 />"),
-        false,
-    ); // Java: "a=1; b=22; o={c=3, d=4}"
-    assert_only_methods(
+        "a=1; b=22; o={c=3, d=4}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2, 'c': 3, 'd': 4}) b=22 e=5 />"),
-        false,
-    ); // Java: "a=1; b=22; o={c=3, d=4, e=5}"
-    assert_only_methods(
+        "a=1; b=22; o={c=3, d=4, e=5}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2, 'c': 3, 'd': 4}) 11 22 />"),
-        false,
-    ); // Java: "a=11; b=22; o={c=3, d=4}"
-    assert_only_methods(
+        "a=11; b=22; o={c=3, d=4}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2}) 11 22 33 />"),
-        false,
-    ); // Java: "a=11; b=22; o=[33]"
-       // Java 断言 ["both named and positional", "catch-all"]；引擎差异：先报 only supported on methods
-    assert_only_methods(
+        "a=11; b=22; o=[33]",
+    );
+    // Java 断言 ["both named and positional", "catch-all"]（位置实参溢出 + 命名
+    // catch-all 已有内容 → 冲突错误，Environment.java:1029-1032）
+    assert_error_contains(
         &c,
         &loader,
         &p("<@mCA?withArgs({'a': 1, 'b': 2, 'c': 3}) 11 22 33 />"),
-        false,
+        &["both named and positional", "catch-all"],
     );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCAO?withArgs({'a': 1, 'b': 2}) />"),
-        false,
-    ); // Java: "o={a=1, b=2}"
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgs({'a': 1}) b=2 />"), false); // Java: "o={a=1, b=2}"
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgs({}) a=1 b=2 />"), false); // Java: "o={a=1, b=2}"
+        "o={a=1, b=2}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCAO?withArgs({'a': 1}) b=2 />"),
+        "o={a=1, b=2}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCAO?withArgs({}) a=1 b=2 />"),
+        "o={a=1, b=2}",
+    );
     assert_output(&c, &loader, &p("<@mCAO a=1 b=2 />"), "o={a=1, b=2}");
 
     // 引擎差异：空位置 catch-all 被当空哈希 → "o={}"（Java 空序列 → "o=[]"）
+    // （无实参的宏调用 catch-all 形态：本引擎按调用种类判定，v1 无位置实参时
+    // 落哈希 —— 既有偏差，docs/04 注释）
     assert_output(&c, &loader, &p("<@mCAO />"), "o={}"); // Java: "o=[]"
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgs({}) />"), false); // Java: "o={}"
+    assert_output(&c, &loader, &p("<@mCAO?withArgs({}) />"), "o={}");
 
     assert_output(&c, &loader, &p("<@m b=2 a=1 c=null />"), "a=1; b=2; c=d3");
     // Java addToDataModel("cNull", {"c": null})：
@@ -193,15 +233,13 @@ fn test_macro_with_named_with_args() {
     c_null.insert("c".to_string(), TModel::nothing());
     let mut dm = indexmap::IndexMap::new();
     dm.insert("cNull".to_string(), TModel::from_hash(c_null));
-    // 引擎差异：宏上的 ?withArgs 不支持（Java 期望 "a=1; b=2; c=d3"）
-    let msg = assert_error_contains_with_dm(
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &format!("{CALLABLES}<@m?withArgs(cNull) b=2 a=1 />"),
         TModel::from_hash(dm),
-        &["only supported on methods", "?with_args"],
     );
-    let _ = msg;
+    assert_eq!(out, "a=1; b=2; c=d3");
 }
 
 /// Java testNullsWithMacroWithNamedWithArgs
@@ -222,35 +260,33 @@ fn test_nulls_with_macro_with_named_with_args() {
     a_null_b_null.insert("b".to_string(), TModel::nothing());
     let mut dm = indexmap::IndexMap::new();
     dm.insert("aNullBNull".to_string(), TModel::from_hash(a_null_b_null));
-    // 引擎差异：宏上的 ?withArgs 不支持（Java 期望 "o={a=null, b=null}"）
-    let msg = assert_error_contains_with_dm(
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &p("<@mCAO?withArgs(aNullBNull) />"),
         TModel::from_hash(dm),
-        &["only supported on methods", "?with_args"],
     );
-    let _ = msg;
+    assert_eq!(out, "o={a=null, b=null}");
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgs({'a': 11, 'b': 22, 'c': 33}) a=111 b=222 c=null />"),
-        false,
-    ); // Java: "a=111; b=222; c=d3"
-       // Java 断言 ["required", "\"b\""]；引擎差异：先报 only supported on methods
-    assert_only_methods(
+        "a=111; b=222; c=d3",
+    );
+    // Java 断言 ["required", "\"b\""]：c=null 被绑定后 b=null 触发必需参数错误
+    assert_error_contains(
         &c,
         &loader,
         &p("<@m?withArgs({'a': 11, 'b': 22, 'c': 33}) a=111 b=null c=333 />"),
-        false,
+        &["required", "\"b\""],
     );
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCAO?withArgs({'a': 1, 'b': 2}) a=null b=22 c=33 />"),
-        false,
-    ); // Java: "o={a=null, b=22, c=33}"
+        "o={a=null, b=22, c=33}",
+    );
 }
 
 /// Java testMacroWithPositionalWithArgs
@@ -259,35 +295,111 @@ fn test_macro_with_positional_with_args() {
     let (c, loader) = cfg();
     let p = |ftl: &str| format!("{CALLABLES}{ftl}");
     assert_output(&c, &loader, &p("<@m 1 2 />"), "a=1; b=2; c=d3");
-    assert_only_methods(&c, &loader, &p("<@m?withArgs([1, 2]) />"), false); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgs([1]) 2 />"), false); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgs([]) 1 2 />"), false); // Java: "a=1; b=2; c=d3"
+    assert_output(&c, &loader, &p("<@m?withArgs([1, 2]) />"), "a=1; b=2; c=d3");
+    assert_output(&c, &loader, &p("<@m?withArgs([1]) 2 />"), "a=1; b=2; c=d3");
+    assert_output(&c, &loader, &p("<@m?withArgs([]) 1 2 />"), "a=1; b=2; c=d3");
     assert_output(&c, &loader, &p("<@m 1 2 3 />"), "a=1; b=2; c=3");
-    assert_only_methods(&c, &loader, &p("<@m?withArgs([1, 2, 3]) />"), false); // Java: "a=1; b=2; c=3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgs([1, 2]) c=3 />"), false); // Java: "a=1; b=2; c=3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgs([1, 2, 0]) c=3 />"), false); // Java: "a=1; b=2; c=3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgs([1, 0, 3]) b=2 />"), false); // Java: "a=1; b=2; c=3"
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgs([1, 2, 3]) />"),
+        "a=1; b=2; c=3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgs([1, 2]) c=3 />"),
+        "a=1; b=2; c=3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgs([1, 2, 0]) c=3 />"),
+        "a=1; b=2; c=3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgs([1, 0, 3]) b=2 />"),
+        "a=1; b=2; c=3",
+    );
 
     assert_output(&c, &loader, &p("<@mCA 1 2 />"), "a=1; b=2; o=[]");
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1, 2]) />"), false); // Java: "a=1; b=2; o=[]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1]) 2 />"), false); // Java: "a=1; b=2; o=[]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([]) 1 2 />"), false); // Java: "a=1; b=2; o=[]"
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1, 2]) />"),
+        "a=1; b=2; o=[]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1]) 2 />"),
+        "a=1; b=2; o=[]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([]) 1 2 />"),
+        "a=1; b=2; o=[]",
+    );
     assert_output(&c, &loader, &p("<@mCA 1 2 3 />"), "a=1; b=2; o=[3]");
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1, 2, 3]) />"), false); // Java: "a=1; b=2; o=[3]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1]) 2, 3 />"), false); // Java: "a=1; b=2; o=[3]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1, 2]) 3 />"), false); // Java: "a=1; b=2; o=[3]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1]) b=2 c=3 />"), false); // Java: "a=1; b=2; o={c=3}"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([]) a=1 b=2 c=3 />"), false); // Java: "a=1; b=2; o={c=3}"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1, 2]) c=3 />"), false); // Java: "a=1; b=2; o={c=3}"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1, 0]) b=2 c=3 />"), false); // Java: "a=1; b=2; o={c=3}"
-                                                                                      // Java 断言 ["both named and positional", "catch-all"]；引擎差异：先报 only supported on methods
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgs([1, 2, 3]) d=4 />"), false);
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1, 2, 3]) />"),
+        "a=1; b=2; o=[3]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1]) 2, 3 />"),
+        "a=1; b=2; o=[3]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1, 2]) 3 />"),
+        "a=1; b=2; o=[3]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1]) b=2 c=3 />"),
+        "a=1; b=2; o={c=3}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([]) a=1 b=2 c=3 />"),
+        "a=1; b=2; o={c=3}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1, 2]) c=3 />"),
+        "a=1; b=2; o={c=3}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1, 0]) b=2 c=3 />"),
+        "a=1; b=2; o={c=3}",
+    );
+    // Java 断言 ["both named and positional", "catch-all"]（位置预绑定溢出 +
+    // 命名实参 → 冲突错误，Environment.java:1029-1032）
+    assert_error_contains(
+        &c,
+        &loader,
+        &p("<@mCA?withArgs([1, 2, 3]) d=4 />"),
+        &["both named and positional", "catch-all"],
+    );
 
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgs([1, 2]) />"), false); // Java: "o=[1, 2]"
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgs([1]) 2 />"), false); // Java: "o=[1, 2]"
+    assert_output(&c, &loader, &p("<@mCAO?withArgs([1, 2]) />"), "o=[1, 2]");
+    assert_output(&c, &loader, &p("<@mCAO?withArgs([1]) 2 />"), "o=[1, 2]");
     assert_output(&c, &loader, &p("<@mCAO 1, 2 />"), "o=[1, 2]");
 
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgs([]) />"), false); // Java: "o=[]"
+    assert_output(&c, &loader, &p("<@mCAO?withArgs([]) />"), "o=[]");
 }
 
 /// Java testNullsWithMacroWithPositionalWithArgs
@@ -311,24 +423,20 @@ fn test_nulls_with_macro_with_positional_with_args() {
     ]);
     let mut dm = indexmap::IndexMap::new();
     dm.insert("args".to_string(), args);
-    // 引擎差异：宏上的 ?withArgs 不支持（Java 期望 "o=[1, null, null, 4]"）
-    let msg = assert_error_contains_with_dm(
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &p("<@mCAO?withArgs(args) />"),
         TModel::from_hash(dm.clone()),
-        &["only supported on methods", "?with_args"],
     );
-    let _ = msg;
-    // 引擎差异：同上（Java 期望 "o=[1, null, null, 4, null, 5, 6]"）
-    let msg = assert_error_contains_with_dm(
+    assert_eq!(out, "o=[1, null, null, 4]");
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &p("<@mCAO?withArgs(args) null 5 6 />"),
         TModel::from_hash(dm),
-        &["only supported on methods", "?with_args"],
     );
-    let _ = msg;
+    assert_eq!(out, "o=[1, null, null, 4, null, 5, 6]");
 }
 
 /// Java testFunction
@@ -337,30 +445,70 @@ fn test_function() {
     let (c, loader) = cfg();
     let p = |ftl: &str| format!("{CALLABLES}{ftl}");
     assert_output(&c, &loader, &p("${f(1, 2)}"), "a=1; b=2; c=d3");
-    assert_only_methods(&c, &loader, &p("${f?withArgs([1, 2])()}"), false); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("${f?withArgs([1])(2)}"), false); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("${f?withArgs([])(1, 2)}"), false); // Java: "a=1; b=2; c=d3"
+    assert_output(&c, &loader, &p("${f?withArgs([1, 2])()}"), "a=1; b=2; c=d3");
+    assert_output(&c, &loader, &p("${f?withArgs([1])(2)}"), "a=1; b=2; c=d3");
+    assert_output(&c, &loader, &p("${f?withArgs([])(1, 2)}"), "a=1; b=2; c=d3");
     assert_output(&c, &loader, &p("${f(1, 2, 3)}"), "a=1; b=2; c=3");
-    assert_only_methods(&c, &loader, &p("${f?withArgs([1, 2, 3])()}"), false); // Java: "a=1; b=2; c=3"
+    assert_output(
+        &c,
+        &loader,
+        &p("${f?withArgs([1, 2, 3])()}"),
+        "a=1; b=2; c=3",
+    );
 
     assert_output(&c, &loader, &p("${fCA(1, 2)}"), "a=1; b=2; o=[]");
-    assert_only_methods(&c, &loader, &p("${fCA?withArgs([1, 2])()}"), false); // Java: "a=1; b=2; o=[]"
-    assert_only_methods(&c, &loader, &p("${fCA?withArgs([1])(2)}"), false); // Java: "a=1; b=2; o=[]"
-    assert_only_methods(&c, &loader, &p("${fCA?withArgs([])(1, 2)}"), false); // Java: "a=1; b=2; o=[]"
+    assert_output(
+        &c,
+        &loader,
+        &p("${fCA?withArgs([1, 2])()}"),
+        "a=1; b=2; o=[]",
+    );
+    assert_output(&c, &loader, &p("${fCA?withArgs([1])(2)}"), "a=1; b=2; o=[]");
+    assert_output(
+        &c,
+        &loader,
+        &p("${fCA?withArgs([])(1, 2)}"),
+        "a=1; b=2; o=[]",
+    );
     assert_output(&c, &loader, &p("${fCA(1, 2, 3)}"), "a=1; b=2; o=[3]");
-    assert_only_methods(&c, &loader, &p("${fCA?withArgs([1, 2, 3])()}"), false); // Java: "a=1; b=2; o=[3]"
-    assert_only_methods(&c, &loader, &p("${fCA?withArgs([1])(2, 3)}"), false); // Java: "a=1; b=2; o=[3]"
-    assert_only_methods(&c, &loader, &p("${fCA?withArgs([1, 2])(3)}"), false); // Java: "a=1; b=2; o=[3]"
-    assert_only_methods(&c, &loader, &p("${fCA?withArgs([])(1, 2, 3)}"), false); // Java: "a=1; b=2; o=[3]"
+    assert_output(
+        &c,
+        &loader,
+        &p("${fCA?withArgs([1, 2, 3])()}"),
+        "a=1; b=2; o=[3]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("${fCA?withArgs([1])(2, 3)}"),
+        "a=1; b=2; o=[3]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("${fCA?withArgs([1, 2])(3)}"),
+        "a=1; b=2; o=[3]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("${fCA?withArgs([])(1, 2, 3)}"),
+        "a=1; b=2; o=[3]",
+    );
 
     assert_output(&c, &loader, &p("${fCAO(1, 2)}"), "o=[1, 2]");
-    assert_only_methods(&c, &loader, &p("${fCAO?withArgs([1, 2])()}"), false); // Java: "o=[1, 2]"
-    assert_only_methods(&c, &loader, &p("${fCAO?withArgs([1])(2)}"), false); // Java: "o=[1, 2]"
-    assert_only_methods(&c, &loader, &p("${fCAO?withArgs([])(1, 2)}"), false); // Java: "o=[1, 2]"
+    assert_output(&c, &loader, &p("${fCAO?withArgs([1, 2])()}"), "o=[1, 2]");
+    assert_output(&c, &loader, &p("${fCAO?withArgs([1])(2)}"), "o=[1, 2]");
+    assert_output(&c, &loader, &p("${fCAO?withArgs([])(1, 2)}"), "o=[1, 2]");
 
-    // 引擎差异：Java 对"函数 + 哈希参数"报 hash 提示；v1 ?withArgs 作用于函数本身
-    // 就不支持（"only supported on methods"）——断言按引擎实际错误
-    assert_only_methods(&c, &loader, &p("${f?withArgs({'a': 1, 'b': 2})}"), false);
+    // Java：函数 + 哈希参数 → "When applied on a function, ?withArgs can't have
+    // a hash argument. Use a sequence argument."（BuiltInsForCallables.java:82-85）
+    assert_error_contains(
+        &c,
+        &loader,
+        &p("${f?withArgs({'a': 1, 'b': 2})}"),
+        &["hash", "sequence"],
+    );
 }
 
 /// Java testNullsWithFunction
@@ -382,36 +530,34 @@ fn test_nulls_with_function() {
     ]);
     let mut dm = indexmap::IndexMap::new();
     dm.insert("args".to_string(), args);
-    // 引擎差异：函数上的 ?withArgs 不支持（Java 期望 "o=[1, null, null, 4]"）
-    let msg = assert_error_contains_with_dm(
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &p("${fCAO?withArgs(args)()}"),
         TModel::from_hash(dm.clone()),
-        &["only supported on methods", "?with_args"],
     );
-    let _ = msg;
-    // 引擎差异：同上（Java 期望 "o=[1, null, null, 4, null, 5, 6]"）
-    let msg = assert_error_contains_with_dm(
+    assert_eq!(out, "o=[1, null, null, 4]");
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &p("${fCAO?withArgs(args)(null, 5, 6)}"),
         TModel::from_hash(dm),
-        &["only supported on methods", "?with_args"],
     );
-    let _ = msg;
+    assert_eq!(out, "o=[1, null, null, 4, null, 5, 6]");
 }
 
-/// Java testCurrentNamespaceWorks
+/// Java testCurrentNamespaceWorks —— import 的宏经 ?withArgs 包装后命名空间保持
 #[test]
 fn test_current_namespace_works() {
     let (c, loader) = cfg();
     add_template(&loader, "ns1.ftl", "<#assign v = 'NS1'><#macro m p>p=${p} v=${v} <#local v = 'L'>v=${v} {<#nested p>} v=${v}</#macro>");
-    // 引擎差异：Java 的 ?withArgs 支持宏（WithArgsCallable）；v1 仅方法 →
-    // 第二个调用（经 m2 = ns1.m?withArgs([2])）在 v1 报错
-    // （Java 期望 "p=1 v=NS1 v=L {n=1 v=NS0} v=L; p=2 v=NS1 v=L {n=2 v=NS0} v=L"）
     let ftl = "<#import 'ns1.ftl' as ns1><#assign v = 'NS0'><@ns1.m 1; n>n=${n} v=${v}</@>; <#assign m2 = ns1.m?withArgs([2])><@m2; n>n=${n} v=${v}</@>";
-    assert_only_methods(&c, &loader, ftl, false);
+    assert_output(
+        &c,
+        &loader,
+        ftl,
+        "p=1 v=NS1 v=L {n=1 v=NS0} v=L; p=2 v=NS1 v=L {n=2 v=NS0} v=L",
+    );
 }
 
 /// Java testArgCountCheck
@@ -422,18 +568,17 @@ fn test_arg_count_check() {
 
     // 无错误（不带 ?withArgs 的直接调用可跑通）：
     assert_output(&c, &loader, &format!("{macro_def}<@m 1 2 3 />"), "1, 2, 3");
-    // 引擎差异：宏上的 ?with_args 不支持（Java 期望 "1, 2, 3"）
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?with_args([1, 2, 3]) />"),
-        false,
+        "1, 2, 3",
     );
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?with_args([1, 2]) 3 />"),
-        false,
+        "1, 2, 3",
     );
 
     // 参数过多（直接调用与 Java 断言一致）：
@@ -443,24 +588,23 @@ fn test_arg_count_check() {
         &format!("{macro_def}<@m 1 2 3 4 />"),
         &["accepts 3", "got 4"],
     );
-    // Java 断言 ["accepts 3", "got 4"]；引擎差异：?with_args 对宏先报 only supported on methods
-    assert_only_methods(
+    assert_error_contains(
         &c,
         &loader,
         &format!("{macro_def}<@m?with_args([1, 2, 3, 4]) />"),
-        false,
+        &["accepts 3", "got 4"],
     );
-    assert_only_methods(
+    assert_error_contains(
         &c,
         &loader,
         &format!("{macro_def}<@m?with_args([1, 2, 3]) 5 />"),
-        false,
+        &["accepts 3", "got 4"],
     );
-    assert_only_methods(
+    assert_error_contains(
         &c,
         &loader,
         &format!("{macro_def}<@m?with_args([1]) 2 3 4 />"),
-        false,
+        &["accepts 3", "got 4"],
     );
 
     // 参数过少（直接调用与 Java 断言一致）：
@@ -470,24 +614,23 @@ fn test_arg_count_check() {
         &format!("{macro_def}<@m 1 2 />"),
         &["\"c\"", "was not specified"],
     );
-    // Java 断言 ["\"c\"", "was not specified"]；引擎差异：?with_args 对宏先报 only supported on methods
-    assert_only_methods(
+    assert_error_contains(
         &c,
         &loader,
         &format!("{macro_def}<@m?with_args([1, 2]) />"),
-        false,
+        &["\"c\"", "was not specified"],
     );
-    assert_only_methods(
+    assert_error_contains(
         &c,
         &loader,
         &format!("{macro_def}<@m?with_args([1]) 2 />"),
-        false,
+        &["\"c\"", "was not specified"],
     );
-    assert_only_methods(
+    assert_error_contains(
         &c,
         &loader,
         &format!("{macro_def}<@m?with_args([]) 1 2 />"),
-        false,
+        &["\"c\"", "was not specified"],
     );
 }
 
@@ -498,131 +641,129 @@ fn test_defaults_then_catch_all() {
     let macro_def =
         format!("<#macro m a=1 b=2 c=3 o...>a=${{a}} b=${{b}} c=${{c}} {PRINT_O}</#macro>");
 
-    // 引擎差异：宏上的 ?withArgs 不支持（v1 报 "?with_args is only supported on methods in v1"）；
-    // Java 期望值保留于注释
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([]) />"),
-        false,
-    ); // Java: "a=1 b=2 c=3 o=[]"
-    assert_only_methods(
+        "a=1 b=2 c=3 o=[]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11]) />"),
-        false,
-    ); // Java: "a=11 b=2 c=3 o=[]"
-    assert_only_methods(
+        "a=11 b=2 c=3 o=[]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11, 22]) />"),
-        false,
-    ); // Java: "a=11 b=22 c=3 o=[]"
-    assert_only_methods(
+        "a=11 b=22 c=3 o=[]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11, 22, 33]) />"),
-        false,
-    ); // Java: "a=11 b=22 c=33 o=[]"
-    assert_only_methods(
+        "a=11 b=22 c=33 o=[]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11, 22, 33, 44]) />"),
-        false,
-    ); // Java: "a=11 b=22 c=33 o=[44]"
-    assert_only_methods(
+        "a=11 b=22 c=33 o=[44]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11, 22, 33, 44, 55]) />"),
-        false,
-    ); // Java: "a=11 b=22 c=33 o=[44, 55]"
+        "a=11 b=22 c=33 o=[44, 55]",
+    );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([]) 11 />"),
-        false,
-    ); // Java: "a=11 b=2 c=3 o=[]"
-    assert_only_methods(
+        "a=11 b=2 c=3 o=[]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11]) 22 />"),
-        false,
-    ); // Java: "a=11 b=22 c=3 o=[]"
-    assert_only_methods(
+        "a=11 b=22 c=3 o=[]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11, 22]) 33 />"),
-        false,
-    ); // Java: "a=11 b=22 c=33 o=[]"
-    assert_only_methods(
+        "a=11 b=22 c=33 o=[]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11, 22, 33]) 44 />"),
-        false,
-    ); // Java: "a=11 b=22 c=33 o=[44]"
-    assert_only_methods(
+        "a=11 b=22 c=33 o=[44]",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs([11, 22, 33, 44]) 55 />"),
-        false,
-    ); // Java: "a=11 b=22 c=33 o=[44, 55]"
+        "a=11 b=22 c=33 o=[44, 55]",
+    );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{}}) />"),
-        false,
-    ); // Java: "a=1 b=2 c=3 o={}"
-    assert_only_methods(
+        "a=1 b=2 c=3 o={}",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{'b':22}}) />"),
-        false,
-    ); // Java: "a=1 b=22 c=3 o={}"
-    assert_only_methods(
+        "a=1 b=22 c=3 o={}",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{'b':22, 'c':33}}) />"),
-        false,
-    ); // Java: "a=1 b=22 c=33 o={}"
-    assert_only_methods(
+        "a=1 b=22 c=33 o={}",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{'b':22, 'c':33, 'd':55}}) />"),
-        false,
-    ); // Java: "a=1 b=22 c=33 o={d=55}"
-    assert_only_methods(
+        "a=1 b=22 c=33 o={d=55}",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{'b':22, 'd':55, 'e':66}}) />"),
-        false,
-    ); // Java: "a=1 b=22 c=3 o={d=55, e=66}"
+        "a=1 b=22 c=3 o={d=55, e=66}",
+    );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{}}) b=22 />"),
-        false,
-    ); // Java: "a=1 b=22 c=3 o={}"
-    assert_only_methods(
+        "a=1 b=22 c=3 o={}",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{'b':22}}) c=33 />"),
-        false,
-    ); // Java: "a=1 b=22 c=33 o={}"
-    assert_only_methods(
+        "a=1 b=22 c=33 o={}",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{'b':22, 'c':33}}) d=55 />"),
-        false,
-    ); // Java: "a=1 b=22 c=33 o={d=55}"
-    assert_only_methods(
+        "a=1 b=22 c=33 o={d=55}",
+    );
+    assert_output(
         &c,
         &loader,
         &format!("{macro_def}<@m?withArgs({{'b':22, 'd':55}}) e=66 />"),
-        false,
-    ); // Java: "a=1 b=22 c=3 o={d=55, e=66}"
+        "a=1 b=22 c=3 o={d=55, e=66}",
+    );
 }
 
 /// Java testMethod（Java bean 方法 → v1 用 TModel 方法模型模拟）
@@ -675,16 +816,15 @@ fn test_method() {
     );
     assert_eq!(out, "1, 2, o=[3, 4]");
 
-    // 引擎差异：Java 报 "?withArgs(...) hash 实参不支持"（hash/sequence/argument 提示）；
-    // v1 对哈希实参不做检查，?withArgs 直接绑定返回方法模型 —— 插值渲染方法模型时报
-    // "something that is a string-like value is required, but this has evaluated to a method"
-    // （Java 期望报错含 "hash" "sequence" "argument"）
+    // Java 报 "?withArgs(...) hash 实参不支持"（BuiltInsForCallables.java:178-179：
+    // "When applied on a method, ?withArgs can't have a hash argument. Use a
+    // sequence argument."）
     let msg = assert_error_contains_with_dm(
         &c,
         &loader,
         "${obj.mVA?withArgs({})}",
         dm.clone(),
-        &["evaluated to a method"],
+        &["hash", "sequence", "argument"],
     );
     let _ = msg;
 
@@ -802,7 +942,7 @@ fn arg_text(m: &TModel) -> String {
 
 struct M3pMethod;
 impl TemplateMethodModelEx for M3pMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let a = spread_seq(args)?;
         // 引擎差异：v1 withArgsLast 追加在尾部 → 参数顺序 [尾随..., 绑定...]，
         // 展开后与 Java 一致
@@ -817,14 +957,18 @@ impl TemplateMethodModelEx for M3pMethod {
 
 struct M0pMethod;
 impl TemplateMethodModelEx for M0pMethod {
-    fn exec(&self, _args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(
+        &self,
+        _env: &mut Environment,
+        _args: Vec<TModel>,
+    ) -> freemarker::error::Result<TModel> {
         Ok(TModel::from_scalar("OK".to_string()))
     }
 }
 
 struct MvaMethod;
 impl TemplateMethodModelEx for MvaMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let a = spread_seq(args)?;
         if a.len() == 1 && a[0].is_hash() {
             // Java：?withArgs({}) 对方法报错（"hash" 提示）
@@ -847,7 +991,7 @@ impl TemplateMethodModelEx for MvaMethod {
 
 struct MNullableMethod;
 impl TemplateMethodModelEx for MNullableMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let a = spread_seq(args)?;
         Ok(TModel::from_scalar(format!(
             "{}, {}, {}",
@@ -900,7 +1044,7 @@ struct LegacyMethod {
 }
 
 impl TemplateMethodModelEx for LegacyMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let args = spread_seq(args)?;
         let mut parts = Vec::new();
         for a in args {
@@ -1082,132 +1226,161 @@ fn test_template_directive_model_with_args_last() {
 fn test_macro_with_args_last_named() {
     let (c, loader) = cfg();
     let p = |ftl: &str| format!("{CALLABLES}{ftl}");
-    // 引擎差异：?withArgsLast 对宏不支持（v1 仅方法）——断言按引擎实际错误，
-    // Java 期望值保留于注释。
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgsLast({'a': 1, 'b': 2}) />"),
-        true,
-    ); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast({'b': 2}) a=1 />"), true); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast({}) a=1 b=2 />"), true); // Java: "a=1; b=2; c=d3"
+        "a=1; b=2; c=d3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast({'b': 2}) a=1 />"),
+        "a=1; b=2; c=d3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast({}) a=1 b=2 />"),
+        "a=1; b=2; c=d3",
+    );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgsLast({'a': 1, 'b': 2, 'c': 3}) />"),
-        true,
-    ); // Java: "a=1; b=2; c=3"
-    assert_only_methods(
+        "a=1; b=2; c=3",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgsLast({'b': 2}) a=1 c=3 />"),
-        true,
-    ); // Java: "a=1; b=2; c=3"
-    assert_only_methods(
+        "a=1; b=2; c=3",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgsLast({'c': 3}) a=1 b=2 />"),
-        true,
-    ); // Java: "a=1; b=2; c=3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast({}) a=1 b=2 c=3 />"), true); // Java: "a=1; b=2; c=3"
+        "a=1; b=2; c=3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast({}) a=1 b=2 c=3 />"),
+        "a=1; b=2; c=3",
+    );
 
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast({'b': 2}) 1 />"), true); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast({'c': 3}) 1 2 />"), true); // Java: "a=1; b=2; c=3"
-    assert_only_methods(
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast({'b': 2}) 1 />"),
+        "a=1; b=2; c=d3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast({'c': 3}) 1 2 />"),
+        "a=1; b=2; c=3",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@m?withArgsLast({'b': 22, 'c': 3}) 1 2 />"),
-        true,
-    ); // Java: "a=1; b=2; c=3"
+        "a=1; b=2; c=3",
+    );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'a': 1, 'b': 2, 'c': 3, 'd': 4}) />"),
-        true,
-    ); // Java: "a=1; b=2; o={c=3, d=4}"
-    assert_only_methods(
+        "a=1; b=2; o={c=3, d=4}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'b': 2, 'c': 3, 'd': 4}) a=1 />"),
-        true,
-    ); // Java: "a=1; b=2; o={c=3, d=4}"
-    assert_only_methods(
+        "a=1; b=2; o={c=3, d=4}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'c': 3, 'd': 4}) a=1 b=2 />"),
-        true,
-    ); // Java: "a=1; b=2; o={c=3, d=4}"
-    assert_only_methods(
+        "a=1; b=2; o={c=3, d=4}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'d': 4}) a=1 b=2 c=3 />"),
-        true,
-    ); // Java: "a=1; b=2; o={c=3, d=4}"
-    assert_only_methods(
+        "a=1; b=2; o={c=3, d=4}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({}) a=1 b=2 c=3 d=4 />"),
-        true,
-    ); // Java: "a=1; b=2; o={c=3, d=4}"
+        "a=1; b=2; o={c=3, d=4}",
+    );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'a': 11}) 1 2 />"),
-        true,
-    ); // Java: "a=1; b=2; o=[]"
-    assert_only_methods(
+        "a=1; b=2; o=[]",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'a': 11, 'c': 3}) 1 2 />"),
-        true,
-    ); // Java: "a=1; b=2; o={c=3}"
-       // Java 断言 ["both named and positional", "catch-all"]；引擎差异：先报 only supported on methods
-    assert_only_methods(
+        "a=1; b=2; o={c=3}",
+    );
+    // Java 断言 ["both named and positional", "catch-all"]（命名实参 + 位置预绑定
+    // 溢出 → 冲突错误）
+    assert_error_contains(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'a': 11, 'c': 3}) 1 2 3 />"),
-        true,
+        &["both named and positional", "catch-all"],
     );
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'a': 11, 'b': 22}) 1 2 3 />"),
-        true,
-    ); // Java: "a=1; b=2; o=[3]"
+        "a=1; b=2; o=[3]",
+    );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCAO?withArgsLast({'a': 1, 'b': 2}) />"),
-        true,
-    ); // Java: "o={a=1, b=2}"
-    assert_only_methods(
+        "o={a=1, b=2}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCAO?withArgsLast({'b': 2}) a=1 />"),
-        true,
-    ); // Java: "o={a=1, b=2}"
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgsLast({}) a=1 b=2 />"), true); // Java: "o={a=1, b=2}"
+        "o={a=1, b=2}",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCAO?withArgsLast({}) a=1 b=2 />"),
+        "o={a=1, b=2}",
+    );
 
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgsLast({}) />"), true); // Java: "o={}"
+    assert_output(&c, &loader, &p("<@mCAO?withArgsLast({}) />"), "o={}");
 
     // "真实"实参顺序优先：
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'c': 3, 'd': 4}) a=1 b=2 />"),
-        true,
-    ); // Java: "a=1; b=2; o={c=3, d=4}"
-    assert_only_methods(
+        "a=1; b=2; o={c=3, d=4}",
+    );
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'c': 3, 'd': 4}) a=1 d=44 b=2 />"),
-        true,
-    ); // Java: "a=1; b=2; o={d=44, c=3}"
+        "a=1; b=2; o={d=44, c=3}",
+    );
 }
 
 /// Java testMacroWithArgsLastNamedNullArgs
@@ -1215,38 +1388,32 @@ fn test_macro_with_args_last_named() {
 fn test_macro_with_args_last_named_null_args() {
     let (c, loader) = cfg();
     let p = |ftl: &str| format!("{CALLABLES}{ftl}");
-    // 引擎差异：?withArgsLast 对宏不支持（v1 仅方法）——断言按引擎实际错误，
-    // Java 期望值保留于注释。
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCA?withArgsLast({'c': 3, 'd': 4}) a=1 d=null b=2 />"),
-        true,
-    ); // Java: "a=1; b=2; o={d=null, c=3}"
-       // Java addToDataModel("cAndDNull", {c: 3, d: null})
+        "a=1; b=2; o={d=null, c=3}",
+    );
+    // Java addToDataModel("cAndDNull", {c: 3, d: null})
     let mut c_and_d_null = indexmap::IndexMap::new();
     c_and_d_null.insert("c".to_string(), TModel::from_number(TNumber::Int(3)));
     c_and_d_null.insert("d".to_string(), TModel::nothing());
     let mut dm = indexmap::IndexMap::new();
     dm.insert("cAndDNull".to_string(), TModel::from_hash(c_and_d_null));
-    // Java 期望 "a=1; b=2; o={c=3, d=null}"；引擎差异：先报 only supported on methods
-    let msg = assert_error_contains_with_dm(
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &p("<@mCA?withArgsLast(cAndDNull) a=1 b=2 />"),
         TModel::from_hash(dm.clone()),
-        &["only supported on methods", "?with_args_last"],
     );
-    let _ = msg;
-    // Java 期望 "a=1; b=2; o={d=null, c=3}"；引擎差异：同上
-    let msg = assert_error_contains_with_dm(
+    assert_eq!(out, "a=1; b=2; o={c=3, d=null}");
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &p("<@mCA?withArgsLast(cAndDNull) a=1 d=null b=2 />"),
         TModel::from_hash(dm),
-        &["only supported on methods", "?with_args_last"],
     );
-    let _ = msg;
+    assert_eq!(out, "a=1; b=2; o={d=null, c=3}");
 }
 
 /// Java testMacroWithArgsLastPositional
@@ -1254,46 +1421,151 @@ fn test_macro_with_args_last_named_null_args() {
 fn test_macro_with_args_last_positional() {
     let (c, loader) = cfg();
     let p = |ftl: &str| format!("{CALLABLES}{ftl}");
-    // 引擎差异：?withArgsLast 对宏不支持（v1 仅方法）——断言按引擎实际错误，
-    // Java 期望值保留于注释。
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([1, 2, 3]) />"), true); // Java: "a=1; b=2; c=3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([2, 3]) 1 />"), true); // Java: "a=1; b=2; c=3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([3]) 1 2 />"), true); // Java: "a=1; b=2; c=3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([]) 1 2 3 />"), true); // Java: "a=1; b=2; c=3"
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([1, 2, 3]) />"),
+        "a=1; b=2; c=3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([2, 3]) 1 />"),
+        "a=1; b=2; c=3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([3]) 1 2 />"),
+        "a=1; b=2; c=3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([]) 1 2 3 />"),
+        "a=1; b=2; c=3",
+    );
 
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([]) a=1 b=2 />"), true); // Java: "a=1; b=2; c=d3"
-                                                                                   // Java 断言 ["by name", "by position", "last"]；引擎差异：先报 only supported on methods
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([3]) a=1 b=2 />"), true);
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([]) a=1 b=2 />"),
+        "a=1; b=2; c=d3",
+    );
+    // Java 断言 ["by name", "by position", "last"]（命名实参 + 非空位置预绑定 →
+    // "Call can't pass parameters by name, as there's \"with args last\" in
+    // effect that specifies parameters by position."，Environment.java:971-975）
+    assert_error_contains(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([3]) a=1 b=2 />"),
+        &["by name", "by position", "last"],
+    );
 
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([1, 2]) />"), true); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([2]) 1 />"), true); // Java: "a=1; b=2; c=d3"
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([]) 1 2 />"), true); // Java: "a=1; b=2; c=d3"
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([1, 2]) />"),
+        "a=1; b=2; c=d3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([2]) 1 />"),
+        "a=1; b=2; c=d3",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([]) 1 2 />"),
+        "a=1; b=2; c=d3",
+    );
 
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgsLast([1, 2, 3, 4]) />"), true); // Java: "a=1; b=2; o=[3, 4]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgsLast([2, 3, 4]) 1 />"), true); // Java: "a=1; b=2; o=[3, 4]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgsLast([3, 4]) 1 2 />"), true); // Java: "a=1; b=2; o=[3, 4]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgsLast([4]) 1 2 3 />"), true); // Java: "a=1; b=2; o=[3, 4]"
-    assert_only_methods(&c, &loader, &p("<@mCA?withArgsLast([]) 1 2 3 4 />"), true); // Java: "a=1; b=2; o=[3, 4]"
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgsLast([1, 2, 3, 4]) />"),
+        "a=1; b=2; o=[3, 4]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgsLast([2, 3, 4]) 1 />"),
+        "a=1; b=2; o=[3, 4]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgsLast([3, 4]) 1 2 />"),
+        "a=1; b=2; o=[3, 4]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgsLast([4]) 1 2 3 />"),
+        "a=1; b=2; o=[3, 4]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCA?withArgsLast([]) 1 2 3 4 />"),
+        "a=1; b=2; o=[3, 4]",
+    );
 
-    assert_only_methods(
+    assert_output(
         &c,
         &loader,
         &p("<@mCAO?withArgsLast([1, 2, 3, 4]) />"),
-        true,
-    ); // Java: "o=[1, 2, 3, 4]"
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgsLast([3, 4]) 1 2 />"), true); // Java: "o=[1, 2, 3, 4]"
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgsLast([]) 1 2 3 4 />"), true); // Java: "o=[1, 2, 3, 4]"
+        "o=[1, 2, 3, 4]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCAO?withArgsLast([3, 4]) 1 2 />"),
+        "o=[1, 2, 3, 4]",
+    );
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCAO?withArgsLast([]) 1 2 3 4 />"),
+        "o=[1, 2, 3, 4]",
+    );
 
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgsLast([]) a=1 b=2 />"), true); // Java: "o={a=1, b=2}"
-                                                                                      // Java 断言 ["by name", "by position", "last"]；引擎差异：先报 only supported on methods
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgsLast([3]) a=1 b=2 />"), true);
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCAO?withArgsLast([]) a=1 b=2 />"),
+        "o={a=1, b=2}",
+    );
+    // Java 断言 ["by name", "by position", "last"]（同上）
+    assert_error_contains(
+        &c,
+        &loader,
+        &p("<@mCAO?withArgsLast([3]) a=1 b=2 />"),
+        &["by name", "by position", "last"],
+    );
 
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgsLast([]) />"), true); // Java: "o=[]"
+    assert_output(&c, &loader, &p("<@mCAO?withArgsLast([]) />"), "o=[]");
 
-    // Java 断言 ["3", "4", "parameter"]；引擎差异：先报 only supported on methods
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([0, 0, 0, 0]) />"), true);
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([0, 0, 0]) 0 />"), true);
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([]) 0 0 0 0 />"), true);
+    // Java 断言 ["3", "4", "parameter"]（总数超声明 → too-many 错误）
+    assert_error_contains(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([0, 0, 0, 0]) />"),
+        &["3", "4", "parameter"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([0, 0, 0]) 0 />"),
+        &["3", "4"],
+    );
+    assert_error_contains(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([]) 0 0 0 0 />"),
+        &["3", "4"],
+    );
 }
 
 /// Java testMacroWithArgsLastPositionalNullArgs
@@ -1309,30 +1581,35 @@ fn test_macro_with_args_last_positional_null_args() {
     let mut dm = indexmap::IndexMap::new();
     dm.insert("twoAndNull".to_string(), two_and_null);
     let dm = TModel::from_hash(dm);
-    // 引擎差异：?withArgsLast 对宏不支持（v1 仅方法）——断言按引擎实际错误，
-    // Java 期望值保留于注释。
-    let msg = assert_error_contains_with_dm(
+    let out = render_ftl_with_dm(
         &c,
         &loader,
         &p("<@m?withArgsLast(twoAndNull) 1 />"),
         dm.clone(),
-        &["only supported on methods", "?with_args_last"],
     );
-    let _ = msg; // Java: "a=1; b=2; c=d3"
-                 // Java 断言 ["\"a\"", "null"]；引擎差异：先报 only supported on methods
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([3]) null 2 />"), true);
-    assert_only_methods(&c, &loader, &p("<@m?withArgsLast([]) 1 2 null />"), true); // Java: "a=1; b=2; c=d3"
-
-    let msg = assert_error_contains_with_dm(
+    assert_eq!(out, "a=1; b=2; c=d3");
+    // Java 断言 ["\"a\"", "null"]：a 的实参为 null → 必需参数 null 错误
+    assert_error_contains(
         &c,
         &loader,
-        &p("<@mCAO?withArgsLast(twoAndNull) 1 />"),
-        dm,
-        &["only supported on methods", "?with_args_last"],
+        &p("<@m?withArgsLast([3]) null 2 />"),
+        &["\"a\"", "null"],
     );
-    let _ = msg; // Java: "o=[1, 2, null]"
-    assert_only_methods(&c, &loader, &p("<@mCAO?withArgsLast([3]) null 2 />"), true);
-    // Java: "o=[null, 2, 3]"
+    assert_output(
+        &c,
+        &loader,
+        &p("<@m?withArgsLast([]) 1 2 null />"),
+        "a=1; b=2; c=d3",
+    );
+
+    let out = render_ftl_with_dm(&c, &loader, &p("<@mCAO?withArgsLast(twoAndNull) 1 />"), dm);
+    assert_eq!(out, "o=[1, 2, null]");
+    assert_output(
+        &c,
+        &loader,
+        &p("<@mCAO?withArgsLast([3]) null 2 />"),
+        "o=[null, 2, 3]",
+    );
 }
 
 /// Java TestTemplateDirectiveModel —— 输出 "{k=v, ...}"、设置循环变量 11/22、渲染 body。

@@ -2,8 +2,8 @@
 //! （HashLiteral.java:126-151，`SequenceHash` 的 ICI < 2.3.21 路径）。
 
 use crate::error::Result;
+use crate::template::utility::FnvBuildHasher;
 use crate::template::{TModel, TemplateHashModel, TemplateHashModelEx};
-use crate::utility::FnvBuildHasher;
 use indexmap::IndexMap;
 
 /// 旧版哈希字面量 —— 对应 Java `HashLiteral.SequenceHash` 的 ICI < 2.3.21 分支

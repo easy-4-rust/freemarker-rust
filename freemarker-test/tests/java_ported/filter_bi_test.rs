@@ -13,6 +13,7 @@
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
 use freemarker::cache::StringLoader;
+use freemarker::core::Environment;
 use freemarker::template::{Configuration, SimpleSequence, TModel, TemplateMethodModelEx};
 use freemarker::value::TNumber;
 use std::rc::Rc;
@@ -53,7 +54,7 @@ fn filter_object() -> TModel {
 
 struct NoXMethod;
 impl TemplateMethodModelEx for NoXMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let s = args[0].get_scalar()?;
         Ok(TModel::from_boolean(!s.contains('X')))
     }
@@ -61,7 +62,7 @@ impl TemplateMethodModelEx for NoXMethod {
 
 struct IsIntegerMethod;
 impl TemplateMethodModelEx for IsIntegerMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let n = args[0].get_number()?;
         let f = n.as_f64().unwrap_or(f64::NAN);
         Ok(TModel::from_boolean(f == f.trunc()))

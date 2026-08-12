@@ -10,12 +10,12 @@
 //! - pad 按 UTF-16 码元计数（Java String.length 语义），filling 循环填充；
 //! - 目标强制转字符串（EvalUtil.coerceModelToStringOrMarkup：数字/布尔可转）。
 
-use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, target_string};
 use crate::builtins::strings_regexp::{compile_pattern, parse_flags, FlagSet};
+use crate::core::eval_util::{arg_count, arg_string, check_arg_count, target_string};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
+use crate::template::utility::java_trim;
 use crate::template::TModel;
-use crate::utility::java_trim;
 
 /// 目标字符串（数字/布尔按输出规则强制转换）
 fn get_string(env: &mut Environment, target: &Expr) -> Result<String> {
@@ -417,7 +417,7 @@ fn pad_impl(
 ) -> Result<String> {
     check_arg_count(if left { "left_pad" } else { "right_pad" }, args, 1, 2)?;
     let s = get_string(env, target)?;
-    let width = crate::builtins::eval_util::arg_number(env, args, 0)?;
+    let width = crate::core::eval_util::arg_number(env, args, 0)?;
     let width = crate::core::eval::trunc_i64(&width)
         .ok_or_else(|| TemplateError::misc("The padding length must be an integer"))?
         .max(0) as usize;
@@ -489,7 +489,7 @@ pub fn last_index_of(
     let s = get_string(env, target)?;
     let sub = arg_string(env, args, 0)?;
     let from: usize = if arg_count(args) > 1 {
-        let n = crate::builtins::eval_util::arg_number(env, args, 1)?;
+        let n = crate::core::eval_util::arg_number(env, args, 1)?;
         crate::core::eval::trunc_i64(&n).unwrap_or(0).max(0) as usize
     } else {
         usize::MAX
@@ -591,7 +591,7 @@ pub fn truncate(
 ) -> Result<Option<TModel>> {
     check_arg_count("truncate", args, 1, 2)?;
     let s = get_string(env, target)?;
-    let max_len = crate::builtins::eval_util::arg_number(env, args, 0)?;
+    let max_len = crate::core::eval_util::arg_number(env, args, 0)?;
     let max_len = crate::core::eval::trunc_i64(&max_len).unwrap_or(0);
     let terminator = if arg_count(args) > 1 {
         arg_string(env, args, 1)?
@@ -614,7 +614,7 @@ pub fn truncate_w(
 ) -> Result<Option<TModel>> {
     check_arg_count("truncate_w", args, 1, 2)?;
     let s = get_string(env, target)?;
-    let max_words = crate::builtins::eval_util::arg_number(env, args, 0)?;
+    let max_words = crate::core::eval_util::arg_number(env, args, 0)?;
     let max_words = crate::core::eval::trunc_i64(&max_words).unwrap_or(0);
     let terminator = if arg_count(args) > 1 {
         arg_string(env, args, 1)?
@@ -669,7 +669,7 @@ pub fn truncate_c(
 ) -> Result<Option<TModel>> {
     check_arg_count("truncate_c", args, 1, 2)?;
     let s = get_string(env, target)?;
-    let max_chars = crate::builtins::eval_util::arg_number(env, args, 0)?;
+    let max_chars = crate::core::eval_util::arg_number(env, args, 0)?;
     let max_chars = crate::core::eval::trunc_i64(&max_chars).unwrap_or(0);
     let terminator = if arg_count(args) > 1 {
         arg_string(env, args, 1)?

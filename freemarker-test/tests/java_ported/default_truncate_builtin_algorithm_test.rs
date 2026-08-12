@@ -16,7 +16,7 @@
 
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
-use freemarker::utility::html_escape;
+use freemarker::template::utility::html_escape;
 
 /// Java STANDARD_ASCII_TERMINATOR / STANDARD_UNICODE_TERMINATOR / STANDARD_M_TERMINATOR
 const STANDARD_ASCII_TERMINATOR: &str = "[...]";

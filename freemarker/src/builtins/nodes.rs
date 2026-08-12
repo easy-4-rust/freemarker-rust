@@ -3,7 +3,7 @@
 //!
 //! 这些内建函数操作实现了 `TemplateNodeModel` 的值，提供对 XML/HTML 等树形数据模型的导航能力。
 
-use crate::builtins::eval_util::check_arg_count;
+use crate::core::eval_util::check_arg_count;
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};
 use crate::template::TModel;

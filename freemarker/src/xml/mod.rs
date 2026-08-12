@@ -16,13 +16,27 @@
 //! 模块布局（一文件一 Java 对象，docs/JavaRust结构对照.md）：
 //! - `ns_prefixes.rs`：`NsPrefixes` —— 对应 Java `Template` 的 ns_prefixes
 //! - `tree.rs`：`XmlTree` —— 树持有者（Rust 特有：Document 借用文本的自引用）
-//! - `node.rs`：`XmlNode` + `parse_xml` —— 对应 Java `NodeModel` 家族
-//!   （NodeModel/ElementModel/AttrModel/DocumentModel/TextModel/PINodeModel/
-//!   NodeOutputter/AtAtKey/DomStringUtil 合并，见对照报告 §5）
+//! - `node.rs`：`XmlNode` + `parse_xml` —— 对应 Java `NodeModel`（含 ElementModel/
+//!   TextModel 等子类分支）
+//! - `xml_dom_string_util.rs`：`XmlDomStringUtil` 的转义/判定工具
+//! - 其余各模型类文件为 Java 类对应锚点（Rust 由 XmlNode 分支承载）
 
+mod attr_value;
+mod attribute_node_model;
+mod cdata_model;
+mod comment_model;
+mod document_type_model;
+mod element_model;
+mod entity_model;
+mod misc_node_model;
 mod node;
+mod node_list_model;
+mod node_outputter;
 mod ns_prefixes;
+mod processing_instruction_model;
+mod text_model;
 mod tree;
+mod xml_dom_string_util;
 
 pub use node::{parse_xml, XmlNode};
 pub use ns_prefixes::NsPrefixes;

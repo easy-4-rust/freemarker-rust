@@ -197,6 +197,7 @@ fn make_date(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Environment;
     use crate::value::DateType;
 
     fn wrapper() -> SimpleObjectWrapper {
@@ -405,7 +406,7 @@ mod tests {
         // method / directive 无对应展开规则 → 报错并描述类型（DeepUnwrap.java:175）
         struct DummyMethod;
         impl crate::template::TemplateMethodModelEx for DummyMethod {
-            fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+            fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
                 // 测试中不会被调用（unwrap 在取用 method 槽之前就报错）
                 Ok(TModel::nothing())
             }

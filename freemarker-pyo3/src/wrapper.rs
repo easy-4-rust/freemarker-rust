@@ -515,14 +515,32 @@ mod tests {
             assert!(m.is_scalar());
             assert!(m.is_boolean());
             let method = m.get_method().unwrap();
+            let mut sink = Vec::new();
+            let cfg = std::rc::Rc::new(freemarker::template::Configuration::new());
+            let t = freemarker::template::Template::new(
+                "t".to_string(),
+                Vec::new(),
+                std::collections::HashMap::new(),
+                cfg,
+            );
+            let mut env = freemarker::core::Environment::new(&t, TModel::nothing(), &mut sink);
             let out = method
-                .exec(vec![TModel::from_scalar("bob".into())])
+                .exec(&mut env, vec![TModel::from_scalar("bob".into())])
                 .unwrap();
             assert_eq!(out.get_scalar().unwrap(), "hi bob");
             // 返回 None → nothing
             let obj = eval(py, "lambda: None").unwrap();
             let m = w.wrap(py, obj.bind(py), None).unwrap().unwrap();
-            let out = m.get_method().unwrap().exec(vec![]).unwrap();
+            let mut sink = Vec::new();
+            let cfg = std::rc::Rc::new(freemarker::template::Configuration::new());
+            let t = freemarker::template::Template::new(
+                "t".to_string(),
+                Vec::new(),
+                std::collections::HashMap::new(),
+                cfg,
+            );
+            let mut env = freemarker::core::Environment::new(&t, TModel::nothing(), &mut sink);
+            let out = m.get_method().unwrap().exec(&mut env, vec![]).unwrap();
             assert!(out.is_nothing());
         });
     }
@@ -708,7 +726,11 @@ mod tests {
             let w = wrapper();
             struct MethodStub;
             impl TemplateMethodModelEx for MethodStub {
-                fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+                fn exec(
+                    &self,
+                    _env: &mut freemarker::core::Environment,
+                    _args: Vec<TModel>,
+                ) -> Result<TModel> {
                     Ok(TModel::from_scalar("stub".into()))
                 }
             }
@@ -718,7 +740,7 @@ mod tests {
             let mut tm = TModel::nothing();
             tm.kind = freemarker::template::ModelKind::Hash;
             tm.hash = Some(Rc::new(SimpleHash(IndexMap::with_hasher(
-                freemarker::utility::FnvBuildHasher::default(),
+                freemarker::template::utility::FnvBuildHasher::default(),
             ))));
             tm.type_name = "hash";
             let out = w.unwrap(py, &tm).unwrap();

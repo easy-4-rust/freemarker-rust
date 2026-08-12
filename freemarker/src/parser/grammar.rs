@@ -857,14 +857,18 @@ impl<'a> Parser<'a> {
                         }
                         TagOpen::EndCall { .. } => {
                             // UNIFIED_CALL_END：`</@name>` 或 `</@ns.name>`（点链名，
-                            // FTL.jj 1102；`</@>` 无名）
-                            let mut name = self.lexer.read_name().unwrap_or_default();
+                            // FTL.jj 1102；`</@>` 无名）。名字按 Java `<ID>` token
+                            // 语义（FTL.jj 1392：ID_START_CHAR (ID_START_CHAR|ASCII_DIGIT)*
+                            // —— **含数字**，如 `</@m2>`；指令名 token 才限制 [a-zA-Z_]+）
+                            let mut name = self.lexer.scan_ident();
                             while self.lexer.peek() == Some('.') {
                                 self.lexer.bump();
-                                if let Some(part) = self.lexer.read_name() {
-                                    name.push('.');
-                                    name.push_str(&part);
+                                let part = self.lexer.scan_ident();
+                                if part.is_empty() {
+                                    break;
                                 }
+                                name.push('.');
+                                name.push_str(&part);
                             }
                             // 结束标签的 `>`（UNIFIED_CALL_END 的 CLOSE_TAG1）
                             self.expect_tag_end_raw()?;
@@ -2142,6 +2146,9 @@ impl<'a> Parser<'a> {
             params,
             body,
             namespace: None,
+            // Java Macro 的 template 字段（TemplateObject.setLocation）：解析期绑定
+            // 定义所在模板（`.caller_template_name` 的调用点词法模板判定用）
+            template_name: self.name.clone(),
             span: Span::new(line, col),
         };
         self.macros.insert(name, def.clone());
@@ -2346,10 +2353,9 @@ impl<'a> Parser<'a> {
         let (line, col) = self.tag_pos;
         let expr = self.expression()?;
         self.expect_tag_end()?;
-        self.loop_nesting += 1;
-        let r = self.switch_body(line, col, expr);
-        self.loop_nesting -= 1;
-        r
+        // breakable 计数迁入 switch_body：Java 在首个 #on 处撤销（FTL.jj Switch()），
+        // #case 模式在 END_SWITCH 撤销——两种模式的净效果不同
+        self.switch_body(line, col, expr)
     }
 
     fn switch_body(&mut self, line: u32, col: u32, expr: Expr) -> Result<Element> {
@@ -2357,6 +2363,10 @@ impl<'a> Parser<'a> {
         let mut default: Option<Vec<Element>> = None;
         let mut default_pos: Option<usize> = None;
         let mut had_default = false;
+        let mut had_case = false;
+        let mut had_on = false;
+        // Java FTL.jj Switch()：进入即递增 breakable 计数（#case 体内 #break 合法）
+        self.loop_nesting += 1;
         // 待处理的 case/default 名字：主体 parse_block 以 Dir 终止时名字已读（随
         // BlockStop::Dir 返回）；None 表示需先做空白/注释预检再打开标签
         let mut pending: Option<String> = None;
@@ -2404,6 +2414,7 @@ impl<'a> Parser<'a> {
                                             cases,
                                             default,
                                             default_pos,
+                                            had_on,
                                         );
                                     }
                                     return Err(self.err(
@@ -2441,10 +2452,58 @@ impl<'a> Parser<'a> {
                 }
             };
             match lname.as_str() {
-                "case" => {
-                    let value = self.expression()?;
+                // Java 2.3.28+：#switch 内 `<#on expr>` 是 `<#case expr>` 的等价形式
+                // （FTL.jj SWITCH_BODY：case/on 同为 CASE 关键字；Java 2.3.34 起
+                // #case 废弃别名，SwitchTest testOn 即此语法）
+                "case" | "on" => {
+                    // Java FTL.jj Switch() 的互斥校验（错误消息逐字）：
+                    // #case 在 #on 之后 → "already had an #on"；#on 在 #case 之后 →
+                    // "already had a #case"；#on 在 #default 之后 → "#on after #default"
+                    if lname == "on" {
+                        if had_case {
+                            return Err(self.err(
+                                line,
+                                col,
+                                "You can't use both #on, and #case in a #switch block, and you already had a #case.",
+                            ));
+                        }
+                        if had_default {
+                            return Err(self.err(
+                                line,
+                                col,
+                                "You can't use #on after #default in a #switch block; #default must come last.",
+                            ));
+                        }
+                        if !had_on {
+                            had_on = true;
+                            // Java FTL.jj Switch()："breakableDirectiveNesting++ 在发现
+                            // 'on' 调用时撤销"——#on 体内 #break 视为非法
+                            self.loop_nesting -= 1;
+                        }
+                    } else if had_on {
+                        return Err(self.err(
+                            line,
+                            col,
+                            "You can't use both #on, and #case in a #switch block, and you already had an #on.",
+                        ));
+                    } else {
+                        had_case = true;
+                    }
+                    let mut values = vec![self.expression()?];
+                    // Java 2.3.28+ #on 多值：`<#on 4, 5>` 一个块匹配多个值
+                    // （FTL.jj ON 语法；#case 保持单值——Java 中 #case 无逗号语法）
+                    // 注意不能用 lexer.peek() 探测：peek_tok/next_tok 已把逗号扫入
+                    // 缓冲 buf（lexer 位置越过逗号），须从 token 流判断
+                    while lname == "on" && self.peek_tok()?.0 == Tok::Comma {
+                        self.next_tok()?;
+                        values.push(self.expression()?);
+                    }
                     self.expect_tag_end()?;
-                    let (els, stop) = self.parse_block(&["switch"], &["case", "default"])?;
+                    let (els, stop) = self.parse_block(&["switch"], &["case", "default", "on"])?;
+                    // Java On：**不**追加 break 子元素——#on 不 fall-through 由执行器
+                    // （SwitchBlock.accept 的 processOnDirectives 分支）保证；追加 break
+                    // 会破坏空白剥离的 next 终端链（case body 尾部空白须保留，
+                    // testOnWhitespace 断言 `C1\n    ]`）
                     match stop {
                         BlockStop::Eof => {
                             return Err(self.err(line, col, "Unclosed <#switch> block."));
@@ -2454,11 +2513,25 @@ impl<'a> Parser<'a> {
                         }
                         BlockStop::EndTag(_) | BlockStop::Dir(_) => {}
                     }
-                    cases.push(CaseDef { value, body: els });
+                    for value in values {
+                        cases.push(CaseDef {
+                            value,
+                            body: els.clone(),
+                            is_on: lname == "on",
+                        });
+                    }
                     match stop {
                         BlockStop::Dir(n) => pending = Some(n),
                         _ => {
-                            return self.finish_switch(line, col, expr, cases, default, default_pos)
+                            return self.finish_switch(
+                                line,
+                                col,
+                                expr,
+                                cases,
+                                default,
+                                default_pos,
+                                had_on,
+                            )
                         }
                     }
                 }
@@ -2473,7 +2546,7 @@ impl<'a> Parser<'a> {
                     had_default = true;
                     self.expect_tag_end_raw()?;
                     // #default 主体同样在第二个 #default 处终止（switch 层校验重复）
-                    let (els, stop) = self.parse_block(&["switch"], &["case", "default"])?;
+                    let (els, stop) = self.parse_block(&["switch"], &["case", "default", "on"])?;
                     match stop {
                         BlockStop::Eof => {
                             return Err(self.err(line, col, "Unclosed <#switch> block."));
@@ -2488,7 +2561,15 @@ impl<'a> Parser<'a> {
                     match stop {
                         BlockStop::Dir(n) => pending = Some(n),
                         _ => {
-                            return self.finish_switch(line, col, expr, cases, default, default_pos)
+                            return self.finish_switch(
+                                line,
+                                col,
+                                expr,
+                                cases,
+                                default,
+                                default_pos,
+                                had_on,
+                            )
                         }
                     }
                 }
@@ -2506,14 +2587,20 @@ impl<'a> Parser<'a> {
     /// `</#switch>` 之后组装（Java 允许空 switch —— switch.ftl 用例
     /// `[<#switch 213></#switch>]`，空 switch 渲染为空）
     fn finish_switch(
-        &self,
+        &mut self,
         line: u32,
         col: u32,
         expr: Expr,
         cases: Vec<CaseDef>,
         default: Option<Vec<Element>>,
         default_pos: Option<usize>,
+        had_on: bool,
     ) -> Result<Element> {
+        // Java END_SWITCH："If we had #on, then this was already decreased there"——
+        // 只有 #case 模式在此撤销 breakable 计数
+        if !had_on {
+            self.loop_nesting -= 1;
+        }
         Ok(Element::new(
             ElementKind::Switch {
                 expr,
@@ -3168,6 +3255,23 @@ impl<'a> Parser<'a> {
                 let (t2, nl, nc) = self.next_tok()?;
                 match t2 {
                     Tok::Ident(name) => {
+                        // Java BuiltinVariable.java:258-262：GET_OPTIONAL_TEMPLATE(_CC)
+                        // 是两个独立名称（错误消息用各自方法名），须在归一化前区分
+                        if name == "getOptionalTemplate" {
+                            return Ok(Expr::new(
+                                ExprKind::BuiltinVar(BuiltinVar::GetOptionalTemplateCc),
+                                Span::new(nl, nc),
+                            ));
+                        }
+                        // Java BuiltinVariable.java:81-82：CALLER_TEMPLATE_NAME(_CC)
+                        // 同理（错误消息 "Can't get .callerTemplateName here..." 用
+                        // 各自字面名，BuiltinVariable.java:285-293 getRequiredMacroContext）
+                        if name == "callerTemplateName" {
+                            return Ok(Expr::new(
+                                ExprKind::BuiltinVar(BuiltinVar::CallerTemplateNameCc),
+                                Span::new(nl, nc),
+                            ));
+                        }
                         let name = camel_to_snake(&name);
                         match builtin_var_of(&name) {
                             Some(v) => Ok(Expr::new(
@@ -3178,7 +3282,7 @@ impl<'a> Parser<'a> {
                                 nl,
                                 nc,
                                 format!(
-                                    "The built-in variable \".{name}\" doesn't exist. The allowed special variable names are: namespace, main, globals, locals, data_model, vars, lang, locale, locale_object, time_zone, template_name, main_template_name, current_template_name, node, current_node, error, output_encoding, output_format, auto_esc, url_escaping_charset, version, incompatible_improvements, args, now."
+                                    "The built-in variable \".{name}\" doesn't exist. The allowed special variable names are: namespace, main, globals, locals, data_model, vars, lang, locale, locale_object, time_zone, template_name, main_template_name, current_template_name, caller_template_name, node, current_node, error, output_encoding, output_format, auto_esc, url_escaping_charset, version, incompatible_improvements, args, now, get_optional_template."
                                 ),
                             )),
                         }
@@ -3591,27 +3695,29 @@ impl<'a> Parser<'a> {
         if !strip_ws {
             return;
         }
-        Self::mark_block(root, None, None, true);
+        Self::mark_block(root, None, None, None, None, true);
     }
 
     /// 对文本元素做 deliberate 扫描（Java TextBlock.deliberateLeftTrim/RightTrim，
     /// TextBlock.java:143-236）：只依赖元素类型与行号，与文本内容无关
     /// → 可在可变借用前计算。返回 (left_trim, left_blocked, right_trim, right_blocked, heinous_drop)。
+    /// Java nextTerminalNode/prevTerminalNode 链**跨块**（沿同级后续兄弟块继续同行
+    /// 扫描——如 `<#on 1>C1\n    <#on 2>C2<#t>` 里 on-2 的 `<#t>` 裁 on-1 尾文本，
+    /// SwitchTest testOnWhitespace 断言；`next_els`/`prev_els` 为下一/上一兄弟块）。
     fn deliberate_scan(
         els: &[Element],
         i: usize,
         begin_line: u32,
         end_line: u32,
         is_root: bool,
+        next_els: Option<&[Element]>,
+        prev_els: Option<&[Element]>,
     ) -> (bool, bool, bool, bool, bool) {
         // deliberateLeftTrim：后面同行 lt/t 裁最后一行行首；nt 阻止
         // （Java 循环条件 `elem.beginLine == this.endLine` 对每个元素生效，换行即终止）
         let mut left_trim = false;
         let mut left_blocked = false;
-        for e in els.iter().skip(i + 1) {
-            if e.span.line > end_line {
-                break;
-            }
+        for e in Self::scan_next_chain(els, i, end_line, next_els) {
             match &e.kind {
                 ElementKind::LeftTrimLine | ElementKind::TrimLineStart => {
                     left_trim = true;
@@ -3627,11 +3733,7 @@ impl<'a> Parser<'a> {
         // deliberateRightTrim：前面同行 rt/t 裁第一行尾部；nt 阻止
         let mut right_trim = false;
         let mut right_blocked = false;
-        for j in (0..i).rev() {
-            let e = &els[j];
-            if e.span.line < begin_line {
-                break;
-            }
+        for e in Self::scan_prev_chain(els, i, begin_line, prev_els) {
             match &e.kind {
                 ElementKind::TrimLineEnd | ElementKind::TrimLineStart => {
                     right_trim = true;
@@ -3645,7 +3747,7 @@ impl<'a> Parser<'a> {
             }
         }
         // HEINOUS 块（TextBlock.java:239-254）：right_trim 且 opening 不可整段裁时，
-        // trailing（首行后的空白段）是否裁掉由**后文同行**决定：遇 heedsOpeningWhitespace
+        // trailing（首行后的空白段）是否裁掉由后文同行决定：遇 heedsOpeningWhitespace
         // 元素 → 保留（ignorable 文本 heeds=false，:316-318）；遇 lt/t → 裁掉并终止
         let heinous_drop = if right_trim {
             let mut drop = true;
@@ -3664,6 +3766,24 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
+            // 块内耗尽后继续下一兄弟块（Java nextTerminalNode 跨块链）
+            if let Some(nx) = next_els {
+                for e in nx {
+                    if e.span.line > end_line {
+                        break;
+                    }
+                    if leaf_heeds_opening(e) {
+                        drop = false;
+                    }
+                    if matches!(
+                        e.kind,
+                        ElementKind::LeftTrimLine | ElementKind::TrimLineStart
+                    ) {
+                        drop = true;
+                        break;
+                    }
+                }
+            }
             drop
         } else {
             false
@@ -3677,7 +3797,45 @@ impl<'a> Parser<'a> {
         )
     }
 
-    fn mark_block(els: &mut [Element], prev: Option<Term>, next: Option<Term>, is_root: bool) {
+    /// 后继元素链（Java nextTerminalNode 的块内 + 下一兄弟块部分）：
+    /// 逐元素（span 起始行 <= end_line 才参与，Java `elem.beginLine == this.endLine`）
+    fn scan_next_chain<'x>(
+        els: &'x [Element],
+        i: usize,
+        end_line: u32,
+        next_els: Option<&'x [Element]>,
+    ) -> impl Iterator<Item = &'x Element> {
+        els.iter()
+            .skip(i + 1)
+            .chain(next_els.into_iter().flatten())
+            .take_while(move |e| e.span.line <= end_line)
+    }
+
+    /// 前驱元素链（deliberateRightTrim 用；块内逆序 + 上一兄弟块逆序，
+    /// span 起始行 >= begin_line 才参与）
+    fn scan_prev_chain<'x>(
+        els: &'x [Element],
+        i: usize,
+        begin_line: u32,
+        prev_els: Option<&'x [Element]>,
+    ) -> impl Iterator<Item = &'x Element> {
+        els[..i]
+            .iter()
+            .rev()
+            .chain(prev_els.into_iter().flatten().rev())
+            .take_while(move |e| e.span.line >= begin_line)
+    }
+
+    /// `prev_els`/`next_els`：上一/下一兄弟块的元素（deliberate 链跨块扫描用；
+    /// Java nextTerminalNode/prevTerminalNode 沿整树同行扫描）
+    fn mark_block(
+        els: &mut [Element],
+        prev: Option<Term>,
+        next: Option<Term>,
+        prev_els: Option<&[Element]>,
+        next_els: Option<&[Element]>,
+        is_root: bool,
+    ) {
         for i in 0..els.len() {
             // Java prevTerminalNode/nextTerminalNode（TextBlock.java:443-464）：逐叶线性
             // 回溯/前进，**跳过 ignorable 节点**（TrimInstruction.isIgnorable=true）；
@@ -3705,7 +3863,7 @@ impl<'a> Parser<'a> {
             let next_i = walk_next(els, i, end_line, next, is_root);
             let span_col = els[i].span.col;
             let (left_trim, left_blocked, right_trim, right_blocked, heinous_drop) =
-                Self::deliberate_scan(els, i, begin_line, end_line, is_root);
+                Self::deliberate_scan(els, i, begin_line, end_line, is_root, next_els, prev_els);
             match &mut els[i].kind {
                 ElementKind::Text {
                     text,
@@ -3767,35 +3925,41 @@ impl<'a> Parser<'a> {
                     } else {
                         last_leaf(&then[then.len() - 1])
                     };
-                    Self::mark_block(then, prev_i, else_first.or(next_i), false);
+                    Self::mark_block(
+                        then,
+                        prev_i,
+                        else_first.or(next_i),
+                        prev_els,
+                        else_.as_deref(),
+                        false,
+                    );
                     if let Some(e) = else_ {
-                        Self::mark_block(e, then_last, next_i, false);
+                        let then_s: &[Element] = then.as_slice();
+                        Self::mark_block(e, then_last, next_i, Some(then_s), next_els, false);
                     }
                 }
                 ElementKind::List { body, else_, .. } => {
-                    let mut order: Vec<&mut Vec<Element>> = Vec::new();
-                    order.push(body);
+                    let else_first = else_.as_deref().and_then(first_leaf_slice);
+                    let body_last = if body.is_empty() {
+                        prev_i
+                    } else {
+                        last_leaf(&body[body.len() - 1])
+                    };
+                    Self::mark_block(
+                        body,
+                        prev_i,
+                        else_first.or(next_i),
+                        prev_els,
+                        else_.as_deref(),
+                        false,
+                    );
                     if let Some(e) = else_ {
-                        order.push(e);
-                    }
-                    let mut cur_prev = prev_i;
-                    let len = order.len();
-                    for idx in 0..len {
-                        let cur_next = if idx + 1 < len {
-                            first_leaf_slice(order[idx + 1].as_slice())
-                        } else {
-                            next_i
-                        };
-                        Self::mark_block(order[idx].as_mut_slice(), cur_prev, cur_next, false);
-                        cur_prev = if order[idx].is_empty() {
-                            cur_prev
-                        } else {
-                            last_leaf(&order[idx][order[idx].len() - 1])
-                        };
+                        let body_s: &[Element] = body.as_slice();
+                        Self::mark_block(e, body_last, next_i, Some(body_s), next_els, false);
                     }
                 }
                 ElementKind::Macro { def, .. } => {
-                    Self::mark_block(&mut def.body, prev_i, next_i, false);
+                    Self::mark_block(&mut def.body, prev_i, next_i, prev_els, next_els, false);
                 }
                 ElementKind::Trim(body)
                 | ElementKind::Compress(body)
@@ -3810,7 +3974,7 @@ impl<'a> Parser<'a> {
                 | ElementKind::Call {
                     body: Some(body), ..
                 } => {
-                    Self::mark_block(body, prev_i, next_i, false);
+                    Self::mark_block(body, prev_i, next_i, prev_els, next_els, false);
                 }
                 ElementKind::Escape { body, .. }
                 | ElementKind::OutputFormat { body, .. }
@@ -3823,7 +3987,7 @@ impl<'a> Parser<'a> {
                 | ElementKind::Local {
                     body: Some(body), ..
                 } => {
-                    Self::mark_block(body, prev_i, next_i, false);
+                    Self::mark_block(body, prev_i, next_i, prev_els, next_els, false);
                 }
                 ElementKind::Attempt { try_, recover, .. } => {
                     let rec_first = if recover.is_empty() {
@@ -3836,28 +4000,60 @@ impl<'a> Parser<'a> {
                     } else {
                         last_leaf(&try_[try_.len() - 1])
                     };
-                    Self::mark_block(try_, prev_i, rec_first, false);
-                    Self::mark_block(recover, try_last, next_i, false);
+                    Self::mark_block(
+                        try_,
+                        prev_i,
+                        rec_first,
+                        prev_els,
+                        Some(recover.as_slice()),
+                        false,
+                    );
+                    Self::mark_block(
+                        recover,
+                        try_last,
+                        next_i,
+                        Some(try_.as_slice()),
+                        next_els,
+                        false,
+                    );
                 }
                 ElementKind::Switch { cases, default, .. } => {
                     let mut cur_prev = prev_i;
                     for idx in 0..cases.len() {
-                        let cur_next = if idx + 1 < cases.len() {
-                            first_leaf_slice(cases[idx + 1].body.as_slice())
+                        // split_at_mut：邻居切片与当前 case 的可变借用互不冲突
+                        // （索引借用会覆盖整个 vec——E0502）
+                        let (before, rest) = cases.split_at_mut(idx);
+                        let (cur, after) = rest.split_at_mut(1);
+                        let cur_next = if !after.is_empty() {
+                            first_leaf_slice(&after[0].body)
                         } else if let Some(d) = default {
                             first_leaf_slice(d.as_slice())
                         } else {
                             next_i
                         };
-                        Self::mark_block(cases[idx].body.as_mut_slice(), cur_prev, cur_next, false);
-                        cur_prev = if cases[idx].body.is_empty() {
+                        let prev_s: Option<&[Element]> = before.last().map(|c| c.body.as_slice());
+                        let next_s: Option<&[Element]> = if !after.is_empty() {
+                            Some(after[0].body.as_slice())
+                        } else {
+                            default.as_deref().or(next_els)
+                        };
+                        Self::mark_block(
+                            cur[0].body.as_mut_slice(),
+                            cur_prev,
+                            cur_next,
+                            prev_s,
+                            next_s,
+                            false,
+                        );
+                        cur_prev = if cur[0].body.is_empty() {
                             cur_prev
                         } else {
-                            last_leaf(&cases[idx].body[cases[idx].body.len() - 1])
+                            last_leaf(&cur[0].body[cur[0].body.len() - 1])
                         };
                     }
                     if let Some(d) = default {
-                        Self::mark_block(d, cur_prev, next_i, false);
+                        let last_s = cases.last().map(|c| c.body.as_slice());
+                        Self::mark_block(d, cur_prev, next_i, last_s.or(prev_els), next_els, false);
                     }
                 }
                 ElementKind::Call { body: None, .. }
@@ -4129,12 +4325,19 @@ fn first_leaf(el: &Element) -> Option<Term> {
             heeds: false,
             line: el.span.line,
         }),
+        // Java：块赋值与宏一样视为叶（TemplateElement.getFirstLeaf :488-495 的
+        // `!(te instanceof BlockAssignment)` 特例），heedsOpeningWhitespace=false ——
+        // 不深入 body，其后文本的行首空白照剥（BlockAssignment 的捕获输出不参与
+        // 相邻文本的空白剥离判定；同因影响 examples_test.rs 的 testCapture 等）
+        ElementKind::BlockAssign { .. } => Some(Term {
+            heeds: false,
+            line: el.span.line,
+        }),
         ElementKind::Trim(b)
         | ElementKind::Compress(b)
         | ElementKind::NoEscape(b)
         | ElementKind::AutoEsc(b)
         | ElementKind::NoAutoEsc(b)
-        | ElementKind::BlockAssign { body: b, .. }
         | ElementKind::Items { body: b, .. }
         | ElementKind::Sep { body: b }
         | ElementKind::Transform { body: b, .. }
@@ -4215,12 +4418,17 @@ fn last_leaf(el: &Element) -> Option<Term> {
             heeds: false,
             line: el.span.line,
         }),
+        // Java：块赋值视为叶（TemplateElement.getLastLeaf :497-504 的
+        // `!(te instanceof BlockAssignment)` 特例），heedsOpeningWhitespace=false
+        ElementKind::BlockAssign { .. } => Some(Term {
+            heeds: false,
+            line: el.span.line,
+        }),
         ElementKind::Trim(b)
         | ElementKind::Compress(b)
         | ElementKind::NoEscape(b)
         | ElementKind::AutoEsc(b)
         | ElementKind::NoAutoEsc(b)
-        | ElementKind::BlockAssign { body: b, .. }
         | ElementKind::Items { body: b, .. }
         | ElementKind::Sep { body: b }
         | ElementKind::Transform { body: b, .. }
@@ -4756,6 +4964,7 @@ fn builtin_var_of(name: &str) -> Option<BuiltinVar> {
         "template_name" => BuiltinVar::TemplateName,
         "main_template_name" => BuiltinVar::MainTemplateName,
         "current_template_name" => BuiltinVar::CurrentTemplateName,
+        "caller_template_name" => BuiltinVar::CallerTemplateName,
         "node" | "current_node" => BuiltinVar::Node,
         "error" => BuiltinVar::Error,
         "output_encoding" => BuiltinVar::OutputEncoding,
@@ -4765,6 +4974,7 @@ fn builtin_var_of(name: &str) -> Option<BuiltinVar> {
         "version" => BuiltinVar::Version,
         "incompatible_improvements" => BuiltinVar::IncompatibleImprovements,
         "args" => BuiltinVar::Args,
+        "get_optional_template" => BuiltinVar::GetOptionalTemplate,
         _ => return None,
     })
 }

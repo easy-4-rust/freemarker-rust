@@ -252,4 +252,7 @@ pub enum CallTarget {
 pub struct CaseDef {
     pub value: Expr,
     pub body: Vec<Element>,
+    /// 是否 #on 分支（Java SwitchBlock.usesOnDirective）：匹配后不 fall-through，
+    /// 且体内 break/continue 不被捕获（Java On 无 break 子元素）
+    pub is_on: bool,
 }

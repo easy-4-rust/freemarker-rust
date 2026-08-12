@@ -3,7 +3,7 @@
 
 use bigdecimal::ToPrimitive;
 use freemarker::cache::StringLoader;
-use freemarker::core::{compare_models, CmpOp};
+use freemarker::core::{compare_models, CmpOp, Environment};
 use freemarker::error::{Result, TemplateError};
 use freemarker::template::{
     Configuration, TModel, TemplateDirectiveBody, TemplateDirectiveModel, Version,
@@ -1133,7 +1133,7 @@ fn vararg_items(args: &[TModel]) -> Vec<TModel> {
 /// bar(Integer... xs)：null 元素跳过（VarArgTestModel.java:31-38）
 struct VarBar;
 impl freemarker::template::TemplateMethodModelEx for VarBar {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let mut sum: i64 = 0;
         for x in vararg_items(&args) {
             if !x.is_nothing() {
@@ -1147,7 +1147,7 @@ impl freemarker::template::TemplateMethodModelEx for VarBar {
 /// bar2(int first, int... xs)：-(sum*100 + first)
 struct VarBar2;
 impl freemarker::template::TemplateMethodModelEx for VarBar2 {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let first = args.first().and_then(vararg_int).unwrap_or(0);
         let xs = vararg_items(&args);
         let mut sum: i64 = 0;
@@ -1162,7 +1162,7 @@ impl freemarker::template::TemplateMethodModelEx for VarBar2 {
 /// （BeansWrapper 精确匹配优先），其余走 varargs
 struct VarOverloaded;
 impl freemarker::template::TemplateMethodModelEx for VarOverloaded {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let xs = vararg_items(&args);
         if args.len() == 2 {
             // (int x, int y) = x*100 + y
@@ -1182,7 +1182,7 @@ impl freemarker::template::TemplateMethodModelEx for VarOverloaded {
 /// s + ", " + b + ", " + i + ", " + d.getTime()
 struct VarNoVarArgs;
 impl freemarker::template::TemplateMethodModelEx for VarNoVarArgs {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let s = args
             .first()
             .and_then(|m| m.get_scalar().ok())
@@ -1221,7 +1221,7 @@ fn multimodel2() -> TModel {
 /// （Java exec 的 (String) 强转说明参数已字符串化；标量按内容）
 struct MultiModel2Method;
 impl freemarker::template::TemplateMethodModelEx for MultiModel2Method {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let mut out = String::from("Arguments are:<br />");
         for a in args {
             out.push_str(
@@ -1326,7 +1326,7 @@ impl freemarker::template::TemplateNodeModel for TestNodeModel {
 /// 的 m(int)/mOverloaded(int|String)；v1 仅角色判定用
 struct BeanMethod;
 impl freemarker::template::TemplateMethodModelEx for BeanMethod {
-    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
         Ok(TModel::from_scalar("x".to_string()))
     }
 }
@@ -1425,14 +1425,14 @@ fn listables_model(coll_adapter: bool) -> TModel {
 
 struct IteratorMethod;
 impl freemarker::template::TemplateMethodModelEx for IteratorMethod {
-    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
         Ok(TModel::from_collection(vec![num(11), num(22), num(33)]))
     }
 }
 
 struct EmptyIteratorMethod;
 impl freemarker::template::TemplateMethodModelEx for EmptyIteratorMethod {
-    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
         Ok(TModel::from_collection(vec![]))
     }
 }
@@ -1456,7 +1456,7 @@ fn bool_and_string() -> TModel {
 /// 等特殊变量已按 Java 描述串提供（eval.rs LocaleObject），直接返回参数文本）
 struct JavaObjectInfoMethod;
 impl freemarker::template::TemplateMethodModelEx for JavaObjectInfoMethod {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         match args.first() {
             None => Ok(TModel::from_scalar("null".to_string())),
             Some(m) if m.is_nothing() => Ok(TModel::from_scalar("null".to_string())),
@@ -1473,7 +1473,7 @@ impl freemarker::template::TemplateMethodModelEx for JavaObjectInfoMethod {
 /// BeansWrapper 解包失败消息 "Can't convert the ..."）
 struct BvsExpectsString;
 impl freemarker::template::TemplateMethodModelEx for BvsExpectsString {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let m = args
             .first()
             .ok_or_else(|| TemplateError::misc("expectsString requires an argument"))?;
@@ -1490,7 +1490,7 @@ impl freemarker::template::TemplateMethodModelEx for BvsExpectsString {
 /// BooleanVsStringMethods.expectsBoolean
 struct BvsExpectsBoolean;
 impl freemarker::template::TemplateMethodModelEx for BvsExpectsBoolean {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let b = args
             .first()
             .ok_or_else(|| TemplateError::misc("expectsBoolean requires an argument"))?
@@ -1502,7 +1502,7 @@ impl freemarker::template::TemplateMethodModelEx for BvsExpectsBoolean {
 /// BooleanVsStringMethods.overloaded：字符串参数 → "String x"，布尔 → "boolean x"
 struct BvsOverloaded;
 impl freemarker::template::TemplateMethodModelEx for BvsOverloaded {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let m = args
             .first()
             .ok_or_else(|| TemplateError::misc("overloaded requires an argument"))?;
@@ -1518,7 +1518,7 @@ impl freemarker::template::TemplateMethodModelEx for BvsOverloaded {
 
 struct TestMethod;
 impl freemarker::template::TemplateMethodModelEx for TestMethod {
-    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
         Ok(TModel::from_scalar("x".to_string()))
     }
 }
@@ -1759,7 +1759,7 @@ fn api_string_model() -> TModel {
 /// Map.get(key)：Integer 键 → 值；键不存在 → null
 struct MapApiGet;
 impl freemarker::template::TemplateMethodModelEx for MapApiGet {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         Ok(match args.first().and_then(vararg_int) {
             Some(1) => TModel::from_scalar("a".to_string()),
             Some(2) => TModel::from_scalar("b".to_string()),
@@ -1772,7 +1772,7 @@ impl freemarker::template::TemplateMethodModelEx for MapApiGet {
 /// Map.entrySet()：ImmutableMap 保持插入序 → {key, value} 哈希序列
 struct MapApiEntrySet;
 impl freemarker::template::TemplateMethodModelEx for MapApiEntrySet {
-    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
         let mut out = Vec::new();
         for (k, v) in [("1", "a"), ("2", "b"), ("3", "c")] {
             let mut e = IndexMap::new();
@@ -1787,7 +1787,7 @@ impl freemarker::template::TemplateMethodModelEx for MapApiEntrySet {
 /// List.indexOf(Object)：未找到 → -1
 struct ListApiIndexOf;
 impl freemarker::template::TemplateMethodModelEx for ListApiIndexOf {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         Ok(num(match args.first().and_then(vararg_int) {
             Some(1) => 0,
             Some(2) => 1,
@@ -1800,7 +1800,7 @@ impl freemarker::template::TemplateMethodModelEx for ListApiIndexOf {
 /// Set.contains(Object)：成员测试
 struct SetApiContains;
 impl freemarker::template::TemplateMethodModelEx for SetApiContains {
-    fn exec(&self, args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> Result<TModel> {
         let s = args
             .first()
             .and_then(|m| m.get_scalar().ok())
@@ -1815,7 +1815,7 @@ impl freemarker::template::TemplateMethodModelEx for SetApiContains {
 /// String.toUpperCase()：locale 无关大写
 struct StringApiToUpperCase;
 impl freemarker::template::TemplateMethodModelEx for StringApiToUpperCase {
-    fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+    fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
         Ok(TModel::from_scalar("test".to_uppercase()))
     }
 }

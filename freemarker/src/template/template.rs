@@ -18,6 +18,10 @@ pub struct Template {
     pub encoding: Option<String>,
     /// `<#ftl ns_prefixes=...>` 命名空间前缀映射（prefix → URI；XML 节点查询用）
     pub ns_prefixes: HashMap<String, String>,
+    /// per-template 配置（Java `Template.getTemplateConfiguration`：
+    /// Configuration.setTemplateConfigurations 匹配结果；渲染时应用到
+    /// Environment 设置）
+    pub(crate) template_configuration: Option<crate::core::TemplateConfiguration>,
 }
 
 impl Template {
@@ -34,6 +38,7 @@ impl Template {
             configuration,
             encoding: None,
             ns_prefixes: HashMap::new(),
+            template_configuration: None,
         }
     }
 

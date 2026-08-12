@@ -4,6 +4,14 @@
 //!
 //! 引擎差异：v1 无 Template.getImports/addImport、Environment.getVariable/
 //! setVariable 公开 API（import 命名空间由渲染环境内部管理）——整体跳过并注释。
+//!
+//! NOT_APPLICABLE: testImportCopying —— Java 断言围绕"误公开"API：
+//!   Template.getImports()/addImport(LibraryLoad)（把 t1 的 import 复制到 t2 后
+//!   渲染 "<@i1.m/><@i2.m/>" 抛 InvalidReferenceException，blamedExpression=="i1"）、
+//!   Environment.getVariable()/setVariable()（把 Namespace 注入另一模板渲染
+//!   "<@i1.m/>"→"1"、 "<@i2.m/>"→"2" 或 NPE）（MistakenlyPublicImportAPIsTest.java:43-104）；
+//!   v1 无这些公开 API，断言不可移植——Java 原文保留于方法注释，仅保留正常
+//!   import 路径（同模板内 <#import> 后用命名空间）验证。
 
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
@@ -11,6 +19,8 @@ use crate::util::*;
 /// Java testImportCopying：跨模板复制 LibraryLoad 的兼容行为
 #[test]
 fn test_import_copying() {
+    // NOT_APPLICABLE: getImports/addImport/getVariable/setVariable 复制断言——
+    // v1 无这些公开 API（Java 原文见 MistakenlyPublicImportAPIsTest.java:43-104）。
     // Java 断言（注释保留）：
     // - t1（含两个 <#import>）的 getImports() 复制到 t2 后，t2 渲染
     //   "<@i1.m/><@i2.m/>" 抛 InvalidReferenceException，blamedExpression=="i1"

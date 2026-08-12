@@ -48,11 +48,8 @@ const MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 pub fn render(template: &Template, root: TModel, out: &mut dyn Write) -> Result<()> {
     let mut env = Environment::new(template, root, out);
     // Java Environment.process :322 doAutoImportsAndIncludes → Configuration
-    // doAutoImports（Configuration.java:3680-3685）：autoImports（ns → 模板路径）
-    // 在每次渲染前 importLib
-    for (ns, path) in &template.configuration.auto_imports {
-        env.import_lib(path, ns)?;
-    }
+    // doAutoImports/doAutoIncludes（Configuration.java:3679-3748）在 process()
+    // 内执行（三层 auto import/include 合并，见 do_auto_imports_and_includes）
     env.process()
 }
 
@@ -106,6 +103,14 @@ pub struct Environment<'a> {
     auto_escape: bool,
     /// 当前模板名（include/import 执行时切换；Java getCurrentTemplate :257-267；错误定位用）
     pub(crate) current_template_name: String,
+    /// 词法模板名 —— 对应 Java `getCurrentTemplate()`（Environment.java:257-267：
+    /// instructionStack 栈顶元素的 template 字段 = 当前词法所在模板）。与
+    /// `current_template_name`（运行期当前模板，仅 include/import 切换）不同：
+    /// 宏/函数体内词法模板 = **宏定义所在模板**（Java 各元素解析期绑定的 template），
+    /// `<#nested>` 回插时 = 调用点模板。`.caller_template_name`
+    /// （BuiltinVariable.java:264-267）与 `?absolute_template_name` 的标量基准
+    /// （BuiltInsForStringsMisc.java:165-167 getTemplate().getName()）依赖它。
+    pub(crate) lexical_template_name: String,
     /// 当前模板的 ns_prefixes（`<#ftl ns_prefixes=...>`；include 沿用主模板、
     /// import 用库模板自己的——Java currentNamespace.getTemplate().getNamespaceForPrefix）
     current_ns_prefixes: HashMap<String, String>,
@@ -137,6 +142,28 @@ pub struct Environment<'a> {
     /// 沿父元素链找最近 Macro 元素的等价物；宏体执行时置名、`<#nested>` 回插时
     /// 恢复调用方值）
     pub(crate) current_macro_name: Option<String>,
+    // -----------------------------------------------------------------------
+    // 三层 auto import/include 分层（Java Configurable 继承链：
+    // Configuration → Template → Environment；Environment.java:322 process 前
+    // doAutoImportsAndIncludes → Configuration.java:3679-3748）：
+    // -----------------------------------------------------------------------
+    /// 本环境（env）层 auto imports（Java `Environment.addAutoImport` ——
+    /// Configurable.autoImports 在 env 层自有表；getAutoImportsWithoutFallback）
+    pub(crate) env_auto_imports: Vec<(String, String)>,
+    /// 本环境（env）层 auto includes（Java `Environment.addAutoInclude`）
+    pub(crate) env_auto_includes: Vec<String>,
+    /// 主模板（t）层 auto imports —— Environment 构造时从
+    /// `template.template_configuration` 复制（Java：TemplateConfiguration.apply
+    /// 在模板加载时把 tc.autoImports 合并进 Template 对象，
+    /// TemplateConfiguration.java:399-402 + TemplateCache.java:583；
+    /// t.getAutoImportsWithoutFallback()）
+    pub(crate) t_auto_imports: Vec<(String, String)>,
+    /// 主模板（t）层 auto includes（Java t.getAutoIncludesWithoutFallback()）
+    pub(crate) t_auto_includes: Vec<String>,
+    /// custom state 表 —— 对应 Java `Environment.customStateVariables`
+    /// （Environment.java:3405-3446：IdentityHashMap<Object,Object>；
+    /// 键 identity 语义 Rust 侧用 String；值可为 null → Option 槽位）
+    pub(crate) custom_state: RefCell<HashMap<String, Option<TModel>>>,
 }
 
 /// run 循环结束信号（`<#return>` 专用；Java ReturnInstruction.Return）。
@@ -367,7 +394,7 @@ pub(crate) struct BodyCtx {
 pub struct MacroFrame {
     /// 宏参数 + `<#local>` 变量（Java `Context.localVars`；:414 setLocalVar）
     /// FNV 哈希（热路径查找）
-    pub(crate) locals: RefCell<HashMap<String, TModel, crate::utility::FnvBuildHasher>>,
+    pub(crate) locals: RefCell<HashMap<String, TModel, crate::template::utility::FnvBuildHasher>>,
     /// 调用方 body 元素（`<@m>body</@m>`；`<#nested>` 回插，Java callPlace.getChildBuffer()）
     pub(crate) call_body: Option<Vec<Element>>,
     /// 体参数名列表（`<@m ; a, b>`；`<#nested v1 v2>` 按位置赋给 a、b ——
@@ -381,6 +408,14 @@ pub struct MacroFrame {
     /// 调用方词法宏名（`<#nested>` 回插调用方 body 时 current_macro_name 恢复用——
     /// 调用方 body 元素的 `in macro "m"` 定位；Java 父元素链的宏归属）
     pub(crate) caller_macro_name: Option<String>,
+    /// 调用方模板名 —— 对应 Java `Macro.Context.callPlace`（Macro.java:227-250：
+    /// 调用点 TemplateObject）的 `getTemplate().getName()`（BuiltinVariable.java:264-267）：
+    /// 调用点所在模板的查找名；无名模板 → None（Java getName()==null →
+    /// EMPTY_STRING）。`<#nested>` 回插时当前帧为调用方帧，读数自然恢复。
+    pub(crate) caller_template_name: Option<String>,
+    /// 调用时的词法模板名（`<#nested>` 回插期间 lexical_template_name 恢复用——
+    /// 嵌套内容词法上位于调用点模板，Java getCurrentTemplate 的指令栈顶元素语义）
+    pub(crate) prev_lexical_template_name: Option<String>,
     /// `.args` 特殊变量值（Java Macro.Context.argsSpecialVariableValue——
     /// checkParamsSetAndApplyDefaults :344-397：macro → 参数哈希、function → 参数序列）
     ///
@@ -412,6 +447,27 @@ pub struct MacroValue {
     /// 必须为 `Weak`：`Namespace.macros` 已强持有 `MacroValue`，若此处再强持有
     /// `Namespace`，每个含宏的渲染环境都会形成不可释放的 `Rc` 环。
     pub ns: Weak<Namespace>,
+    /// `?with_args`/`?with_args_last` 预绑定参数 —— 对应 Java `Macro.WithArgs`
+    /// （Macro.java:492-510，`new Macro(that, withArgs)` 复制构造 :98-104）；
+    /// None = 无预绑定（普通宏/函数值）
+    pub(crate) with_args: Option<WithArgs>,
+}
+
+/// `?with_args` 预绑定参数 —— 对应 Java `Macro.WithArgs`（Macro.java:492-510）：
+/// 按名（TemplateHashModelEx）或按位（TemplateSequenceModel）二选一 + 顺序标志。
+#[derive(Clone)]
+pub(crate) struct WithArgs {
+    pub kind: WithArgsKind,
+    pub order_last: bool,
+}
+
+/// 预绑定参数的形态（Java WithArgs.byName / byPosition 二选一）
+#[derive(Clone)]
+pub(crate) enum WithArgsKind {
+    /// 按名绑定（Java byName TemplateHashModelEx）
+    ByName(indexmap::IndexMap<String, TModel>),
+    /// 按位绑定（Java byPosition TemplateSequenceModel）
+    ByPosition(Vec<TModel>),
 }
 
 /// lambda 值 —— 对应 Java `LocalLambdaExpression` 求值结果（v1 仅存槽位；
@@ -429,8 +485,8 @@ pub struct LambdaValue {
 /// 同时实现 TemplateHashModel/Ex → 可作 TModel 值（`<@ns.macro>`、`ns.var`、`?keys` 等）。
 /// 变量/宏表用 FNV 哈希（热路径查找；迭代序无依赖——keys() 已排序）。
 pub struct Namespace {
-    vars: RefCell<HashMap<String, TModel, crate::utility::FnvBuildHasher>>,
-    macros: RefCell<HashMap<String, Rc<MacroValue>, crate::utility::FnvBuildHasher>>,
+    vars: RefCell<HashMap<String, TModel, crate::template::utility::FnvBuildHasher>>,
+    macros: RefCell<HashMap<String, Rc<MacroValue>, crate::template::utility::FnvBuildHasher>>,
     /// 关联模板名（Java `Namespace.getTemplate()` :3470-3478；错误定位/相对 include 基名）
     /// Rc<str>：主/全局命名空间共享同一份（Environment::new 构造期 1 次分配）
     template_name: Rc<str>,
@@ -443,10 +499,10 @@ impl Namespace {
     fn new(template_name: String) -> Self {
         Namespace {
             vars: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             macros: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             template_name: Rc::from(template_name),
             ns_prefixes: RefCell::new(HashMap::new()),
@@ -457,10 +513,10 @@ impl Namespace {
     fn new_shared(template_name: Rc<str>) -> Self {
         Namespace {
             vars: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             macros: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             template_name,
             ns_prefixes: RefCell::new(HashMap::new()),
@@ -548,6 +604,18 @@ impl<'a> Environment<'a> {
     /// 构造时 `importMacros(template)` 预先注册主模板宏（Java 宏定义在渲染前全局可见）。
     pub fn new(template: &'a Template, root: TModel, out: &'a mut dyn Write) -> Self {
         let base_settings = &template.configuration.settings;
+        // per-template 配置（Java：Environment 构造时
+        // `setTemplateConfiguration` 应用模板配置的渲染期设置；未设置项继承
+        // 全局值 → Cow::Owned 覆盖副本）
+        let settings_cow = match &template.template_configuration {
+            Some(tc) => {
+                let mut s = (*base_settings).clone();
+                tc.apply_to(&mut s);
+                std::borrow::Cow::Owned(s)
+            }
+            None => std::borrow::Cow::Borrowed(base_settings),
+        };
+        let base_settings = &settings_cow;
         let base_time_zone = base_settings.time_zone;
         let base_time_zone_id = base_settings.time_zone_id.clone();
         let main_ns = Rc::new(Namespace::new(template.name.clone()));
@@ -565,6 +633,15 @@ impl<'a> Environment<'a> {
             crate::core::AutoEscaping::Off => false,
             crate::core::AutoEscaping::Default => base_settings.output_format.is_markup(),
         };
+        // t 层 auto import/include —— Java TemplateConfiguration.apply 在模板
+        // 加载时合并进 Template 对象（TemplateConfiguration.java:399-402）；
+        // Rust 侧 tc 挂于 template.template_configuration，构造时复制为
+        // doAutoImportsAndIncludes 的 t 层数据（Configuration.java:3691/3721
+        // t.getAutoImportsWithoutFallback()）
+        let (t_auto_imports, t_auto_includes) = match &template.template_configuration {
+            Some(tc) => (tc.auto_imports.clone(), tc.auto_includes.clone()),
+            None => (Vec::new(), Vec::new()),
+        };
         Environment {
             template,
             root,
@@ -578,7 +655,7 @@ impl<'a> Environment<'a> {
             macro_frames: Vec::new(),
             visit_stack: Vec::new(),
             return_depth: None,
-            settings: std::borrow::Cow::Borrowed(base_settings),
+            settings: settings_cow,
             base_time_zone,
             base_time_zone_id,
             attempt_depth: 0,
@@ -588,12 +665,18 @@ impl<'a> Environment<'a> {
             escapes: Vec::new(),
             auto_escape,
             current_template_name: template.name.clone(),
+            lexical_template_name: template.name.clone(),
             current_ns_prefixes: template.ns_prefixes.clone(),
             recovered_errors: Vec::new(),
             number_fmt_cache: RefCell::new(None),
             instruction_stack: Vec::new(),
             stack_shown: Vec::new(),
             current_macro_name: None,
+            env_auto_imports: Vec::new(),
+            env_auto_includes: Vec::new(),
+            t_auto_imports,
+            t_auto_includes,
+            custom_state: RefCell::new(HashMap::new()),
         }
     }
 
@@ -612,6 +695,9 @@ impl<'a> Environment<'a> {
         if !self.root.is_hash() {
             return Err(TemplateError::misc("The data model must be a hash"));
         }
+        // Java Environment.process :322：渲染主模板前先执行三层
+        // autoImports/autoIncludes（Configuration.doAutoImportsAndIncludes）
+        self.do_auto_imports_and_includes()?;
         // 引用拷贝技巧：先复制 &Template 引用再借 root，避免整棵根元素树深克隆
         // （run 零克隆执行，见 run_slice）
         let t = self.template;
@@ -664,7 +750,7 @@ impl<'a> Environment<'a> {
             "html_debug" => {
                 // Java HtmlDebugTemplateExceptionHandler：HTML 转义 + 巨型装饰块——
                 // v1 与 debug 同形（消息转义），文档化偏差（docs/09 §6.3）
-                let msg = crate::utility::html_escape(&e.to_user_message());
+                let msg = crate::template::utility::html_escape(&e.to_user_message());
                 let out = format!(
                     "FreeMarker template error (DEBUG mode; use RETHROW in production!):\n\
                      {msg}\n\
@@ -1115,11 +1201,11 @@ impl<'a> Environment<'a> {
                     let next = match state {
                         EscapeState::Html => {
                             let s = model_to_string(self, &cur)?;
-                            TModel::from_scalar(crate::utility::html_escape(&s))
+                            TModel::from_scalar(crate::template::utility::html_escape(&s))
                         }
                         EscapeState::Xml => {
                             let s = model_to_string(self, &cur)?;
-                            TModel::from_scalar(crate::utility::xml_escape(&s))
+                            TModel::from_scalar(crate::template::utility::xml_escape(&s))
                         }
                         // 占位标识符绑定当前值后求值（Java 解析期占位符替换为内层变换结果，
                         // FTL.jj escapedExpression/doEscape）；占位符与真实变量同名时绑定优先，
@@ -1131,17 +1217,41 @@ impl<'a> Environment<'a> {
                 }
             }
         }
-        let s = match value {
-            Some(v) => model_to_string(self, &v)?,
-            None => model_to_string(self, m)?,
-        };
-        if self.auto_escape {
+        // Java DollarVariable.accept（DollarVariable.java:62-99）：
+        // 插值结果已是 markup 输出（?esc/?no_esc/捕获提升产物）时：
+        // - 输出格式一致（moOF == outputFormat）→ 原样输出，不按 autoEsc 二次转义
+        //   （Java :72-77 moOF.output(mo)）；
+        // - 当前格式允许混合（UndefinedOutputFormat，:84-95）→ 原样输出；
+        // - 跨格式（HTML→XML/RTF 等，:78-92）：markup 有源纯文本 → 按当前格式
+        //   重转义（getSourcePlainText → markupOutputFormat.output）；无源纯文本
+        //   （fromMarkup/捕获产物）→ 报错（#attempt 可捕获 → recover）。
+        let final_model = value.as_ref().unwrap_or(m);
+        let s = model_to_string(self, final_model)?;
+        if final_model.is_markup_output() {
+            let mo_fmt = final_model
+                .markup_format
+                .unwrap_or(self.settings.output_format);
+            let cur_fmt = self.settings.output_format;
+            if mo_fmt == cur_fmt || crate::builtins::markup_outputs::format_mixing_allowed(cur_fmt)
+            {
+                return Ok(s);
+            }
+            match &final_model.markup_plain {
+                Some(plain) => Ok(crate::core::escape_markup(cur_fmt, plain)),
+                None => Err(TemplateError::misc(format!(
+                    "The value to print is in {} format, which differs from the current \
+                     output format, {}. Format conversion wasn't possible.",
+                    mo_fmt.name(),
+                    cur_fmt.name()
+                ))),
+            }
+        } else if self.auto_escape {
             // Java AutoEscBlock：按 outputFormat 转义（v1：html/xml；其余格式 P4 TODO）
             match self.settings.output_format {
                 crate::core::OutputFormatKind::Html | crate::core::OutputFormatKind::XHtml => {
-                    Ok(crate::utility::html_escape(&s))
+                    Ok(crate::template::utility::html_escape(&s))
                 }
-                crate::core::OutputFormatKind::Xml => Ok(crate::utility::xml_escape(&s)),
+                crate::core::OutputFormatKind::Xml => Ok(crate::template::utility::xml_escape(&s)),
                 _ => Ok(s),
             }
         } else {
@@ -1232,20 +1342,25 @@ impl<'a> Environment<'a> {
         // Java :848-879：宏帧 + 参数绑定（求值发生在调用方上下文）
         let frame = Rc::new(MacroFrame {
             locals: RefCell::new(HashMap::with_hasher(
-                crate::utility::FnvBuildHasher::default(),
+                crate::template::utility::FnvBuildHasher::default(),
             )),
             call_body: body,
             body_params,
             caller_ns: self.current_ns.clone(),
             caller_local_stack: self.local_stack.clone(),
             caller_macro_name: self.current_macro_name.clone(),
+            // Java Macro.Context.callPlace（调用点 TemplateObject）的模板名
+            // （BuiltinVariable.java:264-267 getRequiredMacroContext(env).callPlace
+            // → callPlace.getTemplate().getName()）
+            caller_template_name: Some(self.lexical_template_name.clone()),
+            prev_lexical_template_name: Some(self.lexical_template_name.clone()),
             args_value: RefCell::new(None),
             def: mv.def.clone(),
             is_function,
         });
         // 无参数宏：跳过参数绑定（空循环开销——热路径 `<@m/>` 调用）
-        if !mv.def.params.is_empty() {
-            bind_macro_args(self, &frame, &mv.def, args)?;
+        if !mv.def.params.is_empty() || mv.with_args.is_some() {
+            bind_macro_args(self, &frame, &mv.def, args, &mv.with_args)?;
         }
         // Java :880-894：压帧、切换命名空间、清空局部上下文
         self.macro_frames.push(frame.clone());
@@ -1262,6 +1377,13 @@ impl<'a> Environment<'a> {
             self.current_ns_prefixes = ns_prefixes;
         }
         let prev_local = std::mem::take(&mut self.local_stack);
+        // 词法模板名切换为宏定义所在模板（Java getCurrentTemplate：指令栈顶元素
+        // 的 template —— 宏体元素在定义模板中；`.caller_template_name` 的调用点
+        // 判定依赖切换前的值，已记录于帧）
+        let prev_lexical = std::mem::replace(
+            &mut self.lexical_template_name,
+            mv.def.template_name.clone(),
+        );
         // Java ICI 2.3.28+：宏定义帧在参数绑定（setMacroContextLocalsFromArguments）
         // **之后**、默认参数求值（checkParamsSetAndApplyDefaults）**之前**压入
         // （invokeMacroOrFunctionCommonPart 的 pushElement(macro)，jar 实测）——
@@ -1279,6 +1401,7 @@ impl<'a> Environment<'a> {
         self.current_ns = prev_ns;
         self.current_ns_prefixes = prev_ns_prefixes;
         self.local_stack = prev_local;
+        self.lexical_template_name = prev_lexical;
         self.macro_frames.pop();
         self.pop_instruction_frame();
         self.current_macro_name = prev_macro_name;
@@ -1401,17 +1524,43 @@ impl<'a> Environment<'a> {
     ) -> Result<()> {
         let full = self.resolve_template_name(name);
         let encoding = encoding.or_else(|| self.template.encoding.clone());
-        let mut found: Option<(String, Rc<crate::template::Template>)> = None;
-        let mut last_err: Option<TemplateError> = None;
-        // Java lookupWithLocalizedThenAcquisitionStrategy（TemplateCache.java:914-948）：
-        // 每个 locale 变体（en_US → en → 无后缀）内部做完整 acquisition
+        match self.lookup_template(&full, parse, encoding.as_deref())? {
+            LookupOutcome::Found(_, LookupResult::Parsed(t)) => self.include_template(&t),
+            LookupOutcome::Found(_, LookupResult::PlainText(text)) => self.emit(&text),
+            LookupOutcome::Missing(err) => {
+                if ignore_missing {
+                    return Ok(());
+                }
+                // Java Include.accept（Include.java:73-90）：加载失败（模板缺失/被包含
+                // 模板解析错误）→ "Template inclusion failed (for parameter value
+                // \"{name}\"):\n{原因}"（jar 实测 include_not_found / include_parse_error
+                // 基线；被包含模板体内部的渲染错误不加此包装——include_template 路径）
+                Err(TemplateError::misc(format!(
+                    "Template inclusion failed (for parameter value \"{name}\"):\n{}",
+                    err.to_user_message()
+                )))
+            }
+        }
+    }
+
+    /// 模板查找（Java `getTemplateForInclusion` 的加载部分：TemplateCache.java:914-948
+    /// lookupWithLocalizedThenAcquisitionStrategy —— locale 变体（en_US → en → 无后缀）
+    /// 外层 × acquisition 候选内层；parse=false → 直接读源文本（getPlainTextTemplate）；
+    /// 全部候选失败 → Missing（携带最后错误；调用方决定静默跳过或报错）
+    pub(crate) fn lookup_template(
+        &mut self,
+        full: &str,
+        parse: bool,
+        encoding: Option<&str>,
+    ) -> Result<LookupOutcome> {
         let locale = self.settings.locale.clone();
         let locale_cands: Vec<String> = if locale.is_empty() {
-            vec![full.clone()]
+            vec![full.to_string()]
         } else {
-            crate::template::configuration::localized_candidates(&full, &locale)
+            crate::template::configuration::localized_candidates(full, &locale)
         };
-        'outer: for lc in &locale_cands {
+        let mut last_err: Option<TemplateError> = None;
+        for lc in &locale_cands {
             for acq in acquisition_candidates(lc) {
                 if !parse {
                     // Java parseAsFTL=false：直接读源文本（TemplateCache.loadTemplate
@@ -1423,37 +1572,24 @@ impl<'a> Environment<'a> {
                         .template
                         .configuration
                         .template_loader
-                        .read_encoded(&*src, encoding.as_deref().unwrap_or("UTF-8"))?;
-                    return self.emit(&text);
+                        .read_encoded(&*src, encoding.unwrap_or("UTF-8"))?;
+                    return Ok(LookupOutcome::Found(acq, LookupResult::PlainText(text)));
                 }
                 match self
                     .template
                     .configuration
-                    .get_template_encoded(&acq, encoding.as_deref())
+                    .get_template_encoded(&acq, encoding)
                 {
-                    Ok(t) => {
-                        found = Some((acq, t));
-                        break 'outer;
-                    }
+                    Ok(t) => return Ok(LookupOutcome::Found(acq, LookupResult::Parsed(t))),
                     Err(e) => last_err = Some(e),
                 }
             }
         }
-        let Some((_, t)) = found else {
-            if ignore_missing {
-                return Ok(());
-            }
-            let err = last_err.unwrap_or(TemplateError::NotFound { name: full });
-            // Java Include.accept（Include.java:73-90）：加载失败（模板缺失/被包含
-            // 模板解析错误）→ "Template inclusion failed (for parameter value
-            // \"{name}\"):\n{原因}"（jar 实测 include_not_found / include_parse_error
-            // 基线；被包含模板体内部的渲染错误不加此包装——include_template 路径）
-            return Err(TemplateError::misc(format!(
-                "Template inclusion failed (for parameter value \"{name}\"):\n{}",
-                err.to_user_message()
-            )));
-        };
-        self.include_template(&t)
+        Ok(LookupOutcome::Missing(last_err.unwrap_or(
+            TemplateError::NotFound {
+                name: full.to_string(),
+            },
+        )))
     }
 
     /// 执行被包含模板（Java include(includedTemplate) :3126-3145：
@@ -1469,13 +1605,16 @@ impl<'a> Environment<'a> {
             register_macro(&cur_ns, name, def);
         }
         let prev_name = self.current_template_name.clone();
+        let prev_lexical = self.lexical_template_name.clone();
         let prev_ns_prefixes = self.current_ns_prefixes.clone();
         self.current_template_name = included.name.clone();
+        self.lexical_template_name = included.name.clone();
         // Java include：currentNamespace 不变 → ns_prefixes 沿用主模板（不切换）
         self.include_stack.push(included.name.clone());
         let r = self.run(&included.root);
         self.include_stack.pop();
         self.current_template_name = prev_name;
+        self.lexical_template_name = prev_lexical;
         self.current_ns_prefixes = prev_ns_prefixes;
         match r {
             Ok(RunSignal::Completed) => Ok(()),
@@ -1487,9 +1626,18 @@ impl<'a> Environment<'a> {
     }
 
     /// `<#import path as ns>`（Java LibraryLoad.accept → importLib :3232-3290）。
-    /// v1 立即初始化命名空间（懒初始化 LazilyInitializedNamespace :3524-3593 语义：
-    /// 首次访问才 get_template 并注册宏——P4 优化项，v1 直接执行等价结果）。
+    /// 惰性开关取 lazyImports 设置（Java importLib(String,String) :3168-3170 →
+    /// importLib(name, ns, getLazyImports())）。
     pub fn import_lib(&mut self, path: &str, ns_var: &str) -> Result<()> {
+        let lazy = self.settings.lazy_imports;
+        self.import_lib_explicit(path, ns_var, lazy)
+    }
+
+    /// 指定惰性与否的 import —— 对应 Java `importLib(String, String, boolean)`
+    /// （Environment.java:3194-3207）：lazy → 只建 LazilyInitializedNamespace
+    /// 占位并绑定变量，不查模板；eager → 立即 getTemplateForImporting +
+    /// initializeImportLibNamespace。
+    pub fn import_lib_explicit(&mut self, path: &str, ns_var: &str, lazy: bool) -> Result<()> {
         // Java importLib（:3232-3290）：toFullTemplateName 后按模板名格式规范化
         // （"/import_lib.ftl" 与 "import_lib.ftl" 是同一模板——loadedLibs 缓存键一致）
         let resolved = self.resolve_template_name(path);
@@ -1498,6 +1646,15 @@ impl<'a> Environment<'a> {
             .unwrap_or(resolved);
         let ns = if let Some(existing) = self.loaded_libs.get(&full) {
             existing.clone()
+        } else if lazy {
+            // Java :3202-3206 lazy 分支：不触发模板查找（TemplateLookupStrategy
+            // 可能昂贵），只建 LazilyInitializedNamespace 占位（Environment.java
+            // :3501-3513；快照 locale/encoding）。v1 占位后不加载——首次访问才
+            // ensureInitialized 的按需初始化需 env 回引，登记文档化偏差
+            // （include_and_import_configurable_layers_test.rs 头注）。
+            let ns = Rc::new(Namespace::new(full.clone()));
+            self.loaded_libs.insert(full, ns.clone());
+            ns
         } else {
             let locale = self.settings.locale.clone();
             let t = self
@@ -1521,12 +1678,43 @@ impl<'a> Environment<'a> {
         Ok(())
     }
 
+    /// `<#import>` 已加载模板变体（Java `importLib(loadedTemplate, null)` ——
+    /// GetOptionalTemplateMethod 的 `import` 方法调用；Java :3234-3250 注释：
+    /// 缓存键用模板查找名（template.getName），与 import_lib 的根基准归一化名一致；
+    /// 已缓存 → 直接返回现有命名空间，不重复初始化）
+    pub(crate) fn import_lib_loaded(&mut self, key: &str, found: &LookupResult) -> Result<TModel> {
+        if let Some(existing) = self.loaded_libs.get(key) {
+            return Ok(namespace_model(existing.clone()));
+        }
+        let ns = match found {
+            LookupResult::Parsed(t) => {
+                let ns = Rc::new(Namespace::new(t.name.clone()));
+                *ns.ns_prefixes.borrow_mut() = t.ns_prefixes.clone();
+                self.loaded_libs.insert(key.to_string(), ns.clone());
+                // Java initializeImportLibNamespace（importLib :3280-3293）：命名空间
+                // 切换 + NullWriter 输出丢弃执行（Rust capture 丢弃）
+                self.initialize_import_lib_namespace(&ns, t)?;
+                ns
+            }
+            // plain text 模板无宏可注册：Java include(plainTemplate) 在 NullWriter 下
+            // 输出被丢弃，等价于仅创建空命名空间
+            LookupResult::PlainText(_) => {
+                let ns = Rc::new(Namespace::new(key.to_string()));
+                self.loaded_libs.insert(key.to_string(), ns.clone());
+                ns
+            }
+        };
+        Ok(namespace_model(ns))
+    }
+
     fn initialize_import_lib_namespace(&mut self, ns: &Rc<Namespace>, t: &Template) -> Result<()> {
         let prev_ns = self.current_ns.clone();
         let prev_name = self.current_template_name.clone();
+        let prev_lexical = self.lexical_template_name.clone();
         let prev_ns_prefixes = self.current_ns_prefixes.clone();
         self.current_ns = ns.clone();
         self.current_template_name = t.name.clone();
+        self.lexical_template_name = t.name.clone();
         self.current_ns_prefixes = t.ns_prefixes.clone();
         for (name, def) in &t.macros {
             register_macro(ns, name, def);
@@ -1534,6 +1722,7 @@ impl<'a> Environment<'a> {
         let r = self.capture(|env| env.run(&t.root));
         self.current_ns = prev_ns;
         self.current_template_name = prev_name;
+        self.lexical_template_name = prev_lexical;
         self.current_ns_prefixes = prev_ns_prefixes;
         match r {
             Ok((RunSignal::Completed, _)) => Ok(()),
@@ -1551,6 +1740,22 @@ impl<'a> Environment<'a> {
     }
 }
 
+/// 模板查找产物（Java `getTemplateForInclusion` 的两种结果：parseAsFTL=true →
+/// 解析的 Template；false → 直接读源文本的 plain text Template，TemplateCache
+/// loadTemplate :564-580 的 StringWriter 分支）
+#[derive(Clone)]
+pub(crate) enum LookupResult {
+    Parsed(Rc<crate::template::Template>),
+    PlainText(String),
+}
+
+/// 模板查找结果（对应 Java `getTemplateForInclusion` 的 ignoreMissing 语义：
+/// 缺失时由调用方决定静默跳过，或按携带的 last_err / NotFound 报错）
+pub(crate) enum LookupOutcome {
+    Found(String, LookupResult),
+    Missing(TemplateError),
+}
+
 /// 注册宏（Java visitMacroDef :1164-1167：currentNamespace.put(macroName, macro)）
 pub(crate) fn register_macro(ns: &Rc<Namespace>, name: &str, def: &MacroDef) {
     ns.put_macro(
@@ -1558,6 +1763,7 @@ pub(crate) fn register_macro(ns: &Rc<Namespace>, name: &str, def: &MacroDef) {
         Rc::new(MacroValue {
             def: Rc::new(def.clone()),
             ns: Rc::downgrade(ns),
+            with_args: None,
         }),
     );
 }
@@ -1573,13 +1779,23 @@ fn ensure_output_limit(current_len: usize, additional_len: usize) -> Result<()> 
 }
 
 /// 宏参数绑定 —— 对应 Java `setMacroContextLocalsFromArguments`（Environment.java:919-1094，
-/// v1 无 `?with_args`）。位置参数按声明顺序（catch-all 不计入普通参数槽，Macro.java:74-81）；
-/// 命名参数匹配普通参数，未声明者进入命名 catch-all 哈希（Java :1017-1039）。
+/// 含 `?with_args` 预绑定合并）。位置参数按声明顺序（catch-all 不计入普通参数槽，
+/// Macro.java:74-81）；命名参数匹配普通参数，未声明者进入命名 catch-all 哈希
+/// （Java :1017-1039）。
+///
+/// `with_args` 阶段（Java :917-1003 的 WithArgsState 处理）：
+/// - byName：已声明参数直接绑定；其余 → 命名 catch-all —— orderLast=false 立即
+///   插入，orderLast=true 先收集（:938-958 的 orderLastByNameCatchAll），调用参数
+///   绑定完后再补（:1053-1066，重复键跳过）；
+/// - byPosition + orderLast=false：从位置 0 起按声明顺序绑定，溢出进位置 catch-all
+///   （:942-961）；orderLast=true：绑定延后到调用参数之后（:1067-1092），调用含
+///   命名参数且预绑定非空 → 报错（:971-975）。
 fn bind_macro_args(
     env: &mut Environment,
     frame: &Rc<MacroFrame>,
     def: &MacroDef,
     args: &[(String, crate::core::Expr)],
+    with_args: &Option<WithArgs>,
 ) -> Result<()> {
     let normal_params: Vec<&MacroParam> = def.params.iter().filter(|p| !p.catch_all).collect();
     let catch_all_name = def
@@ -1591,7 +1807,124 @@ fn bind_macro_args(
     // Java 命名 catch-all → SimpleHash(LinkedHashMap)：参数插入序
     let mut named_catch_all: Option<IndexMap<String, TModel>> = None;
     let mut positional_catch_all: Option<Vec<TModel>> = None;
+    // orderLast 的 byName catch-all 待定条目（Java WithArgsState.orderLastByNameCatchAll）
+    let mut order_last_pending: Option<Vec<(String, TModel)>> = None;
 
+    let has_named_call = args.iter().any(|(n, _)| !n.is_empty());
+    let has_positional_call = args.iter().any(|(n, _)| n.is_empty());
+    let call_positional_count = args.iter().filter(|(n, _)| n.is_empty()).count();
+
+    // Phase 1：?with_args 预绑定（Java :921-1003）
+    if let Some(wa) = with_args {
+        match &wa.kind {
+            WithArgsKind::ByName(bound) => {
+                for (arg_name, arg_value) in bound {
+                    if normal_params.iter().any(|p| p.name == *arg_name) {
+                        // Java :956-957 setLocalVar（含 null 值 —— 后续默认值处理）
+                        frame
+                            .locals
+                            .borrow_mut()
+                            .insert(arg_name.clone(), arg_value.clone());
+                    } else if let Some(cn) = &catch_all_name {
+                        // Java :938-941：首个未声明预绑定键即初始化命名 catch-all
+                        // （initNamedCatchAllParameter —— 即使 orderLast 只收集待定
+                        // 条目，命名 catch-all 已非 null，位置实参溢出时触发 "both
+                        // named and positional" 错误）
+                        named_catch_all.get_or_insert_with(IndexMap::new);
+                        if wa.order_last {
+                            // Java :946-952：收集，待调用参数绑定后补入（不覆盖）
+                            order_last_pending
+                                .get_or_insert_with(Vec::new)
+                                .push((arg_name.clone(), arg_value.clone()));
+                        } else {
+                            let hash = named_catch_all.as_mut().unwrap();
+                            hash.insert(arg_name.clone(), arg_value.clone());
+                            frame
+                                .locals
+                                .borrow_mut()
+                                .insert(cn.clone(), TModel::from_hash(hash.clone()));
+                        }
+                    } else {
+                        // Java newUndeclaredParamNameException（Environment.java:1148-1154）
+                        return Err(undeclared_param_error(def, &normal_params, arg_name));
+                    }
+                }
+            }
+            WithArgsKind::ByPosition(bound) => {
+                if wa.order_last {
+                    // Java :971-975：调用含命名参数且预绑定非空 → 无法定位 → 报错
+                    if has_named_call && !bound.is_empty() {
+                        return Err(TemplateError::misc(
+                            "Call can't pass parameters by name, as there's \"with args last\" in effect that specifies parameters by position.",
+                        ));
+                    }
+                    // Java :982-988：无 catch-all → 总数预检（调用位置参数 + 预绑定）
+                    if catch_all_name.is_none() {
+                        let total = call_positional_count + bound.len();
+                        if total > normal_params.len() {
+                            return Err(too_many_args_error(def, &normal_params, total));
+                        }
+                    }
+                    // 绑定延后到 Phase 3（Java :1067-1092）
+                } else {
+                    // Java :942-944：预绑定过多且无 catch-all → 报错（总数 = 预绑定数）
+                    if normal_params.len() < bound.len() && catch_all_name.is_none() {
+                        return Err(too_many_args_error(def, &normal_params, bound.len()));
+                    }
+                    for arg_value in bound {
+                        if next_pos < normal_params.len() {
+                            let name = normal_params[next_pos].name.clone();
+                            next_pos += 1;
+                            frame.locals.borrow_mut().insert(name, arg_value.clone());
+                        } else {
+                            let cn = catch_all_name
+                                .as_ref()
+                                .expect("预绑定过多且无 catch-all 已在上方报错");
+                            let list = positional_catch_all.get_or_insert_with(Vec::new);
+                            list.push(arg_value.clone());
+                            let seq = TModel::from_sequence(list.clone());
+                            frame.locals.borrow_mut().insert(cn.clone(), seq);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 2 前置：catch-all 形态初始化（Java :1007-1013 与 :1036-1040 ——
+    // 两个分支的 init 条件合并：有命名调用 → 命名 catch-all；有位置调用 → 位置
+    // catch-all；无调用实参 → 按 with_args 种类（byPosition → 序列，否则哈希））
+    if catch_all_name.is_some() && positional_catch_all.is_none() && named_catch_all.is_none() {
+        let by_position = if has_positional_call {
+            true
+        } else if has_named_call {
+            false
+        } else {
+            matches!(
+                &with_args,
+                Some(wa) if matches!(wa.kind, WithArgsKind::ByPosition(_))
+            )
+        };
+        if by_position {
+            positional_catch_all = Some(Vec::new());
+        } else {
+            named_catch_all = Some(IndexMap::new());
+        }
+    }
+    // Phase 2 前置：位置参数总数预检（Java :1041-1053）——位置 catch-all 未初始化
+    // （即无 catch-all 参数）且总数超声明数 → 命名 catch-all 已有内容 → "both"
+    // 错误，否则 too-many 错误
+    if positional_catch_all.is_none() {
+        let total = call_positional_count + next_pos;
+        if normal_params.len() < total {
+            if named_catch_all.is_some() {
+                return Err(both_named_positional_error(def));
+            }
+            return Err(too_many_args_error(def, &normal_params, total));
+        }
+    }
+
+    // Phase 2：调用参数绑定（Java :1004-1052）
     for (arg_name, arg_expr) in args {
         // Java Environment.getVariable 不抛错（缺失变量 → null）：参数求值 lenient
         // （`f(11, null, 33)` 的 null 即缺失变量，Java checkParamsSetAndApplyDefaults
@@ -1624,19 +1957,20 @@ fn bind_macro_args(
                 let seq = TModel::from_sequence(list.clone());
                 frame.locals.borrow_mut().insert(cn.clone(), seq);
             } else {
-                // Java newTooManyArgumentsException（Environment.java:1097-1103）
-                return Err(TemplateError::misc(format!(
-                    "{} {} only accepts {} parameters, but got {}.",
-                    if def.is_function { "Function" } else { "Macro" },
-                    quote_name(&def.name),
-                    normal_params.len(),
-                    args.len(),
-                )));
+                // 上方总数预检已拦截；此处为防御分支（Java newTooManyArgumentsException）
+                return Err(too_many_args_error(
+                    def,
+                    &normal_params,
+                    call_positional_count + next_pos,
+                ));
             }
         } else if normal_params.iter().any(|p| p.name == *arg_name) {
             frame.locals.borrow_mut().insert(arg_name.clone(), value);
         } else if let Some(cn) = &catch_all_name {
-            // 命名 catch-all（Java :1019-1036）
+            // 命名 catch-all（Java :1019-1036）；位置 catch-all 已有内容 → "both" 错误
+            if positional_catch_all.is_some() {
+                return Err(both_named_positional_error(def));
+            }
             let hash = named_catch_all.get_or_insert_with(IndexMap::new);
             hash.insert(arg_name.clone(), value);
             frame
@@ -1644,26 +1978,67 @@ fn bind_macro_args(
                 .borrow_mut()
                 .insert(cn.clone(), TModel::from_hash(hash.clone()));
         } else {
-            // Java newUndeclaredParamNameException（Environment.java:1105-1113）：
+            // Java newUndeclaredParamNameException（Environment.java:1148-1154）：
             // "Macro "m" has no parameter with name "b". Valid parameter names are: a"
-            // （jar 实测 macro_undeclared_param 基线——含合法参数名清单）
-            let valid: Vec<&str> = normal_params.iter().map(|p| p.name.as_str()).collect();
-            return Err(TemplateError::misc(format!(
-                "{} {} has no parameter with name {}. Valid parameter names are: {}",
-                if def.is_function { "Function" } else { "Macro" },
-                quote_name(&def.name),
-                quote_name(arg_name),
-                valid.join(", "),
-            )));
+            return Err(undeclared_param_error(def, &normal_params, arg_name));
         }
     }
-    // Java Environment.java:1007-1013：catch-all 未收到任何额外参数时也必须绑定
-    // ——by-position 调用（存在位置参数）→ 空序列；by-name 调用 → 空哈希
+
+    // Phase 3：orderLast 收尾（Java :1053-1092）
+    if let Some(wa) = with_args {
+        if wa.order_last {
+            if let Some(pending) = &order_last_pending {
+                for (name, value) in pending {
+                    let exists = named_catch_all
+                        .as_ref()
+                        .is_some_and(|h| h.contains_key(name));
+                    if !exists {
+                        let hash = named_catch_all.get_or_insert_with(IndexMap::new);
+                        hash.insert(name.clone(), value.clone());
+                    }
+                }
+                if let (Some(cn), Some(h)) = (&catch_all_name, &named_catch_all) {
+                    frame
+                        .locals
+                        .borrow_mut()
+                        .insert(cn.clone(), TModel::from_hash(h.clone()));
+                }
+            } else if let WithArgsKind::ByPosition(bound) = &wa.kind {
+                for arg_value in bound {
+                    if next_pos < normal_params.len() {
+                        let name = normal_params[next_pos].name.clone();
+                        next_pos += 1;
+                        frame.locals.borrow_mut().insert(name, arg_value.clone());
+                    } else {
+                        let cn = catch_all_name
+                            .as_ref()
+                            .expect("无 catch-all 时的总数预检已在上方拦截");
+                        let list = positional_catch_all.get_or_insert_with(Vec::new);
+                        list.push(arg_value.clone());
+                        let seq = TModel::from_sequence(list.clone());
+                        frame.locals.borrow_mut().insert(cn.clone(), seq);
+                    }
+                }
+            }
+        }
+    }
+
+    // Java Environment.java:1007-1013/1048-1053：catch-all 未收到任何额外参数时也
+    // 必须绑定——by-position 调用（存在位置参数）→ 空序列；by-name 调用 → 空哈希
     // （如 `<@m foo=1/>` 后 `bar` 为 size 0 的哈希，宏体内可直接 ?keys）
     if let Some(cn) = &catch_all_name {
         let bound = frame.locals.borrow().contains_key(cn);
         if !bound {
-            let by_position = args.iter().any(|(n, _)| n.is_empty());
+            let by_position = if has_positional_call {
+                true
+            } else if has_named_call {
+                false
+            } else {
+                matches!(
+                    &with_args,
+                    Some(wa) if matches!(wa.kind, WithArgsKind::ByPosition(_))
+                )
+            };
             let value = if by_position {
                 TModel::from_sequence(Vec::new())
             } else {
@@ -1673,6 +2048,44 @@ fn bind_macro_args(
         }
     }
     Ok(())
+}
+
+/// Java newTooManyArgumentsException（Environment.java:1130-1136）：
+/// "Macro "m" only accepts 3 parameters, but got 4."
+fn too_many_args_error(def: &MacroDef, normal_params: &[&MacroParam], cnt: usize) -> TemplateError {
+    TemplateError::misc(format!(
+        "{} {} only accepts {} parameters, but got {}.",
+        if def.is_function { "Function" } else { "Macro" },
+        quote_name(&def.name),
+        normal_params.len(),
+        cnt,
+    ))
+}
+
+/// Java newBothNamedAndPositionalCatchAllParamsException（Environment.java:1155-1160）
+fn both_named_positional_error(def: &MacroDef) -> TemplateError {
+    TemplateError::misc(format!(
+        "{} {} call can't have both named and positional arguments that has to go into catch-all parameter.",
+        if def.is_function { "Function" } else { "Macro" },
+        quote_name(&def.name),
+    ))
+}
+
+/// Java newUndeclaredParamNameException（Environment.java:1148-1154）：
+/// "Macro "m" has no parameter with name "b". Valid parameter names are: a"
+fn undeclared_param_error(
+    def: &MacroDef,
+    normal_params: &[&MacroParam],
+    arg_name: &str,
+) -> TemplateError {
+    let valid: Vec<&str> = normal_params.iter().map(|p| p.name.as_str()).collect();
+    TemplateError::misc(format!(
+        "{} {} has no parameter with name {}. Valid parameter names are: {}",
+        if def.is_function { "Function" } else { "Macro" },
+        quote_name(&def.name),
+        quote_name(arg_name),
+        valid.join(", "),
+    ))
 }
 
 /// 默认参数求值 —— 对应 Java `Macro.Context.checkParamsSetAndApplyDefaults`
@@ -2068,7 +2481,7 @@ pub(crate) fn model_to_string(env: &mut Environment, m: &TModel) -> Result<Strin
     if let Some(n) = &m.number {
         return n
             .as_number()
-            .map(|n| crate::builtins::format::format_number(env, &n));
+            .and_then(|n| crate::builtins::format::format_number(env, &n));
     }
     if let Some(b) = &m.boolean {
         let bv = b.as_boolean()?;
@@ -2115,6 +2528,15 @@ pub(crate) fn format_date_value(
     format_string: &str,
 ) -> Result<String> {
     use crate::builtins::iso_date_format::{format_iso_like, is_iso_like, parse_iso_params};
+    // Java Environment.java:2336-2346（getTemplateDateFormatWithoutCache）：`@name`
+    // → 自定义日期格式查找；v1 无注册机制 → 一律 UndefinedCustomFormatException
+    // （date/time/datetime 三种格式串共用此检查，消息统一 "No custom date format..."）
+    if let Some(name) = crate::builtins::format::custom_format_name(format_string) {
+        return Err(TemplateError::misc(format!(
+            "No custom date format was defined with name {}",
+            crate::builtins::format::j_quote(&name)
+        )));
+    }
     // Java Environment.java:2184：格式串无效 → "Can't create ... based on format string" 包装
     // （dateformat-iso-like 用例断言消息含 "format string"）
     let r: Result<String> = (|| match is_iso_like(format_string) {
@@ -2655,6 +3077,157 @@ fn acquisition_candidates(full: &str) -> Vec<String> {
         l -= 1; // Java：basePath.lastIndexOf(SLASH, l-2)+1 → 段级等价于去尾段
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// 新增区域：custom state API 与三层 auto import/include 分层
+// （Java Environment.setCustomState/getCustomState :3405-3446；
+//  doAutoImportsAndIncludes → Configuration.java:3679-3748）
+// ---------------------------------------------------------------------------
+
+impl<'a> Environment<'a> {
+    /// 读取 custom state —— 对应 Java `Environment.getCustomState(Object)`
+    /// （Environment.java:3413-3420：表未建或键缺失或存 null → null）
+    pub fn get_custom_state(&self, key: &str) -> Option<TModel> {
+        self.custom_state.borrow().get(key).and_then(|v| v.clone())
+    }
+
+    /// 写入 custom state —— 对应 Java `Environment.setCustomState(Object, Object)`
+    /// （Environment.java:3436-3446：返回旧值（缺失/null 均 null）；值可为 null——
+    /// 模板数字/日期格式工厂等可插拔对象的 Environment 级状态（如缓存）。
+    /// Java 键按对象 identity，Rust 侧键为 String）
+    pub fn set_custom_state(&mut self, key: &str, value: Option<TModel>) -> Option<TModel> {
+        // 旧值为 Option<Option<TModel>>：键缺失 → None；键存在 → Some(旧存值)。
+        // flatten 后：缺失或旧存 null → None（Java put 返回 null），等价
+        // getCustomState 的 null-for-both 语义
+        self.custom_state
+            .borrow_mut()
+            .insert(key.to_string(), value)
+            .flatten()
+    }
+
+    /// 环境层添加 auto import —— 对应 Java `Environment.addAutoImport(String, String)`
+    /// （Configurable.java:1944-1960：同名先移除再追加——移到插入序末尾）
+    pub fn add_auto_import(&mut self, namespace_var_name: &str, template_name: &str) {
+        self.env_auto_imports
+            .retain(|(n, _)| n != namespace_var_name);
+        self.env_auto_imports
+            .push((namespace_var_name.to_string(), template_name.to_string()));
+    }
+
+    /// 环境层移除 auto import —— 对应 Java `Environment.removeAutoImport`
+    /// （Configurable.java:1966-1974）
+    pub fn remove_auto_import(&mut self, namespace_var_name: &str) {
+        self.env_auto_imports
+            .retain(|(n, _)| n != namespace_var_name);
+    }
+
+    /// 环境层添加 auto include —— 对应 Java `Environment.addAutoInclude(String)`
+    /// （Configurable.java:2083-2096 → :2098-2112：同层去重——先移除再追加）
+    pub fn add_auto_include(&mut self, template_name: &str) {
+        self.env_auto_includes.retain(|n| n != template_name);
+        self.env_auto_includes.push(template_name.to_string());
+    }
+
+    /// 环境层移除 auto include —— 对应 Java `Environment.removeAutoInclude`
+    /// （Configurable.java:2175-2186）
+    pub fn remove_auto_include(&mut self, template_name: &str) {
+        self.env_auto_includes.retain(|n| n != template_name);
+    }
+
+    /// 设置 lazyImports —— 对应 Java `Environment.setLazyImports(boolean)`
+    /// （Configurable.java:1882-1889；`<#import>` 指令与 lazyAutoImports 未设置时
+    /// auto imports 的惰性开关）
+    pub fn set_lazy_imports(&mut self, lazy: bool) {
+        self.settings.to_mut().lazy_imports = lazy;
+    }
+
+    /// 设置 lazyAutoImports —— 对应 Java `Environment.setLazyAutoImports(Boolean)`
+    /// （Configurable.java:1912-1920；None = 未设置 → 回退 lazyImports）
+    pub fn set_lazy_auto_imports(&mut self, lazy: Option<bool>) {
+        self.settings.to_mut().lazy_auto_imports = lazy;
+    }
+
+    /// lazyImports 读数 —— 对应 Java `Environment.getLazyImports()`
+    /// （Configurable.java:1852-1854）
+    pub fn get_lazy_imports(&self) -> bool {
+        self.settings.lazy_imports
+    }
+
+    /// lazyAutoImports 读数 —— 对应 Java `Environment.getLazyAutoImports()`
+    /// （Configurable.java:1900-1904；None = 未设置）
+    pub fn get_lazy_auto_imports(&self) -> Option<bool> {
+        self.settings.lazy_auto_imports
+    }
+
+    /// 渲染前执行三层 auto imports/includes —— 对应 Java
+    /// `Configuration.doAutoImportsAndIncludes(env)`（Configuration.java:3679-3748；
+    /// Environment.process :322 调用）：cfg 层（父）→ t 层（主模板）→ env 层（子），
+    /// 低层同名被高层覆盖（cfg 层跳过 t/env 已有名字，t 层跳过 env 已有名字）。
+    /// auto imports 的惰性开关：
+    /// `env.getLazyAutoImports() ?? env.getLazyImports()`（Configuration.java:3690-3692；
+    /// Java 的三级回退链 env → template → cfg 以 Environment::new 合并后的
+    /// settings 等价）。
+    pub fn do_auto_imports_and_includes(&mut self) -> Result<()> {
+        let cfg_auto_imports = self.template.configuration.auto_imports.clone();
+        let cfg_auto_includes = self.template.configuration.auto_includes.clone();
+        let t_auto_imports = self.t_auto_imports.clone();
+        let t_auto_includes = self.t_auto_includes.clone();
+        let env_auto_imports = self.env_auto_imports.clone();
+        let env_auto_includes = self.env_auto_includes.clone();
+        let lazy_auto = self
+            .settings
+            .lazy_auto_imports
+            .unwrap_or(self.settings.lazy_imports);
+        // doAutoImports（Configuration.java:3687-3713）：按层 importLib，
+        // 低层跳过高层已有 ns 名
+        for (ns, path) in &cfg_auto_imports {
+            if !t_auto_imports.iter().any(|(n, _)| n == ns)
+                && !env_auto_imports.iter().any(|(n, _)| n == ns)
+            {
+                self.import_lib_explicit(path, ns, lazy_auto)?;
+            }
+        }
+        for (ns, path) in &t_auto_imports {
+            if !env_auto_imports.iter().any(|(n, _)| n == ns) {
+                self.import_lib_explicit(path, ns, lazy_auto)?;
+            }
+        }
+        for (ns, path) in &env_auto_imports {
+            self.import_lib_explicit(path, ns, lazy_auto)?;
+        }
+        // doAutoIncludes（Configuration.java:3715-3742）：按层 include
+        // （env.include(getTemplate(templateName, env.getLocale()))，:3736-3741）
+        let locale = self.settings.locale.clone();
+        for name in &cfg_auto_includes {
+            if !t_auto_includes.iter().any(|n| n == name)
+                && !env_auto_includes.iter().any(|n| n == name)
+            {
+                let t = self
+                    .template
+                    .configuration
+                    .get_template_localized(name, Some(&locale))?;
+                self.include_template(&t)?;
+            }
+        }
+        for name in &t_auto_includes {
+            if !env_auto_includes.iter().any(|n| n == name) {
+                let t = self
+                    .template
+                    .configuration
+                    .get_template_localized(name, Some(&locale))?;
+                self.include_template(&t)?;
+            }
+        }
+        for name in &env_auto_includes {
+            let t = self
+                .template
+                .configuration
+                .get_template_localized(name, Some(&locale))?;
+            self.include_template(&t)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

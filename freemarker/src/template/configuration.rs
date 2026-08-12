@@ -2,7 +2,10 @@
 //! （加载流见 docs/02 §2.1；缓存键/延迟/局部化回退由 cache 智能体补全）
 
 use crate::cache::TemplateNameFormat;
-use crate::cache::{NameFormatDefault020300, StringLoader, TemplateCache, TemplateLoader};
+use crate::cache::{
+    NameFormatDefault020300, StringLoader, TemplateCache, TemplateConfigurationFactory,
+    TemplateLoader,
+};
 use crate::core::Settings;
 use crate::error::{Result, TemplateError};
 use crate::parser;
@@ -20,8 +23,17 @@ pub struct Configuration {
     pub shared_vars: HashMap<String, TModel>,
     /// 自动导入（ns 名 → 模板路径）—— 对应 Java `Configuration.addAutoImport`
     /// （autoImports 映射；每次渲染前 importLib，Environment.process :322
-    /// doAutoImportsAndIncludes）
+    /// doAutoImportsAndIncludes → Configuration.doAutoImports :3687-3713）
     pub auto_imports: Vec<(String, String)>,
+    /// 自动包含 —— 对应 Java `Configuration.addAutoInclude`（autoIncludes 列表；
+    /// doAutoIncludes :3715-3742；addAutoInclude 同层去重——先 remove 再 add，
+    /// Configurable.java:2098-2112）
+    pub auto_includes: Vec<String>,
+    /// per-template 配置工厂 —— 对应 Java `Configuration.setTemplateConfigurations`
+    /// （@since 2.3.24；模板加载时按源名匹配，结果应用到模板渲染设置；
+    /// Java 的 factory 绑定 Configuration 机制 Rust 侧无对应——Arc 共享持有，
+    /// 文档注明）
+    pub template_configurations: Option<Arc<dyn TemplateConfigurationFactory>>,
 }
 
 impl Clone for Configuration {
@@ -34,6 +46,8 @@ impl Clone for Configuration {
             cache: Mutex::new(TemplateCache::default()),
             shared_vars: self.shared_vars.clone(),
             auto_imports: self.auto_imports.clone(),
+            auto_includes: self.auto_includes.clone(),
+            template_configurations: self.template_configurations.clone(),
         }
     }
 }
@@ -55,15 +69,15 @@ impl Default for Configuration {
         }
         shared_vars.insert(
             "compress".to_string(),
-            TModel::from_transform(crate::template::utility_transforms::StandardCompressTransform),
+            TModel::from_transform(crate::template::utility::StandardCompressTransform),
         );
         shared_vars.insert(
             "html_escape".to_string(),
-            TModel::from_transform(crate::template::utility_transforms::HtmlEscapeTransform),
+            TModel::from_transform(crate::template::utility::HtmlEscapeTransform),
         );
         shared_vars.insert(
             "normalize_newlines".to_string(),
-            TModel::from_transform(crate::template::utility_transforms::NormalizeNewlinesTransform),
+            TModel::from_transform(crate::template::utility::NormalizeNewlinesTransform),
         );
         Configuration {
             settings: Settings::default(),
@@ -71,6 +85,8 @@ impl Default for Configuration {
             cache: Mutex::new(TemplateCache::default()),
             shared_vars,
             auto_imports: Vec::new(),
+            auto_includes: Vec::new(),
+            template_configurations: None,
         }
     }
 }
@@ -92,6 +108,87 @@ impl Configuration {
 
     pub fn set_shared_variable(&mut self, name: &str, model: TModel) {
         self.shared_vars.insert(name.to_string(), model);
+    }
+
+    /// 添加自动导入 —— 对应 Java `Configuration.addAutoImport(String, String)`
+    /// （Configurable.java:1944-1960）：同名先移除再追加（移到插入序末尾；
+    /// autoImports 顺序即 import 执行顺序）
+    pub fn add_auto_import(&mut self, namespace_var_name: &str, template_name: &str) {
+        self.auto_imports.retain(|(n, _)| n != namespace_var_name);
+        self.auto_imports
+            .push((namespace_var_name.to_string(), template_name.to_string()));
+    }
+
+    /// 移除自动导入 —— 对应 Java `Configuration.removeAutoImport`（Configurable.java
+    /// :1966-1974：不存在则无事发生）
+    pub fn remove_auto_import(&mut self, namespace_var_name: &str) {
+        self.auto_imports.retain(|(n, _)| n != namespace_var_name);
+    }
+
+    /// 添加自动包含 —— 对应 Java `Configuration.addAutoInclude(String)`
+    /// （Configurable.java:2083-2096 → :2098-2112：同层去重——已存在先移除再追加）
+    pub fn add_auto_include(&mut self, template_name: &str) {
+        self.auto_includes.retain(|n| n != template_name);
+        self.auto_includes.push(template_name.to_string());
+    }
+
+    /// 移除自动包含 —— 对应 Java `Configuration.removeAutoInclude`（Configurable.java
+    /// :2175-2186）
+    pub fn remove_auto_include(&mut self, template_name: &str) {
+        self.auto_includes.retain(|n| n != template_name);
+    }
+
+    /// 设置 lazyImports —— 对应 Java `Configuration.setLazyImports(boolean)`
+    /// （Configurable.java:1882-1889；写入 settings，Environment::new 继承）
+    pub fn set_lazy_imports(&mut self, lazy: bool) {
+        self.settings.lazy_imports = lazy;
+    }
+
+    /// 设置 lazyAutoImports —— 对应 Java `Configuration.setLazyAutoImports(Boolean)`
+    /// （Configurable.java:1912-1920；null = 未设置 → 回退 lazyImports）
+    pub fn set_lazy_auto_imports(&mut self, lazy: Option<bool>) {
+        self.settings.lazy_auto_imports = lazy;
+    }
+
+    /// 设置 per-template 配置工厂 —— 对应 Java `Configuration.setTemplateConfigurations`
+    /// （Java 会触发 factory.setConfiguration 绑定；Rust 侧 Arc 共享持有即为绑定，
+    /// 无重复绑定检查）
+    pub fn set_template_configurations(
+        &mut self,
+        factory: Option<Arc<dyn TemplateConfigurationFactory>>,
+    ) {
+        self.template_configurations = factory;
+    }
+
+    /// 按源名匹配并应用 per-template 配置（Java：TemplateCache.loadTemplate 加载
+    /// 后 `cfg.getTemplateConfiguration` + Template 携带；工厂异常 → 加载失败）
+    fn apply_template_configuration(&self, source_name: &str, t: &mut Template) -> Result<()> {
+        let Some(factory) = &self.template_configurations else {
+            return Ok(());
+        };
+        match factory.get(source_name) {
+            Ok(Some(tc)) => t.template_configuration = Some((*tc).clone()),
+            Ok(None) => {}
+            Err(e) => {
+                return Err(TemplateError::misc(format!(
+                    "Failed to get template configuration for source name \"{source_name}\": {e}"
+                )))
+            }
+        }
+        Ok(())
+    }
+
+    /// 清空模板缓存 —— 对应 Java `Configuration.clearTemplateCache()`
+    /// （→ TemplateCache.clear :645-657：清空存储；若加载器实现
+    /// StatefulTemplateLoader 则同步调用其 resetState —— Java 的 instanceof
+    /// 检查 → TemplateLoader::as_stateful 下转型）
+    pub fn clear_template_cache(&self) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear();
+        }
+        if let Some(sl) = self.template_loader.as_stateful() {
+            sl.reset_state();
+        }
     }
 
     /// 带局部化回退的取模板 —— 对应 Java `TemplateCache.lookupWithLocalizedThenAcquisitionStrategy`
@@ -138,6 +235,9 @@ impl Configuration {
                 t = parser::parse(&Rc::new(self.clone()), &normalized, &text)?;
             }
         }
+        // per-template 配置（Java TemplateCache.loadTemplate 的
+        // getTemplateConfiguration 应用点）
+        self.apply_template_configuration(&normalized, &mut t)?;
         Ok(Rc::new(t))
     }
 
@@ -148,7 +248,11 @@ impl Configuration {
         let loaded = cache.get_or_load(name, &*self.template_loader, |n, text| {
             // 闭包内不得触碰 self.cache（锁已持有）；cfg 克隆重建空缓存（无锁）
             let cfg = Rc::new(self.clone());
-            parser::parse(&cfg, n, &text).map(Rc::new)
+            let mut t = parser::parse(&cfg, n, &text)?;
+            // per-template 配置（Java TemplateCache.loadTemplate 应用点；
+            // 失败时模板尚未入缓存）
+            self.apply_template_configuration(n, &mut t)?;
+            Ok(Rc::new(t))
         })?;
         // Ok(None) = 负查找缓存（Java storeNegativeLookup 后抛 TemplateNotFoundException）
         loaded.ok_or_else(|| TemplateError::NotFound {

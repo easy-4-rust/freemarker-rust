@@ -4,7 +4,7 @@
 //!   escapePlainText/getMimeType）
 //!
 //! v1 无 TemplateMarkupOutputModel 类型 —— 用本地 MO 镜像结构（HtmlMo）复刻
-//! CommonMarkupOutputFormat 逻辑，转义用 freemarker::utility::html_escape
+//! CommonMarkupOutputFormat 逻辑，转义用 freemarker::template::utility::html_escape
 //! （对应 Java StringUtil.HTMLEnc，字符集 & < > " ' 一致）。
 
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
@@ -106,7 +106,7 @@ fn concat(mo1: &HtmlMo, mo2: &HtmlMo) -> HtmlMo {
 
 /// Java HTMLOutputFormat.escapePlainText（= StringUtil.HTMLEnc）
 fn escape_plain_text(s: &str) -> String {
-    freemarker::utility::html_escape(s)
+    freemarker::template::utility::html_escape(s)
 }
 
 /// Java HTMLOutputFormat.isEmpty

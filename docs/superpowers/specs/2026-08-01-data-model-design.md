@@ -1,0 +1,151 @@
+# 数据模型与对象包装设计
+
+- **日期**：2026-08-01
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（freemarker/template/ 100 文件）
+- **依赖**：PyO3 0.29（pyo3 feature gate）
+
+---
+
+> 源：`freemarker-core/src/main/java/freemarker/template/`（100 文件）
+> 核心设计：`TModel` 角色槽位结构（见 specs/2026-08-01-architecture-design.md §4.1）—— 对应 Java 多接口实现。
+
+## 1. TemplateModel 接口家族 → Rust trait 映射
+
+| Java 接口 | Rust trait | 关键方法 | 角色 |
+|---|---|---|---|
+| `TemplateModel`（根，标记） | `trait TemplateModel`（标记 + `type_name()`） | — | 全部 |
+| `TemplateScalarModel` | `TemplateScalarModel` | `fn as_string(&self) -> Result<String, TemplateError>` | 字符串 |
+| `TemplateNumberModel` | `TemplateNumberModel` | `fn as_number(&self) -> Result<TNumber, TemplateError>` | 数字 |
+| `TemplateBooleanModel` | `TemplateBooleanModel` | `fn as_boolean(&self) -> Result<bool, TemplateError>` | 布尔 |
+| `TemplateDateModel` | `TemplateDateModel` | `fn as_date(&self) -> Result<DateValue, TemplateError>`（`DateType`：DATE/TIME/DATETIME） | 日期 |
+| `TemplateSequenceModel` | `TemplateSequenceModel` | `get(i)` / `size()` | 序列 |
+| `TemplateCollectionModel` | `TemplateCollectionModel` | `iterator()` | 集合 |
+| `TemplateCollectionModelEx` | `TemplateCollectionModelEx` | `+ size()` | 可数集合 |
+| `TemplateHashModel` | `TemplateHashModel` | `get(key)` / `isEmpty()` | 哈希 |
+| `TemplateHashModelEx` | `TemplateHashModelEx` | `+ size()/keys()/values()` | 可数哈希 |
+| `TemplateHashModelEx2` | `TemplateHashModelEx2` | `+ KeyValuePairIterator` | 键值对迭代 |
+| `TemplateMethodModel` | `TemplateMethodModel` | `exec(Vec<String>)`（参数转字符串） | 方法 |
+| `TemplateMethodModelEx` | `TemplateMethodModelEx` | `exec(Vec<TModel>)`（原对象） | 方法 |
+| `TemplateDirectiveModel` | `TemplateDirectiveModel` | `execute(env, params, loop_vars, body)` | 指令 |
+| `TemplateTransformModel` | `TemplateTransformModel` | `get_writer(...)` | 变换 |
+| `TemplateNodeModel` | `TemplateNodeModel` | `parent/children/name/type/namespace` | XML 节点 |
+| `TemplateNodeModelEx` | `TemplateNodeModelEx` | `+ nodename/namespace URI` | 节点扩展 |
+| `TemplateModelWithAPISupport` | （D1 受限/不实现） | `getAPI()` | API |
+| `AdapterTemplateModel` | `AdapterTemplateModel` | `get_adapted(hint)` | 底层对象（pyo3 用） |
+| `WrapperTemplateModel` | `WrapperTemplateModel` | `get_wrapped()` | 包装对象（pyo3 用） |
+| `TemplateModelAdapter` | `TemplateModelAdapter` | 反向适配 | pyo3 用 |
+
+**TModel 槽位与判型辅助**（对应 `instanceof` 链，错误消息需类型名）：
+
+```rust
+impl TModel {
+    pub fn is_scalar(&self) -> bool;     // 对应 x instanceof TemplateScalarModel
+    pub fn is_sequence(&self) -> bool;   // 注意：Collection 不一定是 Sequence
+    pub fn is_indexable(&self) -> bool;  // ?is_indexable = Sequence
+    pub fn is_enumerable(&self) -> bool; // Sequence 或 Collection
+    pub fn type_name(&self) -> String;   // 错误消息 "For "..." something that is a X is required" 中的实际类型描述
+}
+```
+
+## 2. 简单模型实现（`model/simple.rs`）
+
+| Java 类 | Rust | 语义要点 |
+|---|---|---|
+| `SimpleScalar` | `SimpleScalar(Rc<str>)` | 不可变字符串 |
+| `SimpleNumber` | `SimpleNumber(TNumber)` | **TNumber 设计**（见 §3） |
+| `SimpleDate` | `SimpleDate { date: DateTime, date_type: DateType }` | 类型感知（date/time/datetime），格式化按类型选择设置 |
+| `SimpleHash` | `SimpleHash(indexmap::IndexMap<String, TModel>)` | 插入序保留（`?keys/?values` 顺序语义）；支持 `SimpleHash(linkedMap, false)` 包装不可变视图 |
+| `SimpleList` / `SimpleSequence` | `SimpleList(Vec<TModel>)` | 索引 + 迭代 |
+| `SimpleCollection` | `SimpleCollection(Iterator)` | 单次迭代语义（`TemplateCollectionModel` 的迭代器一次性！） |
+| `TrueTemplateBooleanModel` / `FalseTemplateBooleanModel` | `Bool(bool)` 单例 | `?string` 输出由 `booleanFormat` 设置决定（true/false、yes/no、1/0） |
+| `TemplateNullModel` | `Nothing` | **缺失语义**：`${x}` 对 null → 报错；`${x!}` → 空串；`??` → false |
+| `GeneralPurposeNothing` | `Nothing` 变体 | 同 null，可区分（用于 `?has_content` 链） |
+| `TemplateModelListSequence` | — | 列表视图 |
+| `StringArraySequence` | `Vec<Rc<str>>` 视图 | 字符串数组 |
+| `CollectionAndSequence` | 组合视图 | 集合同时作序列 |
+
+## 3. TNumber 数值表示（`model/value.rs` / `arithmetic/`）
+
+```rust
+pub enum TNumber {
+    Int(i32), Long(i64), BigInt(Box<BigInt>),        // BigInteger（bigdecimal crate 附带）
+    Float(f32), Double(f64),
+    Decimal(Box<BigDecimal>),                        // 默认表示
+}
+```
+
+- **字面量映射**：`1` → Int；`1L` → Long；`1F` → Float；`1D` → Double；`1.5`/`1e3` → Decimal；大整数 → BigInt（按 Java `BigDecimal/BigInteger` 边界判断）。
+- **运算引擎**：`ArithmeticEngine` trait + `BigDecimalEngine`（默认，对应 `core/ArithmeticEngine.java`）：
+  - `+/-`：Decimal 参与时 `scale = max(s1, s2)`
+  - `*`：`scale = s1 + s2`
+  - `/`：**scale 规则必须对照 `ArithmeticEngine.java` 源码确认**（`BigDecimalEngine` 除法结果 scale 为操作数最大 scale，`ROUND_HALF_EVEN`；整数除法产生 Decimal）
+  - 整数运算溢出 → 自动升级 Long → BigInt（Java 语义）
+  - 运算结果优化：`OptimizerUtil.optimizeNumberRepresentation`（Decimal 整数尾零 → Int/Long）
+- **`?int/?long/?float/?double/?c` 转换**：截断/舍入规则对照 Java（`?int` 对 Decimal 直接截断）。
+
+## 4. ObjectWrapper（`wrapper/`）
+
+### 4.1 接口（对应 `template/ObjectWrapper.java`）
+
+```rust
+pub trait ObjectWrapper {
+    fn wrap(&self, obj: &DynValue) -> Result<Option<TModel>, TemplateError>;  // 语言对象 → 模型（null → None）
+    fn unwrap(&self, model: &TModel) -> Result<DynValue, TemplateError>;      // 模型 → 语言对象
+}
+```
+
+- `DynValue`：Rust 侧动态值（`enum DynValue { Str, Int, Float, Bool, Map, List, Struct(Box<dyn Any>), Py(Py<PyAny>), ... }`）—— 桥接用户输入数据。
+- `unwrap` 对应 `ObjectWrapperAndUnwrapper.unwrap`（`DeepUnwrap` 递归展开哈希/序列 → 原生 Map/List）。
+
+### 4.2 SimpleObjectWrapper（`simple_wrapper.rs`）
+
+映射表（与 Java 一致）：
+| Rust 值 | TModel |
+|---|---|
+| `str/String` | SimpleScalar |
+| `i32/i64/BigInt` | TNumber 对应 |
+| `f32/f64` | TNumber 浮点 |
+| `bool` | Bool |
+| `Vec<T>` | SimpleSequence（元素递归 wrap） |
+| `HashMap/IndexMap` | SimpleHash（递归 wrap） |
+| `chrono::DateTime` | SimpleDate（DATETIME） |
+| `Option::None` / `()` | Nothing（null） |
+| 其他 | 拒绝 → `ObjectWrapperException` 对齐消息 |
+
+### 4.3 DefaultObjectWrapper（`default_wrapper.rs`，D1 决策）
+
+- Java 版核心是 **BeanWrapper 反射**（`ext/beans`：`BeanModel/MapModel/CollectionModel/DateModel/MethodModel/OverloadedMethodModel/...`，**51 文件**）—— Rust 无反射。
+- **方案（推荐）**：serde 适配层 —— 用户通过 `#[derive(ToTemplateModel)]` 宏（过程宏，等价工作区 `thymeleaf-rust` 的做法）或手动 `impl From<T> for TModel` 提供结构体映射：
+  - 字段 → 哈希键；`serde_json::Value` → 直接映射模型树
+  - `?api`：抛 `NotSupportedTemplateException`（消息注明 Rust 版差异）
+  - 迭代器适配（`DefaultIterableAdapter` 等 Java 适配器）→ `Iterator` 包装为 Collection
+- 若后续需要 `?api`，用 `downcast-rs` 风格运行时类型注册表（延后到 P6 评估）。
+
+### 4.4 模型缓存（对应 `ext/util/ModelCache`）
+
+- Java `ModelCache`：`IdentityHashMap` 按对象身份缓存包装结果（`setUseCache`）。
+- Rust：`wrap` 默认不做缓存（值语义所有权模型下缓存收益低）；pyo3 侧按 `PyObject` 身份缓存（`HashMap<usize /*PyObject ptr*/, Weak<TModel>>`，防泄漏）。
+
+## 5. Date 模型与格式化钩子
+
+- `DateType`：`DATE`（`?date`）、`TIME`（`?time`）、`DATETIME`（`?datetime`）—— 由 `?date/?time/?datetime` 内建设置。
+- 格式化：按 `Environment` 的 `date_format/time_format/date_time_format` 设置链（Java 风格模式字符串 + `iso_`/`iso_utc` 内建覆盖）。
+- 解析：`?string` 反向解析支持（`ParsingNotSupportedException` 语义），`recognizedDateFormats` 设置。
+- 时区：`timeZone` 设置 + `sqlDateAndTimeTimeZone`；`DateUtil` 的 `UTC`/系统时区处理逐字复刻（`ISOLikeTemplateDateFormat` 的 `"Z"`/`"+08:00"`/`"xx"` 等模式）。
+
+## 6. 验收标准
+
+1. 全部角色 trait 可独立实现；`?is_*` 判定与 Java `instanceof` 一致。
+2. 数值运算引擎通过自建算术测试矩阵（整数/浮点/Decimal 混合运算，含溢出与精度用例）。
+3. serde/宏包装：结构体、枚举、`Option`、嵌套容器渲染结果与 Java Bean 包装等价（对黄金套件 `beans.txt` 用例：**需将 Java bean 测试数据改写为 serde 结构体等价物**，见 specs/2026-08-01-testing-strategy-design.md）。
+4. `DeepUnwrap` 递归往返一致性（Rust 值 → 模型 → unwrap → 原值等价）。
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-01-p0-skeleton-baseline.md`（Stage 3：基础类型）
+- `docs/superpowers/plans/2026-08-01-p1-p4-core-implementation.md`（Stage 4：数据模型）
+- `docs/superpowers/plans/2026-08-04-builtins-coverage-rounds.md`（template 拆分 2a/2b/2c）

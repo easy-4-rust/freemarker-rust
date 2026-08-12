@@ -19,6 +19,7 @@
 use crate::util::*;
 use bigdecimal::BigDecimal;
 use freemarker::cache::StringLoader;
+use freemarker::core::Environment;
 use freemarker::template::{Configuration, TModel, TemplateMethodModelEx};
 use freemarker::value::TNumber;
 use std::sync::Arc;
@@ -56,7 +57,7 @@ fn mapper_object() -> TModel {
 
 struct ToUpperMethod;
 impl TemplateMethodModelEx for ToUpperMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let s = args[0].get_scalar()?;
         Ok(TModel::from_scalar(s.to_uppercase()))
     }
@@ -64,7 +65,7 @@ impl TemplateMethodModelEx for ToUpperMethod {
 
 struct TenTimesMethod;
 impl TemplateMethodModelEx for TenTimesMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         // Java BigDecimal.movePointRight(1) —— n * 10
         let n = args[0].get_number()?;
         let ten: BigDecimal = BigDecimal::from(10);
@@ -76,7 +77,7 @@ impl TemplateMethodModelEx for TenTimesMethod {
 
 struct ExtractNameMethod;
 impl TemplateMethodModelEx for ExtractNameMethod {
-    fn exec(&self, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
+    fn exec(&self, _env: &mut Environment, args: Vec<TModel>) -> freemarker::error::Result<TModel> {
         let h = args[0].get_hash()?;
         let name = h
             .get("name")?

@@ -8,8 +8,8 @@
 
 use crate::core::{Environment, Expr};
 use crate::error::Result;
+use crate::template::utility::java_trim;
 use crate::template::TModel;
-use crate::utility::java_trim;
 
 /// 目标求值为标量（Java BuiltInForString 语义；数字/布尔强制转换）。
 /// 注意：`*_to_null` 是 Java `BuiltInsForExistenceHandling.ExistenceBuiltIn`
@@ -21,7 +21,7 @@ fn target_string(env: &mut Environment, target: &Expr) -> Result<Option<String>>
         // Java evalMaybeNonexistentTarget → null → *_to_null 返回 null
         return Ok(None);
     }
-    crate::builtins::eval_util::coerce_to_string(env, &m).map(Some)
+    crate::core::eval_util::coerce_to_string(env, &m).map(Some)
 }
 
 /// ?empty_to_null —— Java empty_to_nullBI

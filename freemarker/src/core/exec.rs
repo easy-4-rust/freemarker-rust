@@ -14,19 +14,11 @@
 //! - OutputFormat → OutputFormatBlock；Setting → PropertySetting.java:136
 //! - Comment → Comment；FtlHeader/RawText/TrimLineStart/NoTrimLineStart → 解析期语义
 
-use crate::core::environment::{
-    expr_desc, model_to_string, EscapeState, LocalEntry, LoopCtx, RunSignal,
-};
+use crate::core::environment::{expr_desc, model_to_string, RunSignal};
 use crate::core::eval;
-use crate::core::{ArithmeticEngine, AssignOp, CallTarget, Element, ElementKind, OutputFormatKind};
+use crate::core::{Element, ElementKind, OutputFormatKind};
 use crate::error::{FlowKind, Result, TemplateError};
-use crate::span::Span;
-use crate::template::{TModel, TemplateDirectiveBody};
-use crate::utility::java_trim;
-use crate::value::TNumber;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
+use crate::template::TModel;
 
 /// exec 结果 —— 对应 Java `TemplateElement.accept(Environment)` 的返回值
 /// （Java 返回 TemplateElement[]，null 表示无后续；Rust 用变体表达流控信号，docs/04 §2）。
@@ -53,94 +45,42 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             text,
             strip_before,
             strip_after,
-            ..
-        } => {
-            // Java TextBlock.accept :65-70；裁剪语义对应 postParseCleanup :140-167：
-            // opening/trailing 两段在原始文本上独立计算，取其中间段
-            // （顺序执行会导致纯空白文本 "\n  " 残留，见 TextBlock.java:148-167）
-            let t = strip_text(text, *strip_before, *strip_after, env);
-            env.emit(t)?;
-            Ok(ExecOutcome::Done)
-        }
+            orig_end_line,
+        } => crate::core::text_block::TextBlock::new(
+            text.clone(),
+            *strip_before,
+            *strip_after,
+            *orig_end_line,
+            false,
+        )
+        .exec(env),
         ElementKind::NoParse {
             text,
             strip_before,
             strip_after,
-            ..
-        } => {
-            // Java：<#noparse> 是 unparsed 标记的 TextBlock（TextBlock.java:31-33），
-            // postParseCleanup 与普通文本走同一剥离规则（noparse 用例）
-            let t = strip_text(text, *strip_before, *strip_after, env);
-            env.emit(t)?;
-            Ok(ExecOutcome::Done)
-        }
+            orig_end_line,
+        } => crate::core::text_block::TextBlock::new(
+            text.clone(),
+            *strip_before,
+            *strip_after,
+            *orig_end_line,
+            true,
+        )
+        .exec(env),
         ElementKind::Interpolation {
             expr,
             legacy_min_frac,
             legacy_max_frac,
         } => match (legacy_min_frac, legacy_max_frac) {
-            // 旧式 `#{expr[ ; mNMN]}`（Java NumericalOutput.accept：
-            // evalToNumber → NumberFormat(min, max, grouping=false) 输出；
-            // 不经过 <#escape> 栈，仅 autoesc/outputFormat 转义）
             (Some(min), Some(max)) => {
-                let n = eval::eval(env, expr)?.get_number()?;
-                let s = legacy_number_format(&n, *min, *max, &env.settings.locale);
-                env.emit(&legacy_auto_escaped(env, &s))?;
-                Ok(ExecOutcome::Done)
+                crate::core::dollar_variable::NumericalOutput::new(expr.clone(), *min, *max)
+                    .exec(env)
             }
-            // Java DollarVariable：求值 → 转义 → 输出字符串 → 写出
-            // （P4：转义表达式接收插值模型而非字符串——嵌套 escape 组合与
-            // `<#escape x as h[x]>` 数字索引需要原值，见 environment.rs apply_escape）
-            _ => {
-                let m = eval::eval(env, expr)?;
-                if m.is_nothing() {
-                    // Java DollarVariable.accept → EvalUtil.coerceModelToTextualCommon →
-                    // coerceModelToTextualCommon（EvalUtil.java:486-489）：classic 兼容
-                    // 模式回退空串；strict → InvalidReferenceException.getInstance(blamed,
-                    // env)——blamed = 整个插值表达式（位置 = 表达式起始），且 blamed 为
-                    // Dot/DynamicKeyName 时附 "It's the step after the last dot..." Tip
-                    // （InvalidReferenceException.java:110-158，jar 实测 missing_var_nested）
-                    if env.settings.classic_compatible {
-                        return Ok(ExecOutcome::Done);
-                    }
-                    let mut e = TemplateError::invalid_reference_at(
-                        crate::core::environment::expr_desc(expr),
-                        expr.span,
-                    );
-                    if let TemplateError::InvalidReference { ctx, .. } = &mut e {
-                        if ctx.template_name.is_none() {
-                            ctx.template_name = Some(env.current_template_name.clone());
-                        }
-                    }
-                    if matches!(
-                        expr.kind,
-                        crate::core::ExprKind::Dot { .. } | crate::core::ExprKind::DynKey { .. }
-                    ) {
-                        e = e.with_dot_tip();
-                    }
-                    return Err(e);
-                }
-                // Java DollarVariable.calculateInterpolatedStringOrMarkup：
-                // 内容类型错误 blame 插值表达式——`For "${...}" content: Expected a
-                // string or something automatically convertible to string (number, date
-                // or boolean), or "template output" , but this has evaluated to a {type}:
-                // ==> {expr}`（位置 = 表达式起始）
-                let s = env
-                    .apply_escape(&m)
-                    .map_err(|e| blame_interpolation_content(e, env, expr))?;
-                env.emit(&s)?;
-                Ok(ExecOutcome::Done)
-            }
+            _ => crate::core::dollar_variable::DollarVariable::new(expr.clone()).exec(env),
         },
         ElementKind::If { cond, then, else_ } => {
-            // Java IfBlock.accept :43-61：条件求布尔（modelToBoolean——classic 兼容
-            // 模式下缺失/空值 → false）；then/else 子块。
-            // elseif 链扁平化下钻：else 分支为单个 If 元素时（`<#elseif>`/`<#else>`
-            // 内嵌 `<#if>` 结构同形）沿链求值，不克隆未命中分支——热路径
-            // （长 elseif 链）避免每次条件失败都深克隆剩余整条链。
-            // 条件求值错误按各 case 自身 span 附加位置（run_loop 的 attach_location
-            // 检测到已有位置后不会重复附加，与逐元素执行时的错误定位一致）。
-            exec_if(env, el.span, cond, then, else_)
+            crate::core::if_block::IfBlock::new(cond.clone(), then.clone(), else_.clone(), el.span)
+                .exec(env)
         }
         ElementKind::List {
             seq,
@@ -148,428 +88,173 @@ pub fn exec(env: &mut crate::core::Environment, el: &Element) -> Result<ExecOutc
             var2,
             body,
             else_,
-        } => exec_list(env, seq, var, var2, body, else_),
-        ElementKind::Items { var, var2, body } => exec_items(env, var, var2, body),
-        ElementKind::Sep { body } => exec_sep(env, body),
+        } => crate::core::iterator_block::IteratorBlock::new(
+            seq.clone(),
+            var.clone(),
+            var2.clone(),
+            body.clone(),
+            else_.clone(),
+        )
+        .exec(env),
+        ElementKind::Items { var, var2, body } => {
+            crate::core::items::Items::new(var.clone(), var2.clone(), body.clone()).exec(env)
+        }
+        ElementKind::Sep { body } => crate::core::sep::Sep::new(body.clone()).exec(env),
         ElementKind::Assignments(els) => {
-            // Java AssignmentInstruction（FTL.jj 3371-3378）：逐个执行
-            for e in els {
-                let outcome = exec(env, e)?;
-                if !matches!(outcome, ExecOutcome::Done) {
-                    return Ok(outcome);
-                }
-            }
-            Ok(ExecOutcome::Done)
+            crate::core::assignment_instruction::AssignmentInstruction::new(els.clone()).exec(env)
         }
         ElementKind::Assign {
             target,
             expr,
             op,
             namespace,
-        } => exec_assign(
-            env,
-            target,
-            expr,
-            op,
-            namespace.as_ref(),
-            AssignScope::Namespace,
-        ),
+        } => crate::core::assignment::Assignment::new(
+            target.clone(),
+            expr.clone(),
+            *op,
+            namespace.clone(),
+        )
+        .exec(env),
         ElementKind::BlockAssign {
             target,
             body,
-            op,
             namespace,
-        } => {
-            // Java BlockAssignment：块输出捕获为字符串后赋值
-            let (sig, text) = env.capture(|env| env.run(body))?;
-            match sig {
-                RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-                RunSignal::Completed => {
-                    let placeholder =
-                        crate::core::Expr::new(crate::core::ExprKind::Str(text), el.span);
-                    exec_assign(
-                        env,
-                        target,
-                        &placeholder,
-                        op,
-                        namespace.as_ref(),
-                        AssignScope::Namespace,
-                    )
-                }
-            }
-        }
+            ..
+        } => crate::core::block_assignment::BlockAssignment::new(
+            target.clone(),
+            body.clone(),
+            namespace.clone(),
+        )
+        .exec(env),
         ElementKind::Global {
             target,
             expr,
             body,
             op,
-        } => {
-            if let Some(e) = expr {
-                exec_assign(env, target, e, op, None, AssignScope::Global)
-            } else if let Some(b) = body {
-                let captured = env.capture(|env| env.run(b))?;
-                if let RunSignal::Returned(v) = captured.0 {
-                    return Ok(ExecOutcome::ReturnValue(v));
-                }
-                let value = TModel::from_scalar(captured.1);
-                env.set_global_variable(target, value);
-                Ok(ExecOutcome::Done)
-            } else {
-                Ok(ExecOutcome::Done)
-            }
-        }
+        } => crate::core::global_assignment::GlobalAssignment::new(
+            target.clone(),
+            expr.clone(),
+            body.clone(),
+            *op,
+        )
+        .exec(env),
         ElementKind::Local {
             target,
             expr,
             body,
             op,
-        } => {
-            if let Some(e) = expr {
-                exec_assign(env, target, e, op, None, AssignScope::Local)
-            } else if let Some(b) = body {
-                let captured = env.capture(|env| env.run(b))?;
-                if let RunSignal::Returned(v) = captured.0 {
-                    return Ok(ExecOutcome::ReturnValue(v));
-                }
-                let value = TModel::from_scalar(captured.1);
-                env.set_local_variable(target, value)?;
-                Ok(ExecOutcome::Done)
-            } else {
-                Ok(ExecOutcome::Done)
-            }
-        }
-        ElementKind::Macro { def } => {
-            // Java Macro.accept :154-156 → Environment.visitMacroDef :1164-1167
-            // （解析期已提取到 Template.macros；执行期将定义加入当前命名空间）
-            env.register_macro_def(def);
-            Ok(ExecOutcome::Done)
-        }
+        } => crate::core::local_assignment::LocalAssignment::new(
+            target.clone(),
+            expr.clone(),
+            body.clone(),
+            *op,
+        )
+        .exec(env),
+        ElementKind::Macro { def } => crate::core::r#macro::Macro::new(def.clone()).exec(env),
         ElementKind::Call {
             callee,
             args,
             body,
             body_params,
-        } => exec_call_impl(
-            env,
-            callee,
-            args,
+        } => crate::core::unified_call::UnifiedCall::new(
+            callee.clone(),
+            args.clone(),
             body.clone(),
             body_params.clone(),
             el.span,
-        ),
-        ElementKind::Nested { args, body: _ } => exec_nested(env, args),
+        )
+        .exec(env),
+        ElementKind::Nested { args, body: _ } => {
+            crate::core::body_instruction::BodyInstruction::new(args.clone()).exec(env)
+        }
         ElementKind::Switch {
             expr,
             cases,
             default,
             default_pos,
-        } => exec_switch(env, expr, cases, default, default_pos),
-        ElementKind::Attempt { try_, recover } => exec_attempt(env, try_, recover),
-        ElementKind::Break => {
-            // Java BreakInstruction.java:29：BreakOrContinueException.BREAK_INSTANCE
-            Ok(ExecOutcome::Flow(FlowKind::Break))
+        } => crate::core::switch_block::SwitchBlock::new(
+            expr.clone(),
+            cases.clone(),
+            default.clone(),
+            *default_pos,
+        )
+        .exec(env),
+        ElementKind::Attempt { try_, recover } => {
+            crate::core::attempt_block::AttemptBlock::new(try_.clone(), recover.clone()).exec(env)
         }
-        ElementKind::Continue => Ok(ExecOutcome::Flow(FlowKind::Continue)),
+        ElementKind::Break => crate::core::break_instruction::BreakInstruction::new().exec(env),
+        ElementKind::Continue => {
+            crate::core::continue_instruction::ContinueInstruction::new().exec(env)
+        }
         ElementKind::Return { expr } => {
-            // Java ReturnInstruction.java:35-51：设置返回值后抛 Return.INSTANCE；
-            // 记录发起时的宏帧深度（nested body 执行时 exec_nested 已弹出被调宏帧，
-            // 栈顶即 return 的归属宏——Java Return 异常携带发起 Macro.Context）
-            env.return_depth = Some(env.macro_frames.len());
-            let v = match expr {
-                Some(e) => {
-                    let m = eval::eval(env, e)?;
-                    if m.is_nothing() {
-                        return Err(TemplateError::invalid_reference(expr_desc(e)));
-                    }
-                    Some(m)
-                }
-                None => None,
-            };
-            Ok(ExecOutcome::ReturnValue(v))
+            crate::core::return_instruction::ReturnInstruction::new(expr.clone()).exec(env)
         }
         ElementKind::Stop { msg } => {
-            // Java StopInstruction：StopException（:43-49；消息经 evalAndCoerceToPlainText）
-            let message = match msg {
-                Some(e) => Some(eval_to_string(env, e)?),
-                None => None,
-            };
-            Ok(ExecOutcome::Stop(message))
+            crate::core::stop_instruction::StopInstruction::new(msg.clone()).exec(env)
         }
-        ElementKind::Flush => {
-            // Java FlushInstruction：冲刷输出缓冲
-            if env.redirect.is_some() {
-                return Ok(ExecOutcome::Done);
-            }
-            env.out.flush().map_err(TemplateError::Io)?;
-            Ok(ExecOutcome::Done)
-        }
+        ElementKind::Flush => crate::core::flush_instruction::FlushInstruction::new().exec(env),
         ElementKind::Trim(body) => {
-            // Java TrimInstruction：块输出捕获 → java trim（String.trim 语义）→ 写出
-            let captured = env.capture(|env| env.run(body))?;
-            match captured.0 {
-                RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-                RunSignal::Completed => {
-                    env.emit(java_trim(&captured.1))?;
-                    Ok(ExecOutcome::Done)
-                }
-            }
+            crate::core::trim_instruction::TrimInstruction::new(body.clone()).exec(env)
         }
-        ElementKind::Comment { text: _ } => Ok(ExecOutcome::Done),
+        ElementKind::Comment { text } => crate::core::comment::Comment::new(text.clone()).exec(env),
         ElementKind::Include { path, attrs } => {
-            // Java Include.accept :25-100 + :138-153（parse/encoding/ignore_missing 属性）
-            let name = eval_to_string(env, path)?;
-            let mut parse = true;
-            let mut ignore_missing = false;
-            let mut encoding: Option<String> = None;
-            for (an, av) in attrs {
-                match an.to_ascii_lowercase().as_str() {
-                    "parse" => {
-                        // Java Include.accept :142-151：scalar → getYesNo（legacy 字符串），
-                        // 否则 modelToBoolean
-                        let m = eval::eval(env, av)?;
-                        if m.scalar.is_some() {
-                            parse = get_yes_no(av, &model_to_string(env, &m)?)?;
-                        } else {
-                            parse = eval::model_to_boolean(env, &m)?;
-                        }
-                    }
-                    "encoding" => {
-                        // Java Include.accept :131-135：运行时求值（求值错误照常传播）
-                        encoding = Some(eval_to_string(env, av)?);
-                    }
-                    "ignore_missing" => {
-                        let m = eval::eval(env, av)?;
-                        ignore_missing = eval::model_to_boolean(env, &m)?;
-                    }
-                    _ => unreachable!("解析器已校验 include 参数名"),
-                }
-            }
-            env.include_named(&name, parse, ignore_missing, encoding)?;
-            Ok(ExecOutcome::Done)
+            crate::core::include::Include::new(path.clone(), attrs.clone()).exec(env)
         }
         ElementKind::Import { path, ns } => {
-            // Java LibraryLoad.accept :26-47 → env.importLib（:3232-3290）
-            let name = eval_to_string(env, path)?;
-            env.import_lib(&name, ns)?;
-            Ok(ExecOutcome::Done)
+            crate::core::library_load::LibraryLoad::new(path.clone(), ns.clone()).exec(env)
         }
         ElementKind::Escape { expr, body } => {
-            // Java EscapeBlock：body 内插值统一应用转义（v1 运行时转义栈；
-            // Java 在解析期包装插值，行为等价）
-            let state = match &expr.kind {
-                crate::core::ExprKind::Ident(n) if n == "html" => EscapeState::Html,
-                crate::core::ExprKind::Ident(n) if n == "xml" => EscapeState::Xml,
-                crate::core::ExprKind::Ident(n) if n == "xhtml" => EscapeState::Html, // v1：xhtml 按 html
-                _ => EscapeState::Custom(Rc::new(expr.clone())),
-            };
-            env.push_escape(state);
-            let r = env.run(body);
-            env.pop_escape();
-            outcome_from_run(r)
+            crate::core::escape_block::EscapeBlock::new(expr.clone(), body.clone()).exec(env)
         }
         ElementKind::NoEscape(body) => {
-            // Java NoEscapeBlock：关闭外层 escape 与自动转义
-            env.push_escape(EscapeState::Plain);
-            let r = env.run(body);
-            env.pop_escape();
-            outcome_from_run(r)
+            crate::core::no_escape_block::NoEscapeBlock::new(body.clone()).exec(env)
         }
         ElementKind::AutoEsc(body) => {
-            // Java AutoEscBlock：块内开启自动转义
-            let prev = env.is_auto_escape();
-            env.set_auto_escape(true);
-            let r = env.run(body);
-            env.set_auto_escape(prev);
-            outcome_from_run(r)
+            crate::core::auto_esc_block::AutoEscBlock::new(body.clone()).exec(env)
         }
         ElementKind::NoAutoEsc(body) => {
-            // Java NoAutoEscBlock：块内关闭自动转义
-            let prev = env.is_auto_escape();
-            env.set_auto_escape(false);
-            let r = env.run(body);
-            env.set_auto_escape(prev);
-            outcome_from_run(r)
+            crate::core::no_auto_esc_block::NoAutoEscBlock::new(body.clone()).exec(env)
         }
         ElementKind::OutputFormat { name, body } => {
-            // Java OutputFormatBlock：块内切换 outputFormat（v1：仅影响插值自动转义）
-            let n = eval_to_string(env, name)?;
-            let fmt = OutputFormatKind::parse(&n)
-                .ok_or_else(|| TemplateError::misc(format!("Unknown output format: {n}")))?;
-            let prev = env.settings.output_format;
-            env.settings.to_mut().output_format = fmt;
-            let r = env.run(body);
-            env.settings.to_mut().output_format = prev;
-            outcome_from_run(r)
+            crate::core::output_format_block::OutputFormatBlock::new(name.clone(), body.clone())
+                .exec(env)
         }
         ElementKind::Compress(body) => {
-            // Java CompressedBlock：块输出空白压缩（v1 基础版：行首尾空白 + 空行合并；
-            // Java StandardCompress 正则语义 P4 对齐）
-            let captured = env.capture(|env| env.run(body))?;
-            match captured.0 {
-                RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-                RunSignal::Completed => {
-                    env.emit(&compress_text(&captured.1))?;
-                    Ok(ExecOutcome::Done)
-                }
-            }
+            crate::core::compressed_block::CompressedBlock::new(body.clone()).exec(env)
         }
-        ElementKind::Setting { key, value } => exec_setting(env, key, value),
-        ElementKind::FtlHeader { encoding: _ } => Ok(ExecOutcome::Done), // 解析期已处理
+        ElementKind::Setting { key, value } => {
+            crate::core::property_setting::Setting::new(key.clone(), value.clone()).exec(env)
+        }
+        ElementKind::FtlHeader { encoding } => {
+            crate::core::ftl_header::FtlHeader::new(encoding.clone()).exec(env)
+        }
         ElementKind::TrimLineStart
         | ElementKind::NoTrimLineStart
         | ElementKind::TrimLineEnd
-        | ElementKind::LeftTrimLine => Ok(ExecOutcome::Done), // 解析期标记（渲染期由文本剥离实现）
-        ElementKind::RawText(t) => {
-            // <#gt> 特殊文本
-            env.emit(t)?;
-            Ok(ExecOutcome::Done)
-        }
+        | ElementKind::LeftTrimLine => crate::core::trim_instruction::TrimMark::new().exec(env),
+        ElementKind::RawText(t) => crate::core::text_block::RawText::new(t.clone()).exec(env),
         ElementKind::Transform { expr, body } => {
-            // Java TransformBlock.accept（TransformBlock.java:64-85）→
-            // env.visitAndTransform（Environment.java:495-543）：getWriter 先产出
-            // 变换自身输出（?interpret 即 include 解释模板），body 写入变换 writer
-            // （StandardCompress 等压缩/转义 body），close 时变换输出
-            let m = eval::eval(env, expr)?;
-            if m.is_nothing() {
-                return Err(TemplateError::invalid_reference(expr_desc(expr)));
-            }
-            let Some(ttm) = env.as_transform(&m) else {
-                return Err(TemplateError::type_mismatch("transform", m.type_name));
-            };
-            let signal = ttm.transform_with_body(env, &HashMap::new(), body)?;
-            match signal {
-                RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-                _ => Ok(ExecOutcome::Done),
-            }
+            crate::core::transform_block::TransformBlock::new(expr.clone(), body.clone()).exec(env)
         }
-        ElementKind::Visit { expr, .. } => {
-            // Java VisitNode.accept → Environment.visit（:2885-2940）：
-            // 求值节点（无参 = 当前访问节点），压入访问栈，按节点名分派宏
-            let node = match expr {
-                Some(e) => eval::eval(env, e)?,
-                None => env.get_current_visitor_node().ok_or_else(|| {
-                    TemplateError::misc(
-                        "#visit must be given a node, or be called while visiting a node",
-                    )
-                })?,
-            };
-            env.push_visitor_node(node.clone());
-            let r = visit_node(env, &node);
-            env.pop_visitor_node();
-            r
+        ElementKind::Visit { expr, using } => {
+            crate::core::visit_node::VisitNode::new(expr.clone(), using.clone()).exec(env)
         }
-        ElementKind::Recurse { expr, .. } => {
-            // Java RecurseNode.accept：对节点的子节点逐个 visit
-            // （无参 = 当前访问节点的子节点）
-            let node = match expr {
-                Some(e) => eval::eval(env, e)?,
-                None => env.get_current_visitor_node().ok_or_else(|| {
-                    TemplateError::misc(
-                        "#recurse must be given a node, or be called while visiting a node",
-                    )
-                })?,
-            };
-            let children = match &node.node {
-                Some(n) => n.children()?,
-                None => Vec::new(),
-            };
-            for c in children {
-                env.push_visitor_node(c.clone());
-                let r = visit_node(env, &c);
-                env.pop_visitor_node();
-                r?;
-            }
-            Ok(ExecOutcome::Done)
+        ElementKind::Recurse { expr, using } => {
+            crate::core::recurse_node::RecurseNode::new(expr.clone(), using.clone()).exec(env)
         }
         ElementKind::On { expr, body } => {
-            // Java On.accept（2.3.28+）：visit 块内的节点类型处理器注册。
-            // 语义：`<#on name>body</#on>` 与 `<#macro name>body</#macro>`
-            // 等价（On.java 内部注册为命名宏）；body 内 `.node` 为当前节点。
-            let name = eval_to_string(env, expr)?;
-            let mv = macro_from_body(name.clone(), body.clone());
-            env.get_current_namespace().put_macro(name, mv);
-            Ok(ExecOutcome::Done)
+            crate::core::on::On::new(expr.clone(), body.clone()).exec(env)
         }
-        ElementKind::Fallback => Err(TemplateError::misc(
-            "#fallback needs XML node support (a Java-specific feature).",
-        )),
+        ElementKind::Fallback => {
+            crate::core::fallback_instruction::FallbackInstruction::new().exec(env)
+        }
     }
-}
-
-/// 赋值作用域（Java Assignment.java:100-110 NAMESPACE/LOCAL/GLOBAL）
-enum AssignScope {
-    Namespace,
-    Global,
-    Local,
 }
 
 /// `<#if>` 执行（elseif 链扁平化下钻；借用版：命中分支克隆返回）
 /// `span`：当前 case 的源码位置（`<#elseif>` 下钻时更新为各 case 自身 span）
 /// `<#if>` 条件类型错误 → Java `For "#if" condition: ... ==> {cond}` 形式
 /// （NonBooleanException 的 blamer/blame/位置）
-fn blame_if_condition(
-    e: TemplateError,
-    env: &mut crate::core::Environment,
-    cond: &crate::core::Expr,
-) -> TemplateError {
-    if let TemplateError::TypeMismatch { ctx, .. } = &e {
-        if ctx.blamer.is_none() {
-            return e.with_blame_at(
-                "#if",
-                "condition",
-                &crate::core::environment::expr_desc(cond),
-                &env.current_template_name,
-                cond.span,
-            );
-        }
-    }
-    crate::core::environment::attach_location(e, &env.current_template_name, cond.span)
-}
-
-fn exec_if(
-    env: &mut crate::core::Environment,
-    span: Span,
-    cond: &crate::core::Expr,
-    then: &[Element],
-    else_: &Option<Vec<Element>>,
-) -> Result<ExecOutcome> {
-    let mut cur_span = span;
-    let mut cond = cond;
-    let mut then = then;
-    let mut else_ = else_;
-    loop {
-        let cm = eval::eval(env, cond).map_err(|e| {
-            crate::core::environment::attach_location(e, &env.current_template_name, cur_span)
-        })?;
-        // Java IfBlock.accept → condition.evalToBoolean：条件类型错误 blame 条件表达式
-        // —— `For "#if" condition: Expected a boolean, but this has evaluated to a
-        // {type}: ==> {cond}`（位置 = 条件表达式起始）
-        let b = eval::model_to_boolean(env, &cm).map_err(|e| blame_if_condition(e, env, cond))?;
-        if b {
-            return Ok(ExecOutcome::Next(then.to_vec()));
-        }
-        match else_ {
-            Some(v) if v.len() == 1 => {
-                if let ElementKind::If {
-                    cond: c2,
-                    then: t2,
-                    else_: e2,
-                } = &v[0].kind
-                {
-                    cur_span = v[0].span;
-                    cond = c2;
-                    then = t2;
-                    else_ = e2;
-                    continue;
-                }
-                return Ok(ExecOutcome::Next(v.clone()));
-            }
-            Some(v) => return Ok(ExecOutcome::Next(v.clone())),
-            None => return Ok(ExecOutcome::Done),
-        }
-    }
-}
-
 /// 所有权版指令执行 —— run_slice 的 mini 栈路径使用：命中分支/调用 body
 /// 直接移动（零克隆）。非热路径 variant 委托 exec(&Element)（借用语义一致）。
 pub(crate) fn exec_owned(env: &mut crate::core::Environment, el: Element) -> Result<ExecOutcome> {
@@ -639,1142 +324,34 @@ pub(crate) fn exec_owned(env: &mut crate::core::Environment, el: Element) -> Res
             args,
             body,
             body_params,
-        } => exec_call_impl(env, &callee, &args, body, body_params, span),
+        } => {
+            crate::core::unified_call::exec_call_impl(env, &callee, &args, body, body_params, span)
+        }
         other => exec(env, &Element { kind: other, span }),
-    }
-}
-
-/// 旧式 `#{...}` 数值插值格式化 —— 对应 Java `NumericalOutput.calculateInterpolatedStringOrMarkup`
-/// （NumericalOutput.java:84-112）：`NumberFormat.getNumberInstance(locale)` +
-/// setMinimum/MaximumFractionDigits + setGroupingUsed(false)；NumberFormat 默认舍入为
-/// HALF_EVEN；超出 max 的位舍入、不足 min 的位补零、超出 min 的尾零剥除。
-fn legacy_number_format(n: &TNumber, min_frac: u32, max_frac: u32, locale: &str) -> String {
-    use bigdecimal::RoundingMode;
-    match n {
-        TNumber::Float(f) if f.is_nan() || f.is_infinite() => {
-            // Java NumberFormat.format：NaN → "NaN"，±∞ → "∞"
-            return if f.is_nan() {
-                "NaN".to_string()
-            } else {
-                "\u{221E}".to_string()
-            };
-        }
-        TNumber::Double(d) if d.is_nan() || d.is_infinite() => {
-            return if d.is_nan() {
-                "NaN".to_string()
-            } else {
-                "\u{221E}".to_string()
-            };
-        }
-        _ => {}
-    }
-    let rounded = n
-        .as_big_decimal()
-        .with_scale_round(max_frac as i64, RoundingMode::HalfEven);
-    let mut s = rounded.to_plain_string();
-    // 剥除超出 min_frac 的尾部零（Java NumberFormat 不输出多余尾零；
-    // with_scale_round 已保证小数位 = max_frac ≥ min_frac，只需剥零）
-    if let Some(dot) = s.find('.') {
-        let mut frac_end = s.len();
-        while frac_end - dot - 1 > min_frac as usize && s.as_bytes()[frac_end - 1] == b'0' {
-            frac_end -= 1;
-        }
-        if frac_end - dot - 1 == 0 {
-            s.truncate(dot); // 小数全零 → 去掉小数点（"2.00" → "2"）
-        } else {
-            s.truncate(frac_end);
-        }
-    }
-    // Locale 感知的小数点替换：fr_FR 等欧洲 locale 用 ',' 作小数点
-    // （Java NumberFormat.getNumberInstance(locale) 的行为；
-    //  与 format.rs decimal_separator/group_separator 一致）
-    let dec_sep = match locale.split('_').next().unwrap_or("en") {
-        "fr" | "de" | "es" | "tr" | "it" | "pt" | "nl" | "sv" | "cs" | "pl" | "hu" | "ro"
-        | "ru" | "uk" | "bg" | "el" | "fi" | "da" | "no" | "sk" | "sl" | "hr" | "lt" | "lv"
-        | "et" | "id" | "vi" | "th" => ',',
-        _ => '.',
-    };
-    if dec_sep != '.' {
-        s = s.replace('.', &dec_sep.to_string());
-    }
-    s
-}
-
-/// 旧式 `#{...}` 的自动转义 —— 对应 Java NumericalOutput 的 autoEscOF
-/// （NumericalOutput.java:41-43：autoEscaping && outputFormat 为 MarkupOutputFormat；
-/// 不经过 `<#escape>` 栈 —— StringOutput 的 escapedExpression 仅用于 `${...}`）
-fn legacy_auto_escaped(env: &crate::core::Environment, s: &str) -> String {
-    if !env.is_auto_escape() {
-        return s.to_string();
-    }
-    match env.settings.output_format {
-        OutputFormatKind::Html | OutputFormatKind::XHtml => crate::utility::html_escape(s),
-        OutputFormatKind::Xml => crate::utility::xml_escape(s),
-        _ => s.to_string(),
-    }
-}
-
-/// 赋值 —— 对应 Java `Assignment.accept`（Assignment.java:80-168）：
-/// `=` 直接赋值（缺失 → InvalidReference）；`+=` 先取旧值再字符串拼接/数值相加
-/// （AddConcatExpression._eval）；`-=`/`*=`/`/=`/`%=` 数值运算（ArithmeticExpression._eval）；
-/// `++`/`--` 数值 ±1（Java :147-157，ONE = 1）。
-fn exec_assign(
-    env: &mut crate::core::Environment,
-    target: &str,
-    expr: &crate::core::Expr,
-    op: &AssignOp,
-    namespace: Option<&crate::core::Expr>,
-    scope: AssignScope,
-) -> Result<ExecOutcome> {
-    // Java Assignment.accept :102-122：`in nsExp` 子句——nsExp 为任意表达式，
-    // eval 后检查类型（NonNamespaceException）/ null（InvalidReference）
-    let target_ns: Option<Rc<crate::core::environment::Namespace>> = match namespace {
-        None => None,
-        Some(ns_exp) => {
-            let m = eval::eval(env, ns_exp)?;
-            if m.is_nothing() {
-                return Err(TemplateError::invalid_reference(
-                    crate::core::environment::expr_desc(ns_exp),
-                ));
-            }
-            Some(env.as_namespace(&m).ok_or_else(|| {
-                // Java NonNamespaceException（Assignment.java:115-118）：
-                // "For \"#assign\" namespace: Expected a namespace, but this has evaluated to a ..."
-                TemplateError::misc(format!(
-                    "For \"#assign\" namespace: Expected a namespace, but this has evaluated to a {}: ==> {}",
-                    m.type_name,
-                    crate::core::environment::expr_desc(ns_exp)
-                ))
-            })?)
-        }
-    };
-    let value = if *op == AssignOp::Equals {
-        // Java :99-110（Assignment.java:136-142）：= 右侧为 null → classic 兼容模式
-        // 赋空串（TemplateScalarModel.EMPTY_STRING）；strict → InvalidReference
-        let v = eval::eval(env, expr)?;
-        if v.is_nothing() {
-            if env.settings.classic_compatible {
-                TModel::from_scalar(String::new())
-            } else {
-                return Err(TemplateError::invalid_reference(expr_desc(expr)));
-            }
-        } else {
-            v
-        }
-    } else {
-        // Java :112-157：先取旧值（缺失 → Assignment.java:156-162 的
-        // "The target variable of the assignment, ... was null or missing ..."；
-        // += 在 classic 兼容模式下缺失目标视为空串，Assignment.java:140-144）
-        let old = match get_old_value(env, target, &target_ns, &scope)? {
-            Some(old) => old,
-            None if *op == AssignOp::PlusEq && env.settings.classic_compatible => {
-                TModel::from_scalar(String::new())
-            }
-            None => {
-                // Java Assignment.java:156-162 + InvalidReferenceException 的 Tip 段
-                // （目标名以 $ 开头时追加 "must not start with \"$\"" 提示；
-                // 作用域描述按 scope 变化：template namespace / global scope / local scope）
-                let scope_desc = match scope {
-                    AssignScope::Namespace => "template namespace",
-                    AssignScope::Global => "global scope",
-                    AssignScope::Local => "local scope",
-                };
-                let mut msg = format!(
-                    "The target variable of the assignment, \"{target}\", was null or missing in the {scope_desc}, and the \"{}\" operator must get its value from there before assigning to it.",
-                    assign_op_str(op)
-                );
-                if target.starts_with('$') {
-                    msg.push_str("\n\n----\nTip: Variable references must not start with \"$\", unless the \"$\" is really part of the variable name.\n----");
-                }
-                return Err(TemplateError::misc(msg));
-            }
-        };
-        match op {
-            AssignOp::PlusEq => {
-                // Java :132-147：AddConcat 语义（字符串拼接或数值相加）；
-                // 右侧为 null → classic 兼容模式视为空串（Assignment.java:147-151）
-                let new = eval::eval(env, expr)?;
-                let new = if new.is_nothing() {
-                    if env.settings.classic_compatible {
-                        TModel::from_scalar(String::new())
-                    } else {
-                        return Err(TemplateError::invalid_reference(expr_desc(expr)));
-                    }
-                } else {
-                    new
-                };
-                eval_add_concat(env, &old, &new)?
-            }
-            AssignOp::PlusPlus => {
-                // Java :147-150：lhoNumber + 1
-                let n = old
-                    .get_number()
-                    .map_err(|_| assign_non_number_err(target, &old))?;
-                let one = crate::value::TNumber::Int(1);
-                let engine = crate::core::BigDecimalEngine::default();
-                TModel::from_number(engine.add(&n, &one)?)
-            }
-            AssignOp::MinusMinus => {
-                // Java :151-154：lhoNumber - 1
-                let n = old
-                    .get_number()
-                    .map_err(|_| assign_non_number_err(target, &old))?;
-                let one = crate::value::TNumber::Int(1);
-                let engine = crate::core::BigDecimalEngine::default();
-                TModel::from_number(engine.sub(&n, &one)?)
-            }
-            AssignOp::MinusEq | AssignOp::TimesEq | AssignOp::DivideEq | AssignOp::ModuloEq => {
-                // Java :155-157：ArithmeticExpression._eval(lhoNumber, op, rhoNumber)
-                // 左值错误 → NonNumericalException（"Expected a number, but assignment
-                // target variable ..."）；右值错误 → "For \"#assign\" assignment source:
-                // Expected a number, but this has evaluated to a string: ==> 'a'"
-                let l = old
-                    .get_number()
-                    .map_err(|_| assign_non_number_err(target, &old))?;
-                // Java :155-157：右值 null → evalToNumber → NonNumericalException
-                // （消息同 "null or missing"）
-                let rm = eval::eval(env, expr)?;
-                if rm.is_nothing() {
-                    return Err(TemplateError::invalid_reference(expr_desc(expr)));
-                }
-                let r = rm.get_number().map_err(|_| {
-                    TemplateError::misc(format!(
-                        "For \"#assign\" assignment source: Expected a number, but this has evaluated to a string: ==> {}",
-                        assign_source_desc(expr)
-                    ))
-                })?;
-                let engine = crate::core::BigDecimalEngine::default();
-                TModel::from_number(match op {
-                    AssignOp::MinusEq => engine.sub(&l, &r)?,
-                    AssignOp::TimesEq => engine.mul(&l, &r)?,
-                    AssignOp::DivideEq => engine.div(&l, &r)?,
-                    AssignOp::ModuloEq => engine.mod_op(&l, &r)?,
-                    _ => unreachable!(),
-                })
-            }
-            AssignOp::Equals => unreachable!(),
-        }
-    };
-    // Java :159-165：写入目标
-    match scope {
-        AssignScope::Local => {
-            env.set_local_variable(target, value)?;
-        }
-        AssignScope::Global => {
-            env.set_global_variable(target, value);
-        }
-        AssignScope::Namespace => match &target_ns {
-            Some(ns) => ns.put_var(target.to_string(), value),
-            None => env.set_variable(target, value),
-        },
-    }
-    Ok(ExecOutcome::Done)
-}
-
-/// 取旧值（Java Assignment :114-122：LOCAL → getLocalVariable；NAMESPACE/GLOBAL → 命名空间 get）
-fn get_old_value(
-    env: &mut crate::core::Environment,
-    target: &str,
-    target_ns: &Option<Rc<crate::core::environment::Namespace>>,
-    scope: &AssignScope,
-) -> Result<Option<TModel>> {
-    match scope {
-        AssignScope::Local => Ok(env.get_local_variable(target)),
-        AssignScope::Global => Ok(env
-            .get_global_namespace()
-            .get_member(target)
-            .and_then(normalize_old)),
-        AssignScope::Namespace => match target_ns {
-            Some(ns) => Ok(ns.get_member(target).and_then(normalize_old)),
-            // 当前命名空间（Java :114-119：namespace.get(variableName)）
-            None => Ok(env
-                .get_current_namespace()
-                .get_member(target)
-                .and_then(normalize_old)),
-        },
-    }
-}
-
-/// 旧值为宏（`<#assign x += 1>` 目标若是宏名）→ 视为缺失（v1；Java 会抛类型错误）
-fn normalize_old(m: TModel) -> Option<TModel> {
-    if m.is_macro() {
-        None
-    } else {
-        Some(m)
-    }
-}
-
-/// 拼接/相加（Java AddConcatExpression._eval，Assignment :144 调用）：
-/// 双数字 → 数值相加；双序列 → ConcatenatedSequence 懒惰拼接（:79-83）；
-/// 双哈希且无法转字符串 → 哈希合并、右值胜出（:124-131）；否则字符串拼接
-/// （字符串优先于哈希——FTL 字符串常兼为哈希，:85-102）
-fn eval_add_concat(
-    env: &mut crate::core::Environment,
-    old: &TModel,
-    new: &TModel,
-) -> Result<TModel> {
-    if old.is_number() && new.is_number() {
-        let engine = crate::core::BigDecimalEngine::default();
-        return Ok(TModel::from_number(
-            engine.add(&old.get_number()?, &new.get_number()?)?,
-        ));
-    }
-    if let (Some(l), Some(r)) = (&old.sequence, &new.sequence) {
-        // Java :79-83：ConcatenatedSequence（懒惰拼接，不物化）
-        return Ok(concatenated_sequence_model(l.clone(), r.clone()));
-    }
-    let both_hash = old.is_hash() && new.is_hash();
-    // Java :85-102：先试字符串转换（双哈希时不可转 → null → 哈希合并）
-    match (model_to_string(env, old), model_to_string(env, new)) {
-        (Ok(ls), Ok(rs)) => Ok(TModel::from_scalar(ls + &rs)),
-        _ if both_hash => merged_hash_model(old, new),
-        (Err(e), _) | (_, Err(e)) => Err(e),
-    }
-}
-
-/// 序列拼接模型 —— 对应 Java `ConcatenatedSequence`（AddConcatExpression.java:79-83）：
-/// size = 左 + 右；get(i) 委派；迭代器基于 get/size 惰性生成
-pub(crate) struct ConcatenatedSeq {
-    left: Rc<dyn crate::template::TemplateSequenceModel>,
-    right: Rc<dyn crate::template::TemplateSequenceModel>,
-}
-
-fn concatenated_sequence_model(
-    left: Rc<dyn crate::template::TemplateSequenceModel>,
-    right: Rc<dyn crate::template::TemplateSequenceModel>,
-) -> TModel {
-    let inner = Rc::new(ConcatenatedSeq { left, right });
-    let seq: Rc<dyn crate::template::TemplateSequenceModel> = inner.clone();
-    let coll: Rc<dyn crate::template::TemplateCollectionModel> = inner;
-    TModel {
-        sequence: Some(seq),
-        collection: Some(coll),
-        type_name: "sequence",
-        kind: crate::template::ModelKind::Sequence,
-        ..TModel::nothing()
-    }
-}
-
-impl crate::template::TemplateSequenceModel for ConcatenatedSeq {
-    fn get(&self, index: usize) -> Result<TModel> {
-        let l = self.left.size()?;
-        if index < l {
-            self.left.get(index)
-        } else {
-            self.right.get(index - l)
-        }
-    }
-    fn size(&self) -> Result<usize> {
-        Ok(self.left.size()? + self.right.size()?)
-    }
-}
-
-impl crate::template::TemplateCollectionModel for ConcatenatedSeq {
-    fn iterator(&self) -> Result<Box<dyn Iterator<Item = Result<TModel>>>> {
-        let left = self.left.clone();
-        let right = self.right.clone();
-        let l = left.size()?;
-        let n = l + right.size()?;
-        let mut idx = 0usize;
-        Ok(Box::new(std::iter::from_fn(move || {
-            if idx >= n {
-                return None;
-            }
-            let i = idx;
-            idx += 1;
-            Some(if i < l { left.get(i) } else { right.get(i - l) })
-        })))
-    }
-}
-
-/// 哈希合并 —— 对应 Java `ConcatenatedHashEx`/`ConcatenatedHash`
-/// （AddConcatExpression.java:462-…）：get 右优先（right ?? left）；
-/// 键序左在前、右键追加（碰撞保留左索引、右值胜出——IndexMap 语义一致）。
-/// 双 ex 哈希直接物化合并；否则惰性右优先查找包装
-fn merged_hash_model(left: &TModel, right: &TModel) -> Result<TModel> {
-    if let (Some(l), Some(r)) = (&left.hash_ex, &right.hash_ex) {
-        let mut m: indexmap::IndexMap<String, TModel> = indexmap::IndexMap::new();
-        for ex in [l, r] {
-            for (k, v) in ex.entries()? {
-                m.insert(k, v);
-            }
-        }
-        return Ok(TModel::from_hash(m));
-    }
-    let left_h = left.hash.clone().ok_or_else(|| {
-        TemplateError::misc(format!(
-            "Cannot concatenate a {} value with a hash",
-            left.type_name
-        ))
-    })?;
-    let right_h = right.hash.clone().ok_or_else(|| {
-        TemplateError::misc(format!(
-            "Cannot concatenate a {} value with a hash",
-            right.type_name
-        ))
-    })?;
-    let inner = Rc::new(CombinedHash {
-        left: left_h,
-        right: right_h,
-    });
-    let h: Rc<dyn crate::template::TemplateHashModel> = inner;
-    Ok(TModel {
-        hash: Some(h),
-        type_name: "hash",
-        kind: crate::template::ModelKind::Hash,
-        ..TModel::nothing()
-    })
-}
-
-/// 右优先查找的惰性合并哈希（Java `ConcatenatedHash.get`）
-struct CombinedHash {
-    left: Rc<dyn crate::template::TemplateHashModel>,
-    right: Rc<dyn crate::template::TemplateHashModel>,
-}
-
-impl crate::template::TemplateHashModel for CombinedHash {
-    fn get(&self, key: &str) -> Result<Option<TModel>> {
-        if let Some(v) = self.right.get(key)? {
-            return Ok(Some(v));
-        }
-        self.left.get(key)
-    }
-    fn is_empty(&self) -> Result<bool> {
-        Ok(self.left.is_empty()? && self.right.is_empty()?)
-    }
-}
-
-/// 赋值操作符文本（Java `Assignment.getOperatorTypeAsString`，Assignment.java:67-78）
-fn assign_op_str(op: &AssignOp) -> &'static str {
-    match op {
-        AssignOp::Equals => "=",
-        AssignOp::PlusEq => "+=",
-        AssignOp::MinusEq => "-=",
-        AssignOp::TimesEq => "*=",
-        AssignOp::DivideEq => "/=",
-        AssignOp::ModuloEq => "%=",
-        AssignOp::PlusPlus => "++",
-        AssignOp::MinusMinus => "--",
-    }
-}
-
-/// 赋值目标非数值错误（Java `NonNumericalException`，Assignment.java:166-169：
-/// "Expected a number, but assignment target variable \"foo\" has evaluated to a string"）
-fn assign_non_number_err(target: &str, old: &TModel) -> TemplateError {
-    TemplateError::misc(format!(
-        "Expected a number, but assignment target variable \"{target}\" has evaluated to a {}.",
-        old.type_name
-    ))
-}
-
-/// 赋值源表达式描述（字符串按 FTL 单引号保留原样——Java 的 blamed expression
-/// 保留源码文本，错误消息须含 "'a'" 之类；其余委托 expr_desc）
-fn assign_source_desc(e: &crate::core::Expr) -> String {
-    use crate::core::ExprKind as K;
-    match &e.kind {
-        K::Str(s) => format!("'{}'", s),
-        _ => expr_desc(e),
-    }
-}
-
-/// `<#list>` —— 对应 Java `IteratorBlock.accept`（:98-111）+ IterationContext
-/// （:190-468）+ `visitIteratorBlock`（Environment.java:3465-3476）：
-/// - 无 `#items`：body 逐项循环（循环变量可见）；`<#sep>` 在两项之间渲染（hasNext 判定）；
-/// - 有 `#items`：body 执行一次（循环变量不可见）；items 块逐项循环；sep 在两项之间渲染
-///   （解析器把 sep 放在 items 之后——本实现按"两项之间"语义处理，注释见 grammar.rs）；
-/// - 空序列：`<#else>` 执行（无循环变量）。
-///   循环变量为 null 项时按 fallbackOnNullLoopVariable 设置回退（IteratorBlock.java:368-376）。
-///
-/// `<#list>` —— 对应 Java `IteratorBlock.accept`（:98-111）+ `IterationContext`
-/// （IteratorBlock.java:190-468）+ `visitIteratorBlock`（Environment.java:3465-3476）：
-/// - `as var`：body 逐项循环（循环变量可见）；
-/// - 无 `as`：body 执行一次（循环变量不可见），`<#items>` 就地元素在到达时
-///   逐项驱动迭代（Java Items.accept → loopForItemsElement，Items.java:40-48）；
-/// - `<#sep>` 就地元素：当前迭代 hasNext 时渲染（Sep.java:35-47）；
-/// - `as k, v`：hashListing —— 遍历 TemplateHashModelEx 键值对（k=键、v=值）；
-/// - 空序列：`<#else>` 执行（无循环变量）。
-///   循环变量为 null 项时按 fallbackOnNullLoopVariable 设置回退（IteratorBlock.java:368-376）。
-fn exec_list(
-    env: &mut crate::core::Environment,
-    seq_expr: &crate::core::Expr,
-    var: &str,
-    var2: &Option<String>,
-    body: &[Element],
-    else_: &Option<Vec<Element>>,
-) -> Result<ExecOutcome> {
-    // Java acceptWithResult :97-102：列表源 null → classic 兼容模式视为空序列
-    // （Constants.EMPTY_SEQUENCE）；strict → assertNonNull（本引擎解析层已抛）
-    let listed = eval::eval(env, seq_expr)?;
-    let listed = if listed.is_nothing() && env.settings.classic_compatible {
-        TModel::from_sequence(Vec::new())
-    } else {
-        listed
-    };
-    // 列出模式（Java FTL.jj List :2808-2812 与 Items :2943-2953：iterCtx.hashListing
-    // 由 `<#list ... as k, v>` 或嵌套 `<#items as k, v>` 置位——`<#list hash>`
-    // 无循环变量 + `<#items as k, v>` 同样按键/值对列出，listhash 用例第 40-44 行）
-    let hash_listing = var2.is_some()
-        || (var.is_empty()
-            && body
-                .iter()
-                .any(|el| matches!(&el.kind, ElementKind::Items { var2: Some(_), .. })));
-    let mut items: crate::core::environment::PendingItems =
-        materialize_list_items(env, &listed, hash_listing)?;
-    if !items.has_next()? {
-        // Java ListElseContainer：空 → else（无循环变量）
-        if let Some(e) = else_ {
-            return Ok(ExecOutcome::Next(e.clone()));
-        }
-        return Ok(ExecOutcome::Done);
-    }
-    // 单个迭代上下文贯穿整个列表（Java IterationContext 单对象模型）
-    let lc = Rc::new(RefCell::new(LoopCtx {
-        var_name: var.to_string(),
-        var2_name: var2.clone(),
-        value: None,
-        key: None,
-        index: 0,
-        has_next: false,
-        pending: items,
-        items_entered: false,
-    }));
-    env.push_local(LocalEntry::Loop(lc.clone()));
-    let r = if !var.is_empty() {
-        // Java executedNestedContentForCollOrSeqListing 的 loopVar1Name != null 分支
-        run_loop_iterations(env, &lc, body)
-    } else {
-        // Java：body 执行一次；#items 元素驱动迭代；break/continue 上传由外层捕获
-        match env.run(body) {
-            Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
-            Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
-            Err(e) => Err(e),
-        }
-    };
-    env.pop_local();
-    r
-}
-
-/// 列表源 → 待迭代项（Java IteratorBlock.acceptWithResult :278-344）：
-/// hashListing → TemplateHashModelEx 键值对（物化，:327-431）；
-/// TemplateCollectionModel 优先（惰性迭代器，:278-308，Java 对 `(4..)` 等无限源
-/// 同样走迭代器）；其次 TemplateSequenceModel（size/get 物化，:310-322）；
-/// 其余 → NonSequenceOrCollectionException / NonExtendedHashException
-fn materialize_list_items(
-    env: &mut crate::core::Environment,
-    listed: &TModel,
-    hash_listing: bool,
-) -> Result<crate::core::environment::PendingItems> {
-    if hash_listing {
-        // Java executedNestedContentForHashListing（:327-431）
-        let ex = listed.hash_ex.clone().ok_or_else(|| {
-            TemplateError::misc(format!(
-                "The value you try to list is a {}, thus you must specify only one loop variable after the \"as\" (there's no separate key and value).",
-                listed.type_name
-            ))
-        })?;
-        let mut out = std::collections::VecDeque::new();
-        // entries()（Java TemplateHashModelEx2.keyValuePairsIterator，:327-431）：
-        // 常规哈希与 keys+get 等价；legacy HashLiteral（重复键）输出原始键值对
-        for (key, value) in ex.entries()? {
-            out.push_back(crate::core::environment::LoopItem {
-                key: Some(TModel::from_scalar(key)),
-                value: Some(value),
-            });
-        }
-        return Ok(crate::core::environment::PendingItems::eager(out));
-    }
-    // 有界范围快路径（Java RangeModel 迭代器 O(1) 前视——has_next 不构造下一项值；
-    // 仅限有界范围：无界（`4..`）保持惰性迭代器路径，ICI < 2.3.21 的
-    // NonListableRightUnboundedRange（迭代为空）不受影响）
-    if let Some(rs) = &listed.range {
-        if !rs.unbounded {
-            return Ok(crate::core::environment::PendingItems::range(
-                crate::core::environment::RangeIterState {
-                    start: rs.start,
-                    index: 0,
-                    cap: rs.count,
-                    ascending: rs.ascending,
-                },
-            ));
-        }
-    }
-    // Java IteratorBlock.java:278：TemplateCollectionModel 优先 → 惰性迭代器
-    if let Some(c) = &listed.collection {
-        let iter = c.iterator()?;
-        return Ok(crate::core::environment::PendingItems::lazy(Box::new(
-            iter.map(|r| {
-                r.map(|v| crate::core::environment::LoopItem {
-                    key: None,
-                    value: Some(v),
-                })
-            }),
-        )));
-    }
-    // Java IteratorBlock.java:310：TemplateSequenceModel → size/get 物化
-    if let Some(s) = &listed.sequence {
-        let size = s.size()?;
-        let mut out = std::collections::VecDeque::new();
-        for i in 0..size {
-            let v = s.get(i)?;
-            out.push_back(crate::core::environment::LoopItem {
-                key: None,
-                value: Some(v),
-            });
-        }
-        return Ok(crate::core::environment::PendingItems::eager(out));
-    }
-    // Java IteratorBlock.java:335-352：classic 兼容模式下非序列/集合值 → 单次迭代，
-    // 循环变量绑定该值本身（2.1 经典语义，`<#list 'a' as x>` → x = "a" 执行一次）
-    if env.settings.classic_compatible {
-        return Ok(crate::core::environment::PendingItems::eager(
-            std::collections::VecDeque::from([crate::core::environment::LoopItem {
-                key: None,
-                value: Some(listed.clone()),
-            }]),
-        ));
-    }
-    // Java NonSequenceOrCollectionException（v1 消息简化）
-    let _ = env;
-    Err(TemplateError::misc(format!(
-        "The value you try to list is a {}; it must be a sequence or collection.",
-        listed.type_name
-    )))
-}
-
-/// 迭代驱动：逐项取 pending 队首，绑定循环变量并执行块（Java IterationContext
-/// 的 do-while 循环，:270-325；break 停、continue 续、Returned 上传；
-/// 集合源惰性拉取——前视 has_next 由 PendingItems 完成）
-fn run_loop_iterations(
-    env: &mut crate::core::Environment,
-    lc: &Rc<RefCell<LoopCtx>>,
-    block: &[Element],
-) -> Result<ExecOutcome> {
-    loop {
-        // 单次借用完成 pop + 循环变量绑定 + has_next 前视（热路径减少 RefCell 借用）
-        let item_pending = {
-            let mut c = lc.borrow_mut();
-            match c.pending.pop()? {
-                Some(i) => {
-                    c.key = i.key.clone();
-                    c.value = i.value;
-                    c.has_next = c.pending.has_next()?;
-                    true
-                }
-                None => false,
-            }
-        };
-        if !item_pending {
-            break;
-        }
-        match env.run(block) {
-            Ok(RunSignal::Completed) => {}
-            Ok(RunSignal::Returned(v)) => return Ok(ExecOutcome::ReturnValue(v)),
-            Err(TemplateError::Flow(FlowKind::Break)) => break,
-            Err(TemplateError::Flow(FlowKind::Continue)) => {
-                lc.borrow_mut().index += 1;
-                continue;
-            }
-            Err(e) => return Err(e),
-        }
-        lc.borrow_mut().index += 1;
-    }
-    Ok(ExecOutcome::Done)
-}
-
-/// `<#items>` —— 对应 Java `Items.accept`（Items.java:40-48）→ `loopForItemsElement`
-/// （IteratorBlock.java:230-250）：绑定循环变量名后逐项驱动 items body；
-/// 结束恢复 var_name（Java finally 语义）。
-fn exec_items(
-    env: &mut crate::core::Environment,
-    var: &str,
-    var2: &Option<String>,
-    body: &[Element],
-) -> Result<ExecOutcome> {
-    let lc = env
-        .get_loop_context(None)
-        .ok_or_else(|| TemplateError::misc("#items without iteration in context"))?;
-    {
-        let mut c = lc.borrow_mut();
-        if c.items_entered {
-            return Err(TemplateError::misc(
-                "The #items directive was already entered earlier for this listing.",
-            ));
-        }
-        c.items_entered = true;
-        c.var_name = var.to_string();
-        c.var2_name = var2.clone();
-    }
-    let r = run_loop_iterations(env, &lc, body);
-    {
-        let mut c = lc.borrow_mut();
-        c.var_name.clear();
-        c.var2_name = None;
-    }
-    r
-}
-
-/// `<#sep>` —— 对应 Java `Sep.accept`（Sep.java:35-47）：当前迭代 hasNext 时渲染 body
-fn exec_sep(env: &mut crate::core::Environment, body: &[Element]) -> Result<ExecOutcome> {
-    let lc = env
-        .get_loop_context(None)
-        .ok_or_else(|| TemplateError::misc("#sep without iteration in context"))?;
-    if !lc.borrow().has_next {
-        return Ok(ExecOutcome::Done);
-    }
-    match env.run(body) {
-        Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
-        Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
-        Err(e) => Err(e),
     }
 }
 
 /// 宏调用执行（函数角色报错；宏体 run 经 invoke_macro）—— exec_call_impl 的
 /// Name 快路径与常规 as_macro 路径共用
-fn call_macro(
-    env: &mut crate::core::Environment,
-    mv: &Rc<crate::core::environment::MacroValue>,
-    args: &[(String, crate::core::Expr)],
-    body: Option<Vec<Element>>,
-    body_params: Vec<String>,
-) -> Result<ExecOutcome> {
-    if mv.def.is_function {
-        // Java UnifiedCall.java:76-80：Routine "f" is a function, not a directive.
-        return Err(TemplateError::misc(format!(
-            "Routine \"{}\" is a function, not a directive. Functions can only be called from expressions, like in ${{f()}}.",
-            mv.def.name
-        )));
-    }
-    let r = env.invoke_macro(mv, args, body, body_params)?;
-    match r {
-        RunSignal::Completed => Ok(ExecOutcome::Done),
-        RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-    }
-}
-
 /// `<#visit>` 节点分派 —— 对应 Java `Environment.visit(TemplateNodeModel)`
 /// （Environment.java:2885-2940）：按节点名查找同名宏（如 `<#macro book>` 处理
 /// 元素 book），无 → `@default` 宏，再无可 → 默认行为（text/comment/PI/attr
 /// 输出标量；element/document 递归 visit 子节点）。
-fn visit_node(env: &mut crate::core::Environment, node: &TModel) -> Result<ExecOutcome> {
-    // 节点名（Java getNodeName：元素 = 标签名；text = "@text" 等，与 ?node_name 一致）
-    let node_name = match &node.node {
-        Some(n) => n.name()?.unwrap_or_default(),
-        None => String::new(),
-    };
-    let ns = env.get_current_namespace();
-    // 1. `@<node_name>` 宏（Java getNodeProcessor，Environment.java :2943-3000）：
-    //    带命名空间节点 → 宏名 = 前缀:本地名（NsPrefixes.get_prefix_for_namespace
-    //    反查宏所在模板的 ns_prefixes；default ns → 无前缀本地名；未注册前缀 →
-    //    该模板不处理，跳过宏查找直接 @default）
-    let macro_name = if !node_name.is_empty() {
-        match &node.node {
-            Some(n) => match n.namespace()? {
-                Some(uri) if !uri.is_empty() => {
-                    match env.current_ns_prefixes().get_prefix_for_namespace(&uri) {
-                        Some(p) if !p.is_empty() => format!("{p}:{node_name}"),
-                        // default ns（空前缀）→ 本地名；未注册 → 不查宏
-                        Some(_) => node_name.clone(),
-                        None => String::new(),
-                    }
-                }
-                _ => node_name.clone(),
-            },
-            None => String::new(),
-        }
-    } else {
-        String::new()
-    };
-    if !macro_name.is_empty() {
-        if let Some(m) = ns.get_member(&macro_name) {
-            if let Some(mv) = env.as_macro(&m) {
-                return call_macro(env, &mv, &[], None, Vec::new());
-            }
-        }
-    }
-    // 2. `@default` 宏（Java :2903-2906）
-    if let Some(m) = ns.get_member("@default") {
-        if let Some(mv) = env.as_macro(&m) {
-            return call_macro(env, &mv, &[], None, Vec::new());
-        }
-    }
-    // 3. 默认行为（Java :2907-2924）
-    let node_type = match &node.node {
-        Some(n) => n.node_type()?,
-        None => String::new(),
-    };
-    match node_type.as_str() {
-        // 文本类节点：标量值写出（Java visitText 语义：text/comment/PI/attr）
-        "text" | "comment" | "pi" | "attribute" => {
-            if let Some(s) = &node.scalar {
-                let text = s.as_string()?;
-                env.emit(&text)?;
-            }
-            Ok(ExecOutcome::Done)
-        }
-        // element/document：递归 visit 子节点（Java visitNode 默认）
-        _ => {
-            let children = match &node.node {
-                Some(n) => n.children()?,
-                None => Vec::new(),
-            };
-            for c in children {
-                env.push_visitor_node(c.clone());
-                let r = visit_node(env, &c);
-                env.pop_visitor_node();
-                r?;
-            }
-            Ok(ExecOutcome::Done)
-        }
-    }
-}
-
-/// `<#on name>body</#on>` 的 body → 宏值（Java On.java：内部按命名宏注册，
-/// 与 `<#macro name>...</#macro>` 等价；无参宏，body 内 `.node` = 当前节点）
-fn macro_from_body(name: String, body: Vec<Element>) -> Rc<crate::core::environment::MacroValue> {
-    let def = Rc::new(crate::core::MacroDef {
-        name,
-        is_function: false,
-        params: Vec::new(),
-        body,
-        namespace: None,
-        span: crate::span::Span::new(0, 0),
-    });
-    Rc::new(crate::core::environment::MacroValue {
-        def,
-        ns: std::rc::Weak::new(),
-    })
-}
-
-/// `<@...>` 调用 —— 对应 Java `UnifiedCall.accept`（UnifiedCall.java:66-100）：
-/// 宏（Macro 对象）→ invokeMacro；TemplateDirectiveModel → execute；其余报错。
-/// body/body_params 所有权传入：owned 路径（exec_owned）直接移动，
-/// 借用路径（exec）克隆后传入。
-fn exec_call_impl(
-    env: &mut crate::core::Environment,
-    callee: &CallTarget,
-    args: &[(String, crate::core::Expr)],
-    body: Option<Vec<Element>>,
-    body_params: Vec<String>,
-    call_span: crate::span::Span,
-) -> Result<ExecOutcome> {
-    // call_name 仅在报错时构造（热路径 `@m/` 调用避免每次 String 克隆）
-    let tm = match callee {
-        CallTarget::Name(name) => {
-            // 宏快路径：解析链直接取宏值（热路径 `<@m/>` 跳过 macro_model TModel
-            // 构造与 downcast；名字解析为其他值/未找到时回退 get_variable）
-            if let Some(mv) = env.get_macro(name) {
-                return call_macro(env, &mv, args, body, body_params);
-            }
-            match env.get_variable(name) {
-                Ok(tm) => tm,
-                // Java UnifiedCall.accept：callee 表达式（Ident）的起始位置——
-                // `@notdefmacro` 的 blame `==> notdefmacro  [in template ... at line 1,
-                // column 3]`（jar 实测 missing_macro 基线；名称始于 `@` 之后，即
-                // 元素起始列 + 2）
-                Err(e) => {
-                    return Err(crate::core::environment::attach_location(
-                        e,
-                        &env.current_template_name,
-                        crate::span::Span::new(call_span.line, call_span.col.saturating_add(2)),
-                    ))
-                }
-            }
-        }
-        CallTarget::Namespaced { ns, name } => {
-            let nsm = env.get_variable(ns)?;
-            match env.as_namespace(&nsm) {
-                Some(nsr) => nsr
-                    .get_member(name)
-                    .ok_or_else(|| TemplateError::invalid_reference(format!("{ns}.{name}")))?,
-                // Java：UnifiedCall 的 callee 是普通表达式（UnifiedCall.accept :66-67
-                // nameExp.eval(env)），无 namespace 强制——ns 非 namespace 时按 Dot
-                // 求值（hash 成员可为 directive/transform：compress.ftl
-                // `<@utility.standardCompress>`）；`<#import>` 产生的 namespace 走
-                // 上分支
-                None => eval::eval(
-                    env,
-                    &crate::core::Expr::new(
-                        crate::core::ExprKind::Dot {
-                            target: Box::new(crate::core::Expr::new(
-                                crate::core::ExprKind::Ident(ns.clone()),
-                                crate::span::Span::new(0, 0),
-                            )),
-                            name: name.clone(),
-                        },
-                        crate::span::Span::new(0, 0),
-                    ),
-                )?,
-            }
-        }
-        CallTarget::Expr(e) => eval::eval(env, e)?,
-    };
-    if let Some(mv) = env.as_macro(&tm) {
-        return call_macro(env, &mv, args, body, body_params);
-    }
-    if let Some(d) = &tm.directive {
-        // Java :84-95：env.visit(childBuffer, directiveModel, args, bodyParameterNames)
-        // 参数：命名参数 → params；位置参数对指令模型忽略（Java EmptyMap 语义）
-        let mut params = HashMap::new();
-        for (k, e) in args {
-            if !k.is_empty() {
-                params.insert(k.clone(), eval::eval(env, e)?);
-            }
-        }
-        // Java :432-465：outArgs 槽位按 body 参数名数量（bodyParameters 列表）
-        let mut loop_vars: Vec<TModel> = vec![TModel::nothing(); body_params.len()];
-        let has_body = body.is_some();
-        let call_body = CallBody {
-            elements: body.unwrap_or_default(),
-        };
-        let body_ref: Option<&dyn TemplateDirectiveBody> =
-            if has_body { Some(&call_body) } else { None };
-        d.execute(env, &params, &mut loop_vars, body_ref)?;
-        return Ok(ExecOutcome::Done);
-    }
-    if let Some(ttm) = env.as_transform(&tm) {
-        // Java UnifiedCall.java:86-103：TemplateTransformModel callee 同样求值
-        // 命名参数 → env.visitAndTransform（getWriter 先产出变换输出，body 写入
-        // 变换 writer；`<@t /><@m/>` —— ?interpret 产物调用后解释模板的宏可见）
-        let mut params = HashMap::new();
-        for (k, e) in args {
-            if !k.is_empty() {
-                params.insert(k.clone(), eval::eval(env, e)?);
-            }
-        }
-        let body_elems: &[crate::core::Element] = body.as_deref().unwrap_or(&[]);
-        let signal = ttm.transform_with_body(env, &params, body_elems)?;
-        return match signal {
-            RunSignal::Returned(v) => Ok(ExecOutcome::ReturnValue(v)),
-            _ => Ok(ExecOutcome::Done),
-        };
-    }
-    let call_name = match callee {
-        CallTarget::Name(name) => name.clone(),
-        CallTarget::Namespaced { ns, name } => format!("{ns}.{name}"),
-        CallTarget::Expr(e) => expr_desc(e),
-    };
-    Err(TemplateError::misc(format!(
-        "The value of {call_name} is not a macro or user-defined directive (it's a {})",
-        tm.type_name
-    )))
-}
-
 /// 自定义指令 body 回插 —— 对应 Java `Environment.NestedElementTemplateDirectiveBody`
 /// （Environment.java:3445-3475）：render(newOut) → visit(childBuffer)
-pub struct CallBody {
-    elements: Vec<Element>,
-}
-
-impl TemplateDirectiveBody for CallBody {
-    fn render(&self, env: &mut crate::core::Environment) -> Result<()> {
-        env.run_elements(&self.elements)
-    }
-}
-
-/// `<#nested>` —— 对应 Java `BodyInstruction.accept`（BodyInstruction.java:58-65）→
-/// `invokeNestedContent`（Environment.java:606-631）：
-/// 求值嵌套参数（宏上下文）→ 绑定体参数名（BodyInstruction.Context :122-155）→
-/// 切换到调用方上下文（宏帧/命名空间/局部栈）→ 执行调用方 body → 恢复。
-fn exec_nested(
-    env: &mut crate::core::Environment,
-    args: &[crate::core::Expr],
-) -> Result<ExecOutcome> {
-    let frame = env.get_current_macro_frame().ok_or_else(|| {
-        TemplateError::misc("Cannot use a \"nested\" instruction outside a macro.")
-    })?;
-    // Java BodyInstruction.Context 构造（:122-148）：参数在宏上下文求值
-    let mut arg_values = Vec::new();
-    for a in args {
-        arg_values.push(eval::eval(env, a)?);
-    }
-    let call_body = match &frame.call_body {
-        Some(b) => b.clone(),
-        None => return Ok(ExecOutcome::Done), // 无调用方 body → 无操作（Java childBuffer==null）
-    };
-    // 体参数（<@m ; a, b> 中 a/b 按位置绑定 <#nested v1 v2> 的 v1/v2；
-    // Java BodyInstruction.Context :122-155）
-    let mut body_vars = HashMap::new();
-    for (i, bp) in frame.body_params.iter().enumerate() {
-        if let Some(v) = arg_values.get(i) {
-            body_vars.insert(bp.clone(), v.clone());
-        }
-    }
-    // Java invokeNestedContent :606-631：切换到调用方上下文
-    let prev_macro = env.macro_frames.pop();
-    let prev_ns = std::mem::replace(&mut env.current_ns, frame.caller_ns.clone());
-    let prev_local = std::mem::take(&mut env.local_stack);
-    // 词法宏名随调用方上下文恢复（调用方 body 元素的帧 `in macro "m"` 定位；
-    // Java getEnclosingMacro 沿父元素链）
-    let prev_macro_name =
-        std::mem::replace(&mut env.current_macro_name, frame.caller_macro_name.clone());
-    env.local_stack = frame.caller_local_stack.clone();
-    if !frame.body_params.is_empty() {
-        env.push_local(LocalEntry::Body(Rc::new(
-            crate::core::environment::BodyCtx { vars: body_vars },
-        )));
-    }
-    let r = env.run(&call_body);
-    // 恢复
-    env.current_macro_name = prev_macro_name;
-    env.local_stack = prev_local;
-    env.current_ns = prev_ns;
-    if let Some(f) = prev_macro {
-        env.macro_frames.push(f);
-    }
-    outcome_from_run(r)
-}
-
 /// `<#switch>` —— 对应 Java `SwitchBlock.accept`（SwitchBlock.java:36-115）：
 /// 目标求值一次；逐个 case 以 `==` 语义比较（EvalUtil.compare，:66-71）；
 /// 匹配后 fall-through 执行后续 case 与 default；未匹配 → default；
 /// case 体内的 break/continue 被捕获并当作 break（:108-115 Java 注释确认的怪癖）。
-fn exec_switch(
-    env: &mut crate::core::Environment,
-    expr: &crate::core::Expr,
-    cases: &[crate::core::CaseDef],
-    default: &Option<Vec<Element>>,
-    default_pos: &Option<usize>,
-) -> Result<ExecOutcome> {
-    let searched = eval::eval(env, expr)?;
-    let mut matched: Option<usize> = None;
-    for (i, c) in cases.iter().enumerate() {
-        let v = eval::eval(env, &c.value)?;
-        if eval::compare_models(env, &searched, &v, eval::CmpOp::Eq)? {
-            matched = Some(i);
-            break;
-        }
-    }
-    let mut r = ExecOutcome::Done;
-    let mut stopped_by_flow = false;
-    match matched {
-        Some(start) => {
-            // Java SwitchBlock.accept：子块按源码序 fall-through（default 也按源码位参与）。
-            // default 之前的 case 下标直接映射源码位；default 之后的 case 源码位 +1。
-            let source_start = match default_pos {
-                Some(dp) if *dp <= start => start + 1,
-                _ => start,
-            };
-            let mut src_idx = source_start;
-            loop {
-                // 源码序取下一个子块：default 在 default_pos 位
-                let block: &[Element] = match default_pos {
-                    Some(dp) if *dp == src_idx => {
-                        if let Some(d) = default {
-                            d
-                        } else {
-                            break;
-                        }
-                    }
-                    _ => {
-                        let case_idx = match default_pos {
-                            Some(dp) if *dp < src_idx => src_idx - 1,
-                            _ => src_idx,
-                        };
-                        match cases.get(case_idx) {
-                            Some(c) => &c.body,
-                            None => break,
-                        }
-                    }
-                };
-                match env.run(block) {
-                    Ok(RunSignal::Completed) => {}
-                    Ok(RunSignal::Returned(v)) => {
-                        r = ExecOutcome::ReturnValue(v);
-                        break;
-                    }
-                    // Java SwitchBlock :108-115：break/continue 均视为 break
-                    Err(TemplateError::Flow(_)) => {
-                        stopped_by_flow = true;
-                        break;
-                    }
-                    Err(e) => return Err(e),
-                }
-                src_idx += 1;
-            }
-            let _ = stopped_by_flow;
-        }
-        None => {
-            // 未匹配：仅执行 default（Java legacy 怪癖：default 不后落到后续 case）
-            if let Some(d) = default {
-                match env.run(d) {
-                    Ok(RunSignal::Completed) => {}
-                    Ok(RunSignal::Returned(v)) => r = ExecOutcome::ReturnValue(v),
-                    Err(TemplateError::Flow(_)) => {}
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-    }
-    Ok(r)
-}
-
 /// `<#attempt>/<#recover>` —— 对应 Java `Environment.visitAttemptRecover`（:3542-3573）：
 /// try 输出捕获；错误（非 Flow/Return——Java 中它们是 RuntimeException 不被捕获）→ 丢弃
 /// 输出并执行 recover；attemptExceptionReporter v1 忽略。
-fn exec_attempt(
-    env: &mut crate::core::Environment,
-    try_: &[Element],
-    recover: &[Element],
-) -> Result<ExecOutcome> {
-    let captured = env.capture(|env| {
-        env.attempt_depth += 1;
-        let r = env.run(try_);
-        env.attempt_depth -= 1;
-        r
-    });
-    match captured {
-        Ok((RunSignal::Completed, text)) => {
-            env.emit(&text)?;
-            Ok(ExecOutcome::Done)
-        }
-        // Java：Return/Flow 是 RuntimeException，attempt 不捕获（visitAttemptRecover 只捕 TemplateException）
-        Ok((RunSignal::Returned(v), _)) => Ok(ExecOutcome::ReturnValue(v)),
-        Err(TemplateError::Flow(k)) => Err(TemplateError::Flow(k)),
-        Err(e) => {
-            // 错误 → recover（Java :3557-3567）；错误消息压入 recoveredErrorStack 供
-            // `.error` 读取，recover 渲染结束弹出（Environment.java:575-578 的 finally
-            // ——嵌套 attempt 的内层 recover 结束后 `.error` 恢复为外层错误）
-            env.recovered_errors.push(e.to_string());
-            let r = match env.run(recover) {
-                Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
-                Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
-                Err(e2) => Err(e2),
-            };
-            env.recovered_errors.pop();
-            r
-        }
-    }
-}
-
 /// `<#setting>` —— 对应 Java `PropertySetting.accept`（PropertySetting.java:136-155）+
 /// `Configurable.setSetting`（未知键 → IllegalArgumentException → v1 报错）
 /// 插值内容类型错误 → Java `For "${...}" content: ... ==> {expr}` 形式
 /// （DollarVariable 的 coerceModelToStringOrMarkup blame；期望措辞含
 /// `or "template output" ` 段——Java 消息中该段后紧跟逗号，jar 实测逐字）
-fn blame_interpolation_content(
-    e: TemplateError,
-    env: &mut crate::core::Environment,
-    expr: &crate::core::Expr,
-) -> TemplateError {
-    if let TemplateError::TypeMismatch { ctx, .. } = &e {
-        if ctx.blamer.is_none() {
-            return e
-                .with_expected_phrase(
-                    "a string or something automatically convertible to string (number, date or boolean), or \"template output\" ",
-                )
-                .with_blame_at(
-                    "${...}",
-                    "content",
-                    &crate::core::environment::expr_desc(expr),
-                    &env.current_template_name,
-                    expr.span,
-                );
-        }
-    }
-    crate::core::environment::attach_location(e, &env.current_template_name, expr.span)
-}
-
-fn exec_setting(
+pub(crate) fn exec_setting(
     env: &mut crate::core::Environment,
     key: &str,
     value: &crate::core::Expr,
@@ -1896,7 +473,7 @@ fn parse_bool_setting(v: &str) -> Result<bool> {
 }
 
 /// run 结果 → ExecOutcome（宏体/捕获块等内部 run 的返回值上传）
-fn outcome_from_run(r: Result<RunSignal>) -> Result<ExecOutcome> {
+pub(crate) fn outcome_from_run(r: Result<RunSignal>) -> Result<ExecOutcome> {
     match r {
         Ok(RunSignal::Completed) => Ok(ExecOutcome::Done),
         Ok(RunSignal::Returned(v)) => Ok(ExecOutcome::ReturnValue(v)),
@@ -1925,7 +502,7 @@ fn last_newline_start(s: &str) -> usize {
 /// 文本可能已无换行（如 "\n  " → "  "）——无换行时整段剥除
 /// （Java trailingCharsToStrip：lastNewlineIndex==-1 && beginColumn==1 → 整段，
 ///  TextBlock.java:294-297；全空白文本才可能带此标记）。
-fn strip_text<'a>(
+pub(crate) fn strip_text<'a>(
     text: &'a str,
     strip_before: bool,
     strip_after: bool,
@@ -1953,14 +530,7 @@ fn strip_text<'a>(
 
 /// 空白压缩 —— 对应 Java `<#compress>`（CompressedBlock.accept :40-44 →
 /// StandardCompress.INSTANCE 变换）：Java 逐字符状态机（utility_transforms.rs）
-fn compress_text(s: &str) -> String {
-    crate::template::utility_transforms::standard_compress_text(s, false)
-}
-
-/// Java Include.getYesNo :233-242 + StringUtil.getYesNo :695-709
-/// （parse="y"/"n"/"t"/"f"/"yes"/"no"/"true"/"false"，忽略大小写；前导 `"` 剥除——
-/// 历史遗留；非法值 → _MiscTemplateException 消息，_DelayedJQuote 原样引用）
-fn get_yes_no(_exp: &crate::core::Expr, s: &str) -> Result<bool> {
+pub(crate) fn get_yes_no(_exp: &crate::core::Expr, s: &str) -> Result<bool> {
     let s2 = if s.starts_with('"') && s.len() >= 2 {
         &s[1..s.len() - 1]
     } else {
@@ -1977,7 +547,10 @@ fn get_yes_no(_exp: &crate::core::Expr, s: &str) -> Result<bool> {
 }
 
 /// 表达式求值 → 字符串（`<#include>`/`<#import>`/`<#stop msg>`/`<#setting>` 值）
-fn eval_to_string(env: &mut crate::core::Environment, e: &crate::core::Expr) -> Result<String> {
+pub(crate) fn eval_to_string(
+    env: &mut crate::core::Environment,
+    e: &crate::core::Expr,
+) -> Result<String> {
     crate::core::environment::eval_to_string(env, e)
 }
 
@@ -1986,9 +559,11 @@ mod tests {
     use super::*;
     use crate::cache::StringLoader;
     use crate::template::{
-        Configuration, DynValue, ObjectWrapper, SimpleObjectWrapper, TemplateDirectiveModel,
+        Configuration, DynValue, ObjectWrapper, SimpleObjectWrapper, TemplateDirectiveBody,
+        TemplateDirectiveModel,
     };
     use indexmap::IndexMap;
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     fn cfg() -> (Configuration, Arc<StringLoader>) {
@@ -2489,6 +1064,7 @@ ${double(21)}"#;
 #[cfg(test)]
 mod golden {
     use crate::cache::StringLoader;
+    use crate::core::Environment;
     use crate::error::{Result, TemplateError};
     use crate::template::{Configuration, TModel, TemplateDirectiveBody, TemplateDirectiveModel};
     use indexmap::IndexMap;
@@ -2543,7 +1119,7 @@ mod golden {
 
     struct ExecHelloWorld;
     impl crate::template::TemplateMethodModelEx for ExecHelloWorld {
-        fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+        fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
             Ok(TModel::from_scalar("Hello, world!\n".to_string()))
         }
     }

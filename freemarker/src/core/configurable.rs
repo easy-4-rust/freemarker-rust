@@ -120,6 +120,16 @@ pub struct Settings {
     /// （Configurable.java:1608；默认 UNRESTRICTED_RESOLVER，Configurable.java:477；
     /// 权限判定见 core::template_class_resolver）
     pub new_builtin_class_resolver: NewBuiltinClassResolver,
+    /// lazyImports 设置 —— 对应 `Configurable.lazyImports`（Configurable.java:410：
+    /// 默认 false，:501 initDefaults；`<#import>` 指令与 lazyAutoImports 未设置时
+    /// auto imports 的惰性开关；getLazyImports :1852-1854 父链回退——v1 以
+    /// Environment::new 合并后的值等价）
+    pub lazy_imports: bool,
+    /// lazyAutoImports 设置 —— 对应 `Configurable.lazyAutoImports`（Configurable.java:
+    /// 411-412：Boolean + lazyAutoImportsSet；默认 null = 未设置 → 回退 lazyImports；
+    /// getLazyAutoImports :1900-1904；doAutoImports 用
+    /// `getLazyAutoImports() ?? getLazyImports()`，Configuration.java:3690-3692）
+    pub lazy_auto_imports: Option<bool>,
 }
 
 /// Java `TimeZone.getTimeZone(id).getID()` 的 v1 复刻（以 Java 实测为准）：
@@ -226,6 +236,10 @@ impl Default for Settings {
             template_exception_handler: "rethrow".to_string(),
             // Java 默认 UNRESTRICTED_RESOLVER（Configurable.java:477）
             new_builtin_class_resolver: NewBuiltinClassResolver::Unrestricted,
+            // Java lazyImports 默认 false（Configurable.java:501）；lazyAutoImports
+            // 默认 null（未设置 → 回退 lazyImports，Configurable.java:411-412/1900-1904）
+            lazy_imports: false,
+            lazy_auto_imports: None,
         }
     }
 }

@@ -6,7 +6,7 @@ use crate::util::*;
 
 /// Java XMLOutputFormat.escapePlainText（= StringUtil.XMLEnc：& < > " '）
 fn escape_plain_text(s: &str) -> String {
-    freemarker::utility::xml_escape(s)
+    freemarker::template::utility::xml_escape(s)
 }
 
 /// Java XMLOutputFormat.getMimeType

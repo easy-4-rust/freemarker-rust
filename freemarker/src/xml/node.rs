@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use super::ns_prefixes::NsPrefixes;
 use super::tree::XmlTree;
+use super::xml_dom_string_util::{is_xml_name_like, xml_enc_nqg, xml_enc_qattr};
 
 /// XML 节点 —— 对应 Java `NodeModel`（wrap 后的 W3C DOM 节点）。
 /// roxmltree 的 `Node` 是 Copy 的轻量句柄（借树）；`node_id` + `Rc<XmlTree>` 复现
@@ -644,6 +645,10 @@ impl XmlNode {
                     Ok(TModel::from_scalar(self.node_name().unwrap_or_default()))
                 }
             }
+            // @@nodeName：节点名（元素标签名/文本 "@text"/文档 "@document" 等，
+            // 与 ?node_name 内建一致 —— Java getNodeName 语义；2.3.34 的 AtAtKey
+            // 无此键，本实现按任务清单作为扩展键提供，见 tests/xml_coverage.rs）
+            "@@nodeName" => Ok(TModel::from_scalar(self.node_name().unwrap_or_default())),
             "@@name" => Ok(TModel::from_scalar(self.node_name().unwrap_or_default())),
             "@@type" => Ok(TModel::from_scalar(self.node_type())),
             _ => Err(TemplateError::misc(format!("Unsupported @@ key: {key}"))),
@@ -713,23 +718,27 @@ impl XmlNode {
             return self.filter_child_by_name(env, rest);
         }
         if let Some(rest) = key.strip_prefix("//") {
-            // 后代元素匹配（descendant-or-self::node()/child::X —— 不含自身）
-            let (prefix, local, wildcard) = split_qname(rest)?;
-            let ns_uri = resolve_prefix(env, prefix.as_deref())?; // Option<String>；None = 无命名空间
+            // 后代元素匹配（descendant-or-self::node()/child::X —— 不含自身）。
+            // 名称匹配用 ElementModel.matchesName（DomStringUtil.matchesName，
+            // DomStringUtil.java:73-90）：无前缀名在元素命名空间 == 模板默认命名
+            // 空间（ns_prefixes 声明的 D）时匹配——Java Jaxen 的 customNamespaceContext
+            // 把无前缀名解析为 getNamespaceForPrefix("") = 默认 NS
+            // （JaxenXPathSupport.java customNamespaceContext + Template.java
+            // getNamespaceForPrefix("")）。`//*` 通配匹配全部元素（XPath 1.0 的
+            // `*` 名称测试与命名空间无关）。
+            let (_, _, wildcard) = split_qname(rest)?;
             let mut matches = Vec::new();
             for d in self.node().descendants() {
                 if !d.is_element() {
                     continue;
                 }
-                if wildcard || d.tag_name().name() == local {
-                    let d_ns = d.tag_name().namespace();
-                    if ns_uri.as_deref() == d_ns {
-                        matches.push(XmlNode {
-                            tree: self.tree.clone(),
-                            node_id: d.id(),
-                            attr: None,
-                        });
-                    }
+                let d_node = XmlNode {
+                    tree: self.tree.clone(),
+                    node_id: d.id(),
+                    attr: None,
+                };
+                if wildcard || d_node.matches_name(env, rest) {
+                    matches.push(d_node);
                 }
             }
             let models: Vec<TModel> = matches.into_iter().map(|m| m.into_model()).collect();
@@ -1011,68 +1020,6 @@ fn attr_qualified_name(el: roxmltree::Node, attr: roxmltree::Attribute) -> Strin
 }
 
 /// 属性/文本编码（Java StringUtil.XMLEncQAttr：< > & " → 实体；' 不转义）
-fn xml_enc_qattr(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '&' => out.push_str("&amp;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-/// 文本编码（Java StringUtil.XMLEncNQG：< & → 实体；> 仅 `]]>` 序列中转义）
-fn xml_enc_nqg(s: &str) -> String {
-    let bytes: Vec<char> = s.chars().collect();
-    let mut out = String::with_capacity(s.len());
-    for (i, &c) in bytes.iter().enumerate() {
-        match c {
-            '<' => out.push_str("&lt;"),
-            '&' => out.push_str("&amp;"),
-            '>' if i >= 2 && bytes[i - 2] == ']' && bytes[i - 1] == ']' => out.push_str("&gt;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-/// Java DomStringUtil.isXMLNameLike：字母/数字/_/-/. + 单个 ":"；首字符非 -/. 数字
-fn is_xml_name_like(name: &str) -> bool {
-    // XPath/特殊符号开头 → 非元素名（`/`、`//`、`@`、`*`、`[` 等走 XPath 子集）
-    if matches!(
-        name.chars().next(),
-        Some('/') | Some('@') | Some('*') | Some('[') | Some('.')
-    ) {
-        return false;
-    }
-    let mut chars = name.chars();
-    match chars.next() {
-        Some(c) if c == '-' || c == '.' || c.is_ascii_digit() => return false,
-        Some(_) => {}
-        None => return false,
-    }
-    let mut colon = false;
-    for c in chars {
-        if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' {
-            continue;
-        }
-        if c == ':' {
-            if colon {
-                return false; // "::" 是 XPath
-            }
-            colon = true;
-            continue;
-        }
-        return false;
-    }
-    true
-}
-
-/// 拆分 `prefix:local` / `*` / `local`（XPath 名称测试）
 fn split_qname(s: &str) -> Result<(Option<String>, String, bool)> {
     if s == "*" {
         return Ok((None, String::new(), true));
@@ -1090,22 +1037,6 @@ fn split_qname(s: &str) -> Result<(Option<String>, String, bool)> {
             "Unsupported XPath query: //{s}"
         ))),
         None => Ok((None, s.to_string(), false)),
-    }
-}
-
-/// 解析 XPath 前缀（Java XalanXPathSupport.CUSTOM_PREFIX_RESOLVER：D → defaultNS；
-/// 其余 → getNamespaceForPrefix；未注册 → 报错）
-fn resolve_prefix(env: &mut Environment, prefix: Option<&str>) -> Result<Option<String>> {
-    let prefixes = env.current_ns_prefixes();
-    match prefix {
-        None => Ok(None), // XPath 无前缀名 = 无命名空间
-        Some("D") => Ok(prefixes.get_default_ns().map(str::to_string)),
-        Some(p) => match prefixes.get_namespace_for_prefix(p) {
-            Some(uri) if !uri.is_empty() => Ok(Some(uri.to_string())),
-            _ => Err(TemplateError::misc(format!(
-                "namespace prefix \"{p}\" has not been declared"
-            ))),
-        },
     }
 }
 

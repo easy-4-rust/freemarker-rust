@@ -85,7 +85,6 @@ fn test_case_whitespace() {
 /// （引擎差异：v1 未实现 `<#on>`（Java 2.3.28+ 的 #switch case 形式），
 /// 模板解析报 "Unexpected directive <#on>"——断言保留 Java 原文）
 #[test]
-#[ignore = "引擎差异：#on 指令（Java 2.3.28+）未实现，断言保留 Java 原文"]
 fn test_on() {
     test_on_basics_impl(true);
     test_on_basics_impl(false);
@@ -125,7 +124,6 @@ fn test_on_basics_impl(has_default: bool) {
 /// Java testOnParsingErrors：#on 的解析期错误
 /// （引擎差异：v1 未实现 `<#on>` —— 断言保留 Java 原文）
 #[test]
-#[ignore = "引擎差异：#on 指令（Java 2.3.28+）未实现，断言保留 Java 原文"]
 fn test_on_parsing_errors() {
     let (c, loader) = test_config();
     assert_error_contains(
@@ -181,7 +179,6 @@ fn test_on_parsing_errors() {
 /// Java testOnWhitespace：#on 块间的空白剥离
 /// （引擎差异：v1 未实现 `<#on>` —— 断言保留 Java 原文）
 #[test]
-#[ignore = "引擎差异：#on 指令（Java 2.3.28+）未实现，断言保留 Java 原文"]
 fn test_on_whitespace() {
     let (c, loader) = test_config();
     assert_output(

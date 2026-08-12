@@ -7,8 +7,6 @@
 //! supports it: ..."（无尖括号形式）。无法逐字对齐 → 断言引擎消息中最接近子串
 //! "must be nested inside a directive that supports it"，Java 语义（非法
 //! 嵌套位置报错）保留。
-//! 另：Java 2.3.28+ 的 `<#on>`（#switch 的 case 标记）本引擎未实现 —— 相关用例
-//! 用 `<#case>` 等价替换（语义不变：switch 分支内 break/continue 的嵌套合法性）。
 
 #[allow(unused_imports)] // 任务约定：每个测试文件以 use crate::util::* 开头
 use crate::util::*;
@@ -66,22 +64,19 @@ fn test_valid_placements() {
         "<#list [1..2, 3..4, [], 5..6] as xs><#list xs>[<#items as x>${x}</#items>]<#else><#break></#list></#list>.",
         "[12][34].",
     );
-    // 引擎差异：Java `<#on>`（2.3.28+ 的 #switch case 标记）未实现 —— 本引擎
-    // #switch 只支持 #case/#default，`<#on>` 直接解析报错；Java 中 `#on` 会撤销
-    // switch 的 breakable 嵌套（`#break` 在 `#on` 内会跳出外层 #list，输出 "one"；
-    // `#continue` 会继续外层 #list，输出 "one;"）—— 该行为无法复现，改为断言
-    // 引擎实际解析报错
-    assert_error_contains(
+    // Java 2.3.28+ `<#on>` 撤销 switch 的 breakable 嵌套：`#break` 在 `#on` 内
+    // 会跳出外层 #list（输出 "one"）；`#continue` 会继续外层 #list（输出 "one;"）
+    assert_output(
         &c,
         &loader,
         "<#list 1..2 as x><#switch x><#on 1>one<#break></#switch>;</#list>",
-        &["Unexpected directive <#on> in #switch"],
+        "one",
     );
-    assert_error_contains(
+    assert_output(
         &c,
         &loader,
         "<#list 1..2 as x><#switch x><#on 1>one<#continue></#switch>;</#list>",
-        &["Unexpected directive <#on> in #switch"],
+        "one;",
     );
     assert_output(
         &c,
@@ -129,27 +124,25 @@ fn test_invalid_placements() {
         "<#switch 1><#case 1>1<#continue></#switch>",
         &[CONTINUE_NESTING_ERROR_MESSAGE_PART],
     );
-    // 引擎差异：Java `<#on>`（2.3.28+）未实现，且 `#on` 会撤销 switch 的
-    // breakable 嵌套（故 Java 中 `#on` 内的 #break/#continue 均报嵌套错误）；
-    // 本引擎对 `<#on>` 直接解析报错 —— 断言语义（模板必须解析失败）保留，
-    // 断言引擎实际消息
+    // Java：`#on` 撤销 switch 的 breakable 嵌套 → `#on`/`#default`（on 模式）内
+    // 的 #break/#continue 均报嵌套错误（Java 逐字断言）
     assert_error_contains(
         &c,
         &loader,
         "<#switch 1><#on 1>1<#continue></#switch>",
-        &["Unexpected directive <#on> in #switch"],
+        &[CONTINUE_NESTING_ERROR_MESSAGE_PART],
     );
     assert_error_contains(
         &c,
         &loader,
         "<#switch 1><#on 1>1<#break></#switch>",
-        &["Unexpected directive <#on> in #switch"],
+        &[BREAK_NESTING_ERROR_MESSAGE_PART],
     );
     assert_error_contains(
         &c,
         &loader,
         "<#switch 1><#on 1>1<#default><#break></#switch>",
-        &["Unexpected directive <#on> in #switch"],
+        &[BREAK_NESTING_ERROR_MESSAGE_PART],
     );
     assert_error_contains(
         &c,

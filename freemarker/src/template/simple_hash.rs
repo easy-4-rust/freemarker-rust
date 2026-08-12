@@ -7,9 +7,9 @@
 //! 插入序语义不受哈希器影响（indexmap 的序由内部向量维持）。
 
 use crate::error::Result;
+use crate::template::utility::FnvBuildHasher;
 use crate::template::TModel;
 use crate::template::{TemplateHashModel, TemplateHashModelEx};
-use crate::utility::FnvBuildHasher;
 use indexmap::IndexMap;
 
 pub struct SimpleHash(pub IndexMap<String, TModel, FnvBuildHasher>);

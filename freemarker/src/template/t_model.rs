@@ -86,7 +86,7 @@ pub struct TModel {
     /// 变换模型角色（对应 Java TemplateTransformModel；`<#transform>` 目标）
     pub transform: Option<Rc<dyn TemplateTransformModel>>,
     /// 范围模型标记（对应 Java `RangeModel`；`seq[range]` 切片键类型判定）
-    pub range: Option<Rc<crate::template::RangeSpec>>,
+    pub range: Option<Rc<crate::core::RangeSpec>>,
     pub node: Option<Rc<dyn TemplateNodeModel>>,
     /// 节点哈希角色（对应 Java NodeModel 的 TemplateHashModel；`doc.foo`/`doc['//x']` 访问）。
     /// 与 `hash` 槽位分开：get 需要 Environment 解析 ns_prefixes（Java 线程局部
@@ -98,6 +98,13 @@ pub struct TModel {
     /// 内部扩展槽位（渲染引擎专用，docs/04 §1）：承载宏/函数值、lambda、命名空间等
     /// Rust 特有设计（Java 中这些是 `TemplateModel` 实现类，Rust 侧统一用 `Any` 下沉）。
     pub internal: Option<Rc<dyn std::any::Any>>,
+    /// markup 输出的创建时输出格式（对应 Java `TemplateMarkupOutputModel.getOutputFormat`
+    /// / `CommonTemplateMarkupOutputModel`；kind == Markup 时非 None）
+    pub markup_format: Option<crate::core::OutputFormatKind>,
+    /// markup 输出的源纯文本（Java `CommonTemplateMarkupOutputModel.getPlainTextContent`；
+    /// `?esc` 产物 = 原始文本；`?no_esc`/块捕获（fromMarkup）产物 = None ——
+    /// 跨格式转换不可逆时插值报错，见 DollarVariable.java:78-92）
+    pub markup_plain: Option<String>,
     /// 用户可见的类型描述（错误消息 `has evaluated to a {actual}` 使用）
     pub type_name: &'static str,
     pub kind: ModelKind,
@@ -132,6 +139,8 @@ impl TModel {
             node_hash: None,
             api: None,
             internal: None,
+            markup_format: None,
+            markup_plain: None,
             type_name: "nothing",
             kind: ModelKind::Nothing,
         }
@@ -145,7 +154,7 @@ impl TModel {
     pub fn gpn() -> TModel {
         let empty_seq = Rc::new(SimpleSequence(Vec::new()));
         let empty_hash = Rc::new(SimpleHash(IndexMap::with_hasher(
-            crate::utility::FnvBuildHasher::default(),
+            crate::template::utility::FnvBuildHasher::default(),
         )));
         TModel {
             scalar: Some(Rc::new(SimpleScalar(String::new()))),
@@ -225,7 +234,8 @@ impl TModel {
     pub fn from_hash(v: IndexMap<String, TModel>) -> TModel {
         // 转换到 FNV 哈希（构造期 O(n) 一次性成本；成员访问热路径受益；
         // 插入序保持——indexmap 序由内部向量维持，与哈希器无关）
-        let v: IndexMap<String, TModel, crate::utility::FnvBuildHasher> = v.into_iter().collect();
+        let v: IndexMap<String, TModel, crate::template::utility::FnvBuildHasher> =
+            v.into_iter().collect();
         let h = Rc::new(SimpleHash(v));
         let ex = h.clone();
         TModel {
@@ -456,6 +466,7 @@ impl TModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::Environment;
     use crate::template::TemplateDirectiveBody;
     use std::collections::HashMap;
 
@@ -513,7 +524,7 @@ mod tests {
 
     struct MethodStub;
     impl TemplateMethodModelEx for MethodStub {
-        fn exec(&self, _args: Vec<TModel>) -> Result<TModel> {
+        fn exec(&self, _env: &mut Environment, _args: Vec<TModel>) -> Result<TModel> {
             Ok(TModel::nothing())
         }
     }

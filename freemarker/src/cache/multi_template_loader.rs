@@ -1,9 +1,10 @@
 //! 多模板加载器 —— 对应 Java `freemarker.cache.MultiTemplateLoader`
 //! （顺序回退 findTemplateSource :59-95；MultiSource :131-177 按来源 loader 委托
-//!   getLastModified/getReader）
+//!   getLastModified/getReader；reset_state :115-126）
 //! v1 差异：Java 默认 sticky（记住上次命中的 loader 优先查询，:41-42/:62-72），
 //! v1 始终按构造顺序查询（等价 sticky=false，Java:233-235 setSticky）
 
+use crate::cache::stateful_template_loader::StatefulTemplateLoader;
 use crate::cache::{TemplateLoader, TemplateSource};
 use crate::error::{Result, TemplateError};
 use std::sync::Arc;
@@ -61,6 +62,24 @@ impl TemplateLoader for MultiLoader {
     fn last_modified(&self, src: &dyn TemplateSource) -> Result<i64> {
         let multi = downcast_multi_src(src)?;
         multi.loader.last_modified(&*multi.inner)
+    }
+
+    /// `instanceof StatefulTemplateLoader`（TemplateLoader::as_stateful 的覆写）
+    fn as_stateful(&self) -> Option<&dyn StatefulTemplateLoader> {
+        Some(self)
+    }
+}
+
+impl StatefulTemplateLoader for MultiLoader {
+    /// 对应 `resetState`（Java MultiTemplateLoader.java:115-126）：清空
+    /// sticky/sick 记忆（v1 无 sticky，见文件头注释）并向内部实现
+    /// StatefulTemplateLoader 的加载器传播（Java instanceof 检查 → as_stateful）
+    fn reset_state(&self) {
+        for loader in &self.loaders {
+            if let Some(sl) = loader.as_stateful() {
+                sl.reset_state();
+            }
+        }
     }
 }
 
@@ -184,5 +203,57 @@ mod tests {
             1,
             "全部 miss 时两个 loader 都会被查询"
         );
+    }
+
+    /// reset_state 向内部加载器传播（Java MultiTemplateLoader.resetState :115-126）
+    #[test]
+    fn reset_state_propagates() {
+        let resets = Arc::new(AtomicUsize::new(0));
+        let l1 = ResetCountingLoader::new(resets.clone());
+        let l2 = ResetCountingLoader::new(resets.clone());
+        let multi = MultiLoader::new(vec![Arc::new(l1), Arc::new(l2)]);
+
+        multi.reset_state();
+        assert_eq!(resets.load(Ordering::SeqCst), 2, "两个内部加载器都被重置");
+
+        // 非有状态加载器（as_stateful 默认 None）→ instanceof 跳过
+        let plain = CountingLoader::new(Arc::new(AtomicUsize::new(0)));
+        assert!(plain.as_stateful().is_none());
+    }
+
+    /// 记录 reset_state 调用次数的有状态加载器（对应 Java 实现
+    /// StatefulTemplateLoader 的加载器；内容委托 StringLoader）
+    struct ResetCountingLoader {
+        resets: Arc<AtomicUsize>,
+        inner: Arc<StringLoader>,
+    }
+
+    impl ResetCountingLoader {
+        fn new(resets: Arc<AtomicUsize>) -> Self {
+            ResetCountingLoader {
+                resets,
+                inner: Arc::new(StringLoader::default()),
+            }
+        }
+    }
+
+    impl TemplateLoader for ResetCountingLoader {
+        fn find(&self, name: &str) -> Result<Option<Box<dyn TemplateSource>>> {
+            self.inner.find(name)
+        }
+
+        fn read(&self, src: &dyn TemplateSource) -> Result<String> {
+            self.inner.read(src)
+        }
+
+        fn as_stateful(&self) -> Option<&dyn StatefulTemplateLoader> {
+            Some(self)
+        }
+    }
+
+    impl StatefulTemplateLoader for ResetCountingLoader {
+        fn reset_state(&self) {
+            self.resets.fetch_add(1, Ordering::SeqCst);
+        }
     }
 }

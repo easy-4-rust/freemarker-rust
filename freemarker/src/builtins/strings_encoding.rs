@@ -1,5 +1,6 @@
 //! 字符串编码内建 —— 对应 Java `BuiltInsForStringsEncoding.java`（j_string/js_string/
-//! json_string/url/url_path/rtf/xhtml/esc/no_esc；html/xml 在 eval.rs 内建集）。
+//! json_string/url/url_path/rtf/xhtml；esc/no_esc 在 markup_outputs.rs
+//! （BuiltInsForMarkupOutputs.java）；html/xml 在 eval.rs 内建集）。
 //!
 //! 语义要点（Java 对照）：
 //! - j_string → StringUtil.javaStringEnc（StringUtil.java:1263）：转义 `"`/`\` 与 <0x20
@@ -14,11 +15,11 @@
 //! - rtf → RTFEnc：转义 `\` `{` `}`；
 //! - xhtml → XHTMLEnc（与 Rust html_escape 相同：& < > " '→&#39;）。
 
-use crate::builtins::eval_util::{arg_count, arg_string, check_arg_count, target_string};
+use crate::core::eval_util::{arg_count, arg_string, check_arg_count, target_string};
 use crate::core::{Environment, Expr};
 use crate::error::Result;
+use crate::template::utility::html_escape;
 use crate::template::TModel;
-use crate::utility::html_escape;
 
 /// ?j_string —— Java `StringUtil.javaStringEnc`（不加引号）：
 /// 转义 `"`、`\`、<0x20（\n\r\f\b\t 或 \u00XX 小写十六进制）
@@ -289,39 +290,6 @@ pub fn xhtml(
 
 /// ?esc —— Java `BuiltInsForOutputFormatRelated.escBI`（v1 基础版）：
 /// 按当前 outputFormat 转义并标记为 markup（HTML/XML 转义；纯文本按原样）
-pub fn esc(env: &mut Environment, target: &Expr, _args: Option<&[Expr]>) -> Result<Option<TModel>> {
-    let s = target_string(env, target)?;
-    let escaped = match env.settings.output_format {
-        crate::core::OutputFormatKind::Html | crate::core::OutputFormatKind::XHtml => {
-            html_escape(&s)
-        }
-        crate::core::OutputFormatKind::Xml => crate::utility::xml_escape(&s),
-        _ => s,
-    };
-    Ok(Some(markup_model(escaped)))
-}
-
-/// ?no_esc —— Java `BuiltInsForOutputFormatRelated.no_escBI`（v1 基础版）：
-/// 标记为 markup 但不做转义
-pub fn no_esc(
-    env: &mut Environment,
-    target: &Expr,
-    _args: Option<&[Expr]>,
-) -> Result<Option<TModel>> {
-    let s = target_string(env, target)?;
-    Ok(Some(markup_model(s)))
-}
-
-/// markup 模型（Java TemplateMarkupOutputModel；v1 以字符串承载 + is_markup_output 判定）
-fn markup_model(s: String) -> TModel {
-    TModel {
-        scalar: Some(std::rc::Rc::new(crate::template::SimpleScalar(s))),
-        type_name: "markup_output",
-        kind: crate::template::ModelKind::Markup,
-        ..TModel::nothing()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

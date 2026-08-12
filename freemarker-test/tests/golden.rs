@@ -94,7 +94,7 @@ fn object_wrapper_emulatable(case: &Case, v: &str) -> bool {
     false
 }
 
-/// 永久 NOT_APPLICABLE 用例判定（用户决策；docs/测试/生产就绪审计.md 完整清单）。
+/// 永久 NOT_APPLICABLE 用例判定（用户决策；docs/superpowers/specs/2026-08-03-production-readiness-audit-design.md 完整清单）。
 /// 命中 → 直接 SKIP 并记录分类原因（在 object_wrapper/错误分类等通用路径之前
 /// 判定，保证 15 项 NA 分类确定化、不随引擎演进而改变）：
 /// - JVM 反射系（security.md 决策 1，引擎永久不支持）：

@@ -1,8 +1,71 @@
 //! 表达式 AST —— 对应 Java `freemarker.core.Expression` 家族
-//! （产生式映射见 docs/03 §3；此文件是解析器与渲染引擎的共享契约）
-//! 各 variant 对应 Java 类：Add→AddConcatExpression、Range→Range、
-//! BuiltIn→BuiltIn、Lambda→LocalLambdaExpression、Dot→DotVariable、
+//! （产生式映射见 docs/03 §3；此文件是解析器与渲染引擎的共享契约 +
+//! expression/ 子目录的聚合模块——各表达式类独立文件，一文件一 Java 对象）
+//! 各 variant 对应 Java 类：Add→AddConcatExpression（expression/add_concat_expression.rs）、
+//! And→AndExpression、Or→OrExpression、Sub/Mul/Div/Mod→ArithmeticExpression
+//! （expression/arithmetic_expression.rs）、Eq/NotEq/Gt/Gte/Lt/Lte→ComparisonExpression
+//! （expression/comparison_expression.rs）、Str/InterpStr→StringLiteral、
+//! Num→NumberLiteral、Bool→BooleanLiteral、Ident→Identifier、ListLit→ListLiteral、
+//! HashLit→HashLiteral（expression/hash_literal.rs）、Paren→ParentheticalExpression、
+//! Range→Range、BuiltIn→BuiltIn、Lambda→LocalLambdaExpression、Dot→DotVariable、
 //! DynKey→DynamicKey、Default→DefaultToExpression、Exists→ExistsExpression 等
+
+mod add_concat_expression;
+mod and_expression;
+mod arithmetic_expression;
+mod boolean_literal;
+mod bounded_range_model;
+mod built_in;
+mod builtin_variable;
+mod comparison_expression;
+mod default_to_expression;
+mod dot;
+mod dynamic_key_name;
+mod exists_expression;
+mod hash_literal;
+mod identifier;
+mod list_literal;
+mod listable_right_unbounded_range_model;
+mod local_lambda_expression;
+mod method_call;
+mod nonlistable_right_unbounded_range_model;
+mod not_expression;
+mod number_literal;
+mod or_expression;
+mod parenthetical_expression;
+mod range;
+mod string_literal;
+mod unary_plus_minus_expression;
+
+pub use add_concat_expression::AddConcatExpression;
+pub use and_expression::AndExpression;
+pub use arithmetic_expression::{ArithmeticExpression, NumOp};
+pub use boolean_literal::BooleanLiteral;
+pub(crate) use bounded_range_model::bounded_range_model;
+pub(crate) use built_in::{check_legacy_escaping_ban, eval_builtin};
+pub use builtin_variable::BuiltinVariable;
+pub(crate) use comparison_expression::compare_numbers;
+pub use comparison_expression::{compare_models, CmpOp, ComparisonExpression};
+pub use default_to_expression::DefaultToExpression;
+pub(crate) use dot::dot_builtin_chain;
+pub use dot::Dot;
+pub use dynamic_key_name::DynamicKeyName;
+pub use exists_expression::ExistsExpression;
+pub use hash_literal::HashLiteral;
+pub use identifier::Identifier;
+pub use list_literal::ListLiteral;
+pub(crate) use listable_right_unbounded_range_model::listable_right_unbounded_range_model;
+pub use local_lambda_expression::LocalLambdaExpression;
+pub use method_call::MethodCall;
+pub(crate) use nonlistable_right_unbounded_range_model::nonlistable_right_unbounded_range_model;
+pub use not_expression::NotExpression;
+pub use number_literal::NumberLiteral;
+pub use or_expression::OrExpression;
+pub use parenthetical_expression::ParentheticalExpression;
+pub use range::Range;
+pub(crate) use string_literal::eval_interp_str;
+pub use string_literal::StringLiteral;
+pub use unary_plus_minus_expression::UnaryPlusMinusExpression;
 
 use crate::span::Span;
 use crate::value::TNumber;
@@ -147,6 +210,12 @@ pub enum BuiltinVar {
     MainTemplateName,
     /// `.current_template_name` / `.currentTemplateName`（当前执行模板名）
     CurrentTemplateName,
+    /// `.caller_template_name`（Java BuiltinVariable.java:264-267：当前宏/函数
+    /// **调用方**模板名 —— 调用点所在模板的查找名；宏外 → 报错；无名调用方 → "")
+    CallerTemplateName,
+    /// `.callerTemplateName`（camelCase 别名；错误消息用各自字面名 ——
+    /// BuiltinVariable.java:81-82 CALLER_TEMPLATE_NAME / CALLER_TEMPLATE_NAME_CC）
+    CallerTemplateNameCc,
     /// `.node` / `.current_node` / `.currentNode`（XML 节点 —— Java 特有，v1 无节点模型）
     Node,
     /// `.error`（最近一次 attempt/recover 捕获的错误消息，Java getCurrentRecoveredErrorMessage）
@@ -165,6 +234,12 @@ pub enum BuiltinVar {
     IncompatibleImprovements,
     /// `.args`（宏/函数参数哈希，仅宏内合法）
     Args,
+    /// `.get_optional_template` / `.getOptionalTemplate`（Java GetOptionalTemplateMethod：
+    /// 方法模型，调用返回 {exists/include/import} 哈希；Java 为两个独立名称
+    /// （BuiltinVariable.java:258-262），错误消息用各自方法名——Rust 侧拆两个变体）
+    GetOptionalTemplate,
+    /// `.getOptionalTemplate`（camelCase 别名；错误消息用 ".getOptionalTemplate"）
+    GetOptionalTemplateCc,
 }
 
 // ---------------------------------------------------------------------------

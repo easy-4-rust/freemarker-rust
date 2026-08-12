@@ -18,19 +18,21 @@
 
 pub mod callables;
 pub mod dates;
-pub mod eval_util;
 pub mod existence;
 pub mod format;
+pub mod hashes;
 pub mod iso_date_format;
 pub mod java_date_format;
 pub mod lazy;
 pub mod loop_vars;
+pub mod markup_outputs;
 pub mod multi;
 pub mod nodes;
 pub mod numbers;
 pub mod sequences;
 pub mod strings;
 pub mod strings_encoding;
+pub mod strings_misc;
 pub mod strings_regexp;
 
 use crate::core::{Environment, Expr};
@@ -75,10 +77,12 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "url_path" => Some(strings_encoding::url_path),
         "rtf" => Some(strings_encoding::rtf),
         "xhtml" => Some(strings_encoding::xhtml),
-        "esc" => Some(strings_encoding::esc),
-        "no_esc" => Some(strings_encoding::no_esc),
+        "esc" => Some(markup_outputs::esc),
+        "no_esc" => Some(markup_outputs::no_esc),
         // ---- 正则（BuiltInsForStringsRegexp.java）----
         "matches" => Some(strings_regexp::matches),
+        // ---- 字符串杂项（BuiltInsForStringsMisc.java）----
+        "eval_json" => Some(strings_misc::eval_json),
         "groups" => Some(strings_regexp::groups),
         "replace" => Some(strings_regexp::replace),
         "replace_re" => Some(strings_regexp::replace),
@@ -96,6 +100,9 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "seq_index_of" => Some(sequences::seq_index_of),
         "seq_last_index_of" => Some(sequences::seq_last_index_of),
         "sequence" => Some(sequences::sequence),
+        // ---- 哈希（BuiltInsForHashes.java）----
+        "keys" => Some(hashes::keys),
+        "values" => Some(hashes::values),
         // ---- 数字（BuiltInsForNumbers.java）----
         "abs" => Some(numbers::abs),
         "ceiling" => Some(numbers::ceiling),
@@ -155,7 +162,7 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "namespace" => Some(multi::namespace),
         "absolute_template_name" => Some(multi::absolute_template_name),
         "api" => Some(multi::api),
-        "markup_string" => Some(multi::markup_string),
+        "markup_string" => Some(markup_outputs::markup_string),
         // ---- 惰性条件（BuiltInsWithLazyConditionals.java）----
         "then" => Some(lazy::then),
         "switch" => Some(lazy::switch),
