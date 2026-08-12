@@ -11,7 +11,7 @@
 - maturin（pyo3 打包）
 - Trusted Publishing（PyPI 发布）
 
-**Related Design Doc:** `docs/superpowers/specs/2026-08-02-builtins-design.md`、`docs/superpowers/specs/2026-08-01-testing-strategy-design.md`、`docs/release/versioning.md`
+**Related Design Doc:** `docs/superpowers/specs/2026-08-02-builtins-design.md`、`docs/superpowers/specs/2026-08-01-testing-strategy-design.md`、`docs/superpowers/specs/2026-08-03-versioning-design.md`
 
 ---
 

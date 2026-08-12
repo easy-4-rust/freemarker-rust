@@ -146,7 +146,7 @@
 
 **Files:**
 - Modify: `freemarker/Cargo.toml`
-- Create: `docs/01-项目概述与范围.md`（决策 D1-D5 落档）
+- Create: `docs/superpowers/specs/2026-08-01-project-overview-design.md`（决策 D1-D5 落档）
 
 - [x] **Step 1:** 锁定 regex / bigdecimal / chrono / indexmap / once_cell / thiserror
 - [x] **Step 2:** D1-D5 决策落档到 01 文档

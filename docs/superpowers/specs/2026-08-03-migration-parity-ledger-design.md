@@ -1,3 +1,13 @@
+# SOURCE_PARITY 测试对照表
+
+- **日期**：2026-08-03
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97）
+- **依赖**：`2026-08-01-testing-strategy-design.md`
+
+---
+
 # SOURCE_PARITY 测试对照表（v13）
 
 > 依据 rust-java-migration-testing 技能：128 个 Java 用例逐一 disposition（与 golden 实测逐用例对齐）。
@@ -141,3 +151,10 @@
 | overloaded-methods-2-bwici-2.3.21[#endTN]-desc-dow | overloaded-methods-2-bwici-2.3.21.ftl | object_wrapper=freemarker.ext.beans.DefaultObjectWrapperDesc2003021 | NOT_APPLICABLE | object_wrapper=freemarker.ext.beans.DefaultObjectWrapperDesc2003021（Java 特有 wrapper，无法复刻） |
 | overloaded-methods-2-bwici-2.3.21[#endTN]-inc-dow-2.3.22 | overloaded-methods-2-bwici-2.3.21.ftl | object_wrapper=freemarker.ext.beans.DefaultObjectWrapperInc2003022 | NOT_APPLICABLE | object_wrapper=freemarker.ext.beans.DefaultObjectWrapperInc2003022（Java 特有 wrapper，无法复刻） |
 | overloaded-methods-2-bwici-2.3.21[#endTN]-desc-dow-2.3.22 | overloaded-methods-2-bwici-2.3.21.ftl | object_wrapper=freemarker.ext.beans.DefaultObjectWrapperDesc2003022 | NOT_APPLICABLE | object_wrapper=freemarker.ext.beans.DefaultObjectWrapperDesc2003022（Java 特有 wrapper，无法复刻） |
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-03-alpha1-governance-hardening.md`（Task B6 golden 收口）
+- `docs/superpowers/plans/2026-08-04-coverage-test-completion.md`

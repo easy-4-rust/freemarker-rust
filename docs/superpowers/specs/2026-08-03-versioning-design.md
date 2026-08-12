@@ -1,4 +1,12 @@
-# 版本治理与发布门禁
+# 版本治理与发布门禁设计
+
+- **日期**：2026-08-03
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97，2.3 分支线）
+- **依赖**：无外部依赖
+
+---
 
 > 本文件定义 freemarker-rust 从 `0.1.0` 到稳定版的版本晋级规则、发布门禁与
 > 语义化版本承诺。核心 crate `freemarker` 与 15 个整合 crate 共享 `[workspace.package]`
@@ -35,7 +43,7 @@
 5. 多 OS CI 矩阵（ubuntu/macos/windows × stable + MSRV 1.85）全绿；
 6. proptest fuzz（解析器 + 表达式）10000 用例无 panic；
 7. criterion 基准集落档 `docs/release/benchmarks.md`；
-8. 安全模型文档（`docs/release/security.md`）评审通过 + "受限子集"边界明记。
+8. 安全模型文档（specs/2026-08-03-security-model-design.md）评审通过 + "受限子集"边界明记。
 
 ### 3.2 晋级动作
 
@@ -48,7 +56,7 @@
 
 - 版本号单一事实来源：`Cargo.toml` `[workspace.package].version`（三个成员 crate 已全部 `*.workspace = true` 继承，禁止手写版本号）；
 - `rust-version = "1.85"` 是 MSRV 红线，任何新依赖若强制更高 MSRV，须在
-  `docs/release/versioning.md` 登记批准例外并单独标注该 crate 的 MSRV；
+  specs/2026-08-03-versioning-design.md 登记批准例外并单独标注该 crate 的 MSRV；
 - 根 `Cargo.lock` 跟踪策略评估中（库 crate 惯例不跟踪，CI 使用 `--locked` 时以
   `xtask/Cargo.lock` 为准——本仓库无 xtask，暂不使用 `--locked`）。
 
@@ -56,3 +64,9 @@
 
 - 本文件变更需随版本晋级提交一并评审；
 - 每个晋级条件对应一个可执行门禁（见 §3 引用），不允许"口头确认"。
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-03-alpha0-production-readiness.md`（生产就绪）

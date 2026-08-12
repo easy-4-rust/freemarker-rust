@@ -48,7 +48,7 @@ freemarker-rust 在 Rust 应用内执行 FreeMarker 模板语言（`.ftl`）。�
 
 本项目不是 Java ABI 或 JVM 的替代品。反射式 POJO 包装、BeansWrapper 方法重载、
 Jython 阶段的自定义变换（`JythonRuntime`）都已明确判定为不做实现——见
-[明确边界](#明确边界) 和 [`docs/release/security.md`](docs/release/security.md) 中的
+[明确边界](#明确边界) 和 [`docs/superpowers/specs/2026-08-03-security-model-design.md`](docs/superpowers/specs/2026-08-03-security-model-design.md) 中的
 受限子集。
 
 ## 为什么选择 freemarker-rust？
@@ -133,15 +133,15 @@ Configuration::get_template(name)
 | [`freemarker-pyo3`](freemarker-pyo3/) | 是（构建） | Python 绑定（`pip install`）；详见 [Python 绑定](#python-绑定) |
 
 组件边界、运行流程、安全模型和架构决策详见
-[`docs/02-架构设计.md`](docs/02-架构设计.md) 和
-[`docs/release/security.md`](docs/release/security.md)。
+[`docs/superpowers/specs/2026-08-01-architecture-design.md`](docs/superpowers/specs/2026-08-01-architecture-design.md) 和
+[`docs/superpowers/specs/2026-08-03-security-model-design.md`](docs/superpowers/specs/2026-08-03-security-model-design.md)。
 
 ## 能力矩阵
 
 | 能力 | 状态 | 证据或限制 |
 |:---|:---:|:---|
 | FreeMarker 模板语言（`.ftl`）解析 | 已实现 | 128 个官方 Java fixtures（`golden`）——113/113 逐字节一致 |
-| 183 个内置函数（`?api`、`?has_api`、`?new`、`?lower_abc`、`?eval_json` …） | 已实现 | `docs/05-内建函数迁移清单.md` 中的兼容矩阵 |
+| 183 个内置函数（`?api`、`?has_api`、`?new`、`?lower_abc`、`?eval_json` …） | 已实现 | `docs/superpowers/specs/2026-08-02-builtins-design.md` 中的兼容矩阵 |
 | ICI（`incompatible_improvements`）版本化 | 已实现 | `?html <2.3.20` 用 HTMLEnc、`<2.3.21` 哈希字面量保留重复键、`<2.3.24` `?is_sequence` |
 | `?new` 类解析策略 | 已实现 | `unrestricted` / `safer` / `allows_nothing` / opt-in `allowed_classes` + `trusted_templates` |
 | XML 节点模型子集 | 已实现 | `roxmltree`；visit 命名空间前缀宏分派、`node[0]`、`./`、`true()`、索引 |
@@ -396,9 +396,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 详细对照表：
 
-- [`docs/测试/迁移测试对照表.md`](docs/测试/迁移测试对照表.md) —— 128 fixture 一一 disposition
-- [`docs/05-内建函数迁移清单.md`](docs/05-内建函数迁移清单.md) —— 183 内建兼容矩阵
-- [`docs/release/security.md`](docs/release/security.md) —— 受限子集 + 15 项永久 NA 决策记录
+- [`docs/superpowers/specs/2026-08-03-migration-parity-ledger-design.md`](docs/superpowers/specs/2026-08-03-migration-parity-ledger-design.md) —— 128 fixture 一一 disposition
+- [`docs/superpowers/specs/2026-08-02-builtins-design.md`](docs/superpowers/specs/2026-08-02-builtins-design.md) —— 183 内建兼容矩阵
+- [`docs/superpowers/specs/2026-08-03-security-model-design.md`](docs/superpowers/specs/2026-08-03-security-model-design.md) —— 受限子集 + 15 项永久 NA 决策记录
 
 ## 验证
 
@@ -426,7 +426,7 @@ diff 校验（0 漂移）、`proptest` 模糊测试（10000 用例）、以及 U
 - **public-api**：相对 `docs/release/api-baseline.txt`（3,804 项） 0 漂移
 
 详细的 parity 指标与生产就绪核查清单见
-[`docs/测试/生产就绪审计.md`](docs/测试/生产就绪审计.md)。同口径的兼容报告由
+[`docs/superpowers/specs/2026-08-03-production-readiness-audit-design.md`](docs/superpowers/specs/2026-08-03-production-readiness-audit-design.md)。同口径的兼容报告由
 `scripts/gen_compat_report.py` 生成。
 
 ## Python 绑定
@@ -454,24 +454,24 @@ Python 面 API 以 `freemarker-pyo3/src/lib.rs` 为准，包含 `FmConfiguration
 
 | 文档 | English | 简体中文 |
 |:---|:---|:---|
-| 架构 | [`docs/02-架构设计.md`](docs/02-架构设计.md) | 同左 |
-| 解析器 | [`docs/03-解析器迁移设计.md`](docs/03-解析器迁移设计.md) | 同左 |
-| 渲染引擎 | [`docs/04-渲染引擎与指令迁移设计.md`](docs/04-渲染引擎与指令迁移设计.md) | 同左 |
-| 内建函数 | [`docs/05-内建函数迁移清单.md`](docs/05-内建函数迁移清单.md) | 同左 |
-| 数据模型 | [`docs/06-数据模型与对象包装.md`](docs/06-数据模型与对象包装.md) | 同左 |
-| 配置缓存 | [`docs/07-配置缓存与加载.md`](docs/07-配置缓存与加载.md) | 同左 |
-| 格式化与转义 | [`docs/08-格式化与自动转义.md`](docs/08-格式化与自动转义.md) | 同左 |
-| 错误处理 | [`docs/09-错误处理与诊断.md`](docs/09-错误处理与诊断.md) | 同左 |
-| pyo3 设计 | [`docs/10-pyo3集成设计.md`](docs/10-pyo3集成设计.md) | 同左 |
-| 测试与验证 | [`docs/11-测试与验证策略.md`](docs/11-测试与验证策略.md) | 同左 |
-| 迁移路线 | [`docs/12-迁移路线图.md`](docs/12-迁移路线图.md) | 同左 |
-| 版本治理 | [`docs/release/versioning.md`](docs/release/versioning.md) | 同左 |
-| 发布流程 | [`docs/release/publishing.md`](docs/release/publishing.md) | 同左 |
-| 安全模型 | [`docs/release/security.md`](docs/release/security.md) | 同左 |
+| 架构 | [`specs/2026-08-01-architecture-design.md`](docs/superpowers/specs/2026-08-01-architecture-design.md) | 同左 |
+| 解析器 | [`specs/2026-08-01-parser-design.md`](docs/superpowers/specs/2026-08-01-parser-design.md) | 同左 |
+| 渲染引擎 | [`specs/2026-08-01-rendering-engine-design.md`](docs/superpowers/specs/2026-08-01-rendering-engine-design.md) | 同左 |
+| 内建函数 | [`specs/2026-08-02-builtins-design.md`](docs/superpowers/specs/2026-08-02-builtins-design.md) | 同左 |
+| 数据模型 | [`specs/2026-08-01-data-model-design.md`](docs/superpowers/specs/2026-08-01-data-model-design.md) | 同左 |
+| 配置缓存 | [`specs/2026-08-01-config-cache-design.md`](docs/superpowers/specs/2026-08-01-config-cache-design.md) | 同左 |
+| 格式化与转义 | [`specs/2026-08-01-formatting-design.md`](docs/superpowers/specs/2026-08-01-formatting-design.md) | 同左 |
+| 错误处理 | [`specs/2026-08-01-error-handling-design.md`](docs/superpowers/specs/2026-08-01-error-handling-design.md) | 同左 |
+| pyo3 设计 | [`specs/2026-08-01-pyo3-design.md`](docs/superpowers/specs/2026-08-01-pyo3-design.md) | 同左 |
+| 测试与验证 | [`specs/2026-08-01-testing-strategy-design.md`](docs/superpowers/specs/2026-08-01-testing-strategy-design.md) | 同左 |
+| 迁移路线 | [`specs/2026-08-01-migration-roadmap-design.md`](docs/superpowers/specs/2026-08-01-migration-roadmap-design.md) | 同左 |
+| 版本治理 | [`specs/2026-08-03-versioning-design.md`](docs/superpowers/specs/2026-08-03-versioning-design.md) | 同左 |
+| 发布流程 | [`specs/2026-08-03-publishing-design.md`](docs/superpowers/specs/2026-08-03-publishing-design.md) | 同左 |
+| 安全模型 | [`specs/2026-08-03-security-model-design.md`](docs/superpowers/specs/2026-08-03-security-model-design.md) | 同左 |
 | 基准落档 | [`docs/release/benchmarks.md`](docs/release/benchmarks.md) | 同左 |
-| 迁移测试台账 | [`docs/测试/迁移测试对照表.md`](docs/测试/迁移测试对照表.md) | 同左 |
-| 验收报告 | [`docs/测试/验收报告.md`](docs/测试/验收报告.md) | 同左 |
-| 生产就绪审计 | [`docs/测试/生产就绪审计.md`](docs/测试/生产就绪审计.md) | 同左 |
+| 迁移测试台账 | [`specs/2026-08-03-migration-parity-ledger-design.md`](docs/superpowers/specs/2026-08-03-migration-parity-ledger-design.md) | 同左 |
+| 验收报告 | [`specs/2026-08-03-acceptance-report-design.md`](docs/superpowers/specs/2026-08-03-acceptance-report-design.md) | 同左 |
+| 生产就绪审计 | [`specs/2026-08-03-production-readiness-audit-design.md`](docs/superpowers/specs/2026-08-03-production-readiness-audit-design.md) | 同左 |
 | API 参考 | [docs.rs](https://docs.rs/freemarker) | 源码 rustdoc 内含中英文注释 |
 
 ## 开发与发布

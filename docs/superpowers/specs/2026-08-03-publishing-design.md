@@ -1,4 +1,12 @@
-# 发布流程（crates.io + 阻断点）
+# 发布流程设计
+
+- **日期**：2026-08-03
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97，2.3 分支线）
+- **依赖**：无外部依赖
+
+---
 
 > 本文件定义 freemarker-rust 从 `git tag vX.Y.Z` 到 crates.io / GitHub Release 的端到端
 > 发布流程、阻断点与演练规范。
@@ -36,8 +44,8 @@ docs.rs 自动构建（无需额外 CI 步骤，docs.rs 监听 crates.io）
 | 阻断 | 原因 | 解除路径 |
 |---|---|---|
 | **freemarker-pyo3 实际上传** | PyPI 通路独立，需 maturin 打 wheel + Trusted Publishing；`pyo3-publish.yml` 已就绪（tag `pyo3-v*` 触发，dry-run 演练通过） | 用户手动配置 PyPI 发布者后打 tag；本仓库演练到 TestPyPI |
-| **golden 15 项永久 NA（已定格 113/128）** | JVM 反射 12 项（beans 1 + BeansWrapper 方法重载 11，决策 1）+ transforms JythonRuntime 1 + jython25 过期断言 2——用户决策永久 NA，分类确定化（golden.rs permanent_na_reason） | 不解除；"受限子集"边界文档化（docs/测试/验收报告.md v13 + 生产就绪审计报告） |
-| **JVM 反射（决策 1）** | `BeansWrapper`/`ClassIntrospector`/`MemberAccessPolicy` 在 Rust 不可 1:1 实现 | 用户在 Rust 侧手工包装 POJO 为 `DynValue`；文档 `docs/release/security.md` 明记 |
+| **golden 15 项永久 NA（已定格 113/128）** | JVM 反射 12 项（beans 1 + BeansWrapper 方法重载 11，决策 1）+ transforms JythonRuntime 1 + jython25 过期断言 2——用户决策永久 NA，分类确定化（golden.rs permanent_na_reason） | 不解除；"受限子集"边界文档化（docs/superpowers/specs/2026-08-03-acceptance-report-design.md v13 + 生产就绪审计报告） |
+| **JVM 反射（决策 1）** | `BeansWrapper`/`ClassIntrospector`/`MemberAccessPolicy` 在 Rust 不可 1:1 实现 | 用户在 Rust 侧手工包装 POJO 为 `DynValue`；文档 specs/2026-08-03-security-model-design.md 明记 |
 | ~~docs.rs metadata~~ | 已落地：`[package.metadata.docs.rs]`（all-features + rustdoc-args） | ✅ 已解除（阶段 A7） |
 | ~~proptest fuzz~~ | 已落地：解析器 + 表达式 10000 用例（robustness_fuzz_smoke） | ✅ 已解除（阶段 C） |
 | ~~criterion baseline~~ | 已落档 `docs/release/benchmarks.md`（性能基准报告 5/5 达标） | ✅ 已解除（阶段 C） |
@@ -75,7 +83,7 @@ cargo publish -p freemarker               # crates.io 上传
 1. `cargo yank --vers <version> -p freemarker`（crates.io 撤回该版本）
 2. 删除 GitHub Release
 3. 删除 git tag（本地 + 远程）
-4. 立即修复并按 versioning.md §3 重新走晋级流程
+4. 立即修复并按 specs/2026-08-03-versioning-design.md §3 重新走晋级流程
 
 ## 7. 与治理工具链的对应
 
@@ -87,3 +95,9 @@ cargo publish -p freemarker               # crates.io 上传
 | release workflow（dry-run） | 新增 | `.github/workflows/release.yml` |
 | 多 OS CI（ubuntu/macos/windows + MSRV） | 阶段 A6 落地 | `.github/workflows/ci.yml` |
 | proptest fuzz | 阶段 A8 落地 | `.github/workflows/ci.yml` |
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-03-alpha0-production-readiness.md`（生产就绪）

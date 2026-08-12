@@ -14,7 +14,7 @@
 | builtins 覆盖 | **183/183**（100%） | Java 2.3.34 全集 |
 | 测试数 | **1009** passing | cargo test --workspace |
 | .rs 文件数 | **291**（freemarker/src） | 从 P0 的 ~10 增长到 291 |
-| 结构对照 | 422 MAPPED / 4 MISSING / 115 NA-DESIGN | 见 `docs/JavaRust结构对照.md` |
+| 结构对照 | 422 MAPPED / 4 MISSING / 115 NA-DESIGN | 见 `docs/superpowers/specs/2026-08-04-java-rust-structure-mapping-design.md` |
 | 公共 API 基线 | 0 diff（locked） | `docs/release/api-baseline.txt` |
 | proptest fuzz | 10000 cases | expression + parser target |
 | criterion 基准 | 5 metrics | 见 `docs/release/benchmarks.md` |
@@ -31,7 +31,7 @@
 | 5 | 多 OS CI 矩阵全绿 | ✅ 已落地 | ubuntu/macos/windows x stable + MSRV 1.85 |
 | 6 | proptest fuzz 10000 用例无 panic | ✅ 已落地 | expression + parser |
 | 7 | criterion 基准集落档 | ✅ 已落地 | `docs/release/benchmarks.md` |
-| 8 | 安全模型文档评审通过 + "受限子集"边界明记 | ✅ 已落地 | `docs/release/security.md` 语义复查完成 |
+| 8 | 安全模型文档评审通过 + "受限子集"边界明记 | ✅ 已落地 | `docs/superpowers/specs/2026-08-03-security-model-design.md` 语义复查完成 |
 
 **结论**：8/8 条件均已满足（alpha 级别），但尚未经历 beta 阶段的稳定性验证与社区反馈。
 
@@ -90,7 +90,7 @@
 | 5 | 多 OS CI 矩阵全绿 | ✅ | `.github/workflows/ci.yml` matrix | `2026-08-03-alpha0-production-readiness.md` Stage A |
 | 6 | proptest fuzz 10000 用例无 panic | ✅ | `freemarker/fuzz/` + CI | `2026-08-03-alpha0-production-readiness.md` Stage C |
 | 7 | criterion 基准集落档 | ✅ | `docs/release/benchmarks.md` | `2026-08-03-alpha0-production-readiness.md` Stage C |
-| 8 | 安全模型文档评审通过 | ✅ | `docs/release/security.md` | `2026-08-03-alpha1-governance-hardening.md` |
+| 8 | 安全模型文档评审通过 | ✅ | `docs/superpowers/specs/2026-08-03-security-model-design.md` | `2026-08-03-alpha1-governance-hardening.md` |
 
 ---
 
@@ -106,7 +106,7 @@
 
 ### 4.2 合规审计 Top 5 必修项
 
-> 来源：`docs/合规审计报告.md`（2026-08-04，88% 合规）
+> 来源：`docs/superpowers/specs/2026-08-04-compliance-audit-design.md`（2026-08-04，88% 合规）
 
 | # | 必修项 | 优先级 | 状态 |
 |---|--------|--------|------|

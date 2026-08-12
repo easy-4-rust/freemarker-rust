@@ -1,3 +1,13 @@
+# RUST_OBLIGATION 测试账本
+
+- **日期**：2026-08-02
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97）
+- **依赖**：`2026-08-01-testing-strategy-design.md`
+
+---
+
 # RUST_OBLIGATION 测试账本（初稿）
 
 > 依据 rust-java-migration-testing 技能 §4：记录 Rust 实现引入的、Java 中不存在的正确性义务。
@@ -25,3 +35,9 @@
 | R18 | 数字类型转换回绕 | ?int/?long/?byte/?short 用原始类型强转语义（溢出回绕，f64 越界饱和同 JVM d2l），非 Rust `as` 饱和 | eval.rs/numbers.rs + golden numerical-cast（2147483648?int=-2147483648 等） | ✅ 本轮 | Java intValue()/byteValue()；BuiltInsForNumbers.java |
 | R19 | Float/Double 格式化快路径 | DecimalFormat 快路径：最短往返表示 + max_frac 舍入（Float 先加宽 Double）；toBigDecimal 比较/算术用 toString 最短表示（两路径不同） | format.rs decimal_format 测试 + golden numerical-cast/number-format | ✅ 本轮 | JDK FastDecimalFormat；ArithmeticEngine.toBigDecimal :608-625 |
 | R20 | `.args` 惰性构建 | Java `BuiltinVariable.Args` 仅在模板**访问** `.args` 时构造（Macro.Context.argsSpecialVariableValue）；"位置 catch-all 非空 + .args" 报错只在访问时触发——不访问 `.args` 的宏（`<@m 1 2 3/>`）正常输出 | environment.rs build_args_special（eval.rs 访问时调用，frame 存 def/is_function 快照）；exec.rs macro_catch_all_and_positional + java_ported args_special_variable_test 11 用例 + with_args_built_in_test 18 用例（jar ProbeMacro2-4 实测 2.3.34 三例） | ✅ 本轮 | 修复真实 bug：v1 曾急切构建导致纯位置 catch-all 宏误报 "must only be called with named arguments" |
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-01-p1-p4-core-implementation.md`

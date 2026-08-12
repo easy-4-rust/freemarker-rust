@@ -11,7 +11,7 @@
 - maturin（打包）
 - pytest（Python 测试）
 
-**Related Design Doc:** `docs/superpowers/specs/2026-08-01-pyo3-design.md`、`docs/10-pyo3集成设计.md`
+**Related Design Doc:** `docs/superpowers/specs/2026-08-01-pyo3-design.md`
 
 ---
 

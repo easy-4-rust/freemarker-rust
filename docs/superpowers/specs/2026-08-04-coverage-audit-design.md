@@ -1,3 +1,13 @@
+# 测试覆盖率审计报告
+
+- **日期**：2026-08-04
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97）
+- **依赖**：`2026-08-01-testing-strategy-design.md`
+
+---
+
 # 测试覆盖率审计报告（cargo-llvm-cov）
 
 > 日期：2026-08-04 ｜ 基线：Rust `f4de1bf` ｜ 命令：`cargo llvm-cov --workspace --exclude freemarker-pyo3 --summary-only`
@@ -70,3 +80,9 @@
   有登记证据）；测试揭示的引擎缺口已实现 8 项，剩余为 JVM 特有面
 - 下一步建议：若需逼近 95%，可评估 (a) 将锚点文件标记为覆盖排除并记录原因
   （技能允许"文档化排除"），(b) 继续补 xml/node.rs 剩余分支与 format 模块测试
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-04-coverage-test-completion.md`

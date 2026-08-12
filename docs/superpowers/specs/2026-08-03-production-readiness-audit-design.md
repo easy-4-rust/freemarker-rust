@@ -1,3 +1,13 @@
+# freemarker-rust 生产就绪审计报告
+
+- **日期**：2026-08-03
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97）
+- **依赖**：`2026-08-03-versioning-design.md`（§3.1 晋级条件）
+
+---
+
 # freemarker-rust 生产就绪审计报告（2026-08-03）
 
 > 审计对象：`freemarker` 0.1.0-alpha.1（Apache FreeMarker 2.3.34 语义兼容 Rust 移植）
@@ -58,7 +68,7 @@
 ## 4. 鲁棒性
 
 - proptest 10000 用例（解析器 + 表达式，robustness_fuzz_smoke）+ 5000ms timeout 防御
-  （2026-08 曾捕获旧中间代码病态增长，当前 10 轮稳定——见 docs/测试/RUST_OBLIGATION账本.md）
+  （2026-08 曾捕获旧中间代码病态增长，当前 10 轮稳定——见 `docs/superpowers/specs/2026-08-02-rust-obligation-ledger-design.md`）
 - cargo-fuzz：expression/parser target 声明完成（nightly 构建验证），不常驻 CI
 - 全量 864 tests：lib 326 + golden 113 + java_ported 502 + 其余，0 failed
 
@@ -88,3 +98,9 @@
 - **可发布**：crates.io dry-run 演练通过；PyPI 一键可发布（手动触发）；
 - **诚实边界**：15 项永久 NA（JVM 反射/方法重载/Java 特有类/过期断言）不随引擎演进恢复，
   文档化于 security.md 决策记录 + golden.rs permanent_na_reason。
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-03-alpha1-governance-hardening.md`

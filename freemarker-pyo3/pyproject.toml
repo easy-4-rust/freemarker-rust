@@ -31,7 +31,7 @@ module-name = "freemarker"
 # cdylib 构建启用 extension-module（rlib/cargo test 构建不启用，见 Cargo.toml [features]）
 features = ["extension-module"]
 
-# --- abi3 前向兼容（docs/10 §7；可选）---
+# --- abi3 前向兼容（specs/2026-08-01-pyo3-design.md §7；可选）---
 # 若需发布 abi3 wheel（`maturin build --release --abi3`），设置环境变量
 #   PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 # 使 abi3 二进制在更老的 CPython 上也可加载（pyo3 用编译期版本探测替代

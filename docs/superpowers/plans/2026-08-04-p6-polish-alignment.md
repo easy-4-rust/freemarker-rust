@@ -9,7 +9,7 @@
 **Tech Stack:**
 - 无新增依赖（纯结构重构 + 语义补全）
 
-**Related Design Doc:** `docs/superpowers/specs/2026-08-01-architecture-design.md`、`docs/JavaRust结构对照.md`
+**Related Design Doc:** `docs/superpowers/specs/2026-08-01-architecture-design.md`、`docs/superpowers/specs/2026-08-04-java-rust-structure-mapping-design.md`
 
 ---
 

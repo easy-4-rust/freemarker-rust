@@ -3,36 +3,146 @@
 - **日期**：2026-08-01
 - **作者**：freemarker-rust 团队
 - **状态**：已实施
-- **上游基线**：Apache FreeMarker 2.3.34（Configuration.java 3,877 行 + cache/ 37 文件）
-- **依赖**：数据模型（06 文档）、格式化（08 文档）
+- **上游基线**：Apache FreeMarker 2.3.34（Configuration.java 3,877 行，cache/ 37 文件）
+- **依赖**：无外部依赖
 
-## 1. 目标与范围
+---
 
-将 Java Configuration/Configurable/TemplateConfiguration + cache/ 迁移为 Rust 实现：设置继承链、TemplateConfiguration matcher 链、TemplateLoader 全家族、TemplateCache 完整版、CacheStorage 家族。
+> 源：`freemarker-core/src/main/java/freemarker/template/Configuration.java`（3,877 行）、`core/Configurable.java`、`core/TemplateConfiguration.java`、`cache/`（37 文件）
 
-详细设计见：`docs/07-配置缓存与加载.md`
+## 1. 配置继承链（对应 Java 类层级）
 
-## 2. 设计来源
+```
+Configurable（基类，全部设置项）
+ ├── TemplateConfiguration（按路径/属性条件匹配的模板级配置；apply() 合并）
+ └── Environment（渲染期实例，继承 Configuration 设置 + 渲染状态）
+Configuration（全局配置，持有 TemplateCache；clone() 深拷贝）
+```
 
-| 文档 | 路径 | 核心内容 |
-|------|------|----------|
-| 配置缓存与加载 | `docs/07-配置缓存与加载.md` | 配置继承链（Configurable/TemplateConfiguration/Environment/Configuration）、Settings 结构体（Option<T> 继承语义）、TemplateConfiguration matcher 链（FirstMatch/Merging/Conditional + 5 类 matcher）、TemplateLoader 全家族、TemplateCache 完整版、CacheStorage 家族 |
+- **Rust 实现**：`Settings` 结构体（字段 = 设置项）+ `SettingsSnapshot`（继承链解析后的不可变快照，渲染期读取零锁）：
 
-## 3. 关键设计决策
+```rust
+pub struct Settings {
+    // 全部设置项（§2 全表），用 Option<T> 表达"未设置"以便继承合并
+    pub locale: Option<Locale>, pub time_zone: Option<TimeZone>, ...
+    pub parent: Option<Arc<Settings>>,   // 继承链
+}
+impl Settings { pub fn resolve(&self) -> SettingsSnapshot { /* 沿链合并 */ } }
+```
 
-- **设置继承**：`Option<T>` 表达"未设置"，父链向上查找
-- **SettingsSnapshot**：继承链解析后的不可变快照，渲染期读取零锁
-- **per-template 配置**：TemplateConfiguration 按路径/属性条件匹配的模板级配置
-- **CacheStorage**：Strong/MRU（Weak 软段），v1 无容量/过期策略
+- `Configuration` = `Settings` + `TemplateCache` + 共享变量 + 宏注册等运行时状态；`Environment` 持有 `Arc<Configuration>` + 自身可变设置。
 
-## 4. 验收标准
+## 2. Configurable 设置项全表（Rust 字段 ↔ Java setter）
 
-1. dateformat/encoding/whitespace 用例通过
-2. `?c/?cn` 五格式一致
-3. 缓存时序用例通过
-4. 并发冒烟
+| 设置 | Java（Configurable.java 行） | Rust 类型 | 默认值（对齐 Java） |
+|---|---|---|---|
+| classicCompatible | `setClassicCompatible` :633 | `ClassicCompat { Off, On, AsInt(i32) }` | Off |
+| locale | `setLocale` :696 | `Locale`（`unic-locale` 或自实现） | `Locale.getDefault()` → 系统 |
+| cFormat | `setCFormat` :729 | `Arc<dyn CFormat>` | `LegacyCFormat`（或按版本） |
+| timeZone | `setTimeZone` :764 | `chrono_tz::Tz` | 系统时区 |
+| sqlDateAndTimeTimeZone | :848 | Option`<Tz>` | null（跟随 timeZone） |
+| numberFormat | :908 | `String`（模式）+ 解析器 | `"number"`（内部） |
+| booleanFormat | :1056 | `String`（`"true,false"`/`"yes,no"`/`"1,0"`） | `"true,false"` |
+| timeFormat / dateFormat / dateTimeFormat | :1131/:1161/:1269 | `String` 模式 | `"short"` 家族 |
+| customNumberFormats | :974 | `HashMap<String, Arc<dyn TemplateNumberFormatFactory>>` | 空 |
+| customDateFormats | :1337 | `HashMap<String, Arc<dyn TemplateDateFormatFactory>>` | 空 |
+| templateExceptionHandler | :1393 | `Arc<dyn TemplateExceptionHandler>` | `RethrowHandler`（默认 `DEBUG_HANDLER` 分支按 incompatibleImprovements） |
+| attemptExceptionReporter | :1432 | `Arc<dyn AttemptExceptionReporter>` | `LoggingAttemptExceptionReporter` |
+| arithmeticEngine | :1460 | `Arc<dyn ArithmeticEngine>` | `BigDecimalEngine` |
+| objectWrapper | :1499 | `Arc<dyn ObjectWrapper>` | `DefaultObjectWrapper`（2.3.34） |
+| outputEncoding | :1530 | `String` | `"UTF-8"` |
+| urlEscapingCharset | :1544+ | `String` | `"UTF-8"` |
+| newBuiltinClassResolver | :1544+ | `Arc<dyn TemplateClassResolver>` | `DefaultObjectWrapper` 内建 |
+| templateClassResolver | — | 同上（旧名别名） | — |
+| defaultEncoding | `Configuration` | `String` | `"UTF-8"` |
+| outputFormat | `Configuration` | `Arc<dyn OutputFormat>` | `HTMLOutputFormat`（自动转义时）或 PlainText |
+| autoEscaping | `Configuration` | `AutoEscaping { On, Off, Default }` | Default（随 incompatibleImprovements：2.3.24+ 默认 `"default"` 语义） |
+| autoFlush | `Configuration` | `bool` | true |
+| whitespaceStripping | `Configuration` | `bool` | true |
+| fallbackOnNullLoopVariable | `Configuration` | `bool` | true（2.3.20+） |
+| lazyImports | `Configuration` | `bool` | false（2.3.28+） |
+| lazyAutoCoercions | `Configuration` | `bool` | false（2.3.24+） |
+| strictSyntaxMode | `Configuration` | `bool` | false |
+| recognizedDateFormats | `Configuration` | `Vec<String>` | 预设列表 |
+| apiBuiltinEnabled | `Configuration` | `bool` | true（D1：受限实现） |
+| incompatibleImprovements | `Configuration` | `Version` | 用户指定（默认最低） |
+| logTemplateExceptions / wrapUncheckedExceptions | `Configuration` | `bool` | true / true |
+| templateLoader | `Configuration` | `Arc<dyn TemplateLoader>` | `null`（报错提示） |
+| templateLookupStrategy | `Configuration` | `Arc<dyn TemplateLookupStrategy>` | `Default020300` |
+| templateNameFormat | `Configuration` | `Arc<dyn TemplateNameFormat>` | `Default020400`（2.3.22+） |
+| cacheStorage | `Configuration` | `Arc<dyn CacheStorage>` | `MruCacheStorage(0, 192)` 语义 → 见 §4 |
+| localizedLookup / delay | `Configuration` | `bool` / `u64` 秒 | true / 1 |
+| templateConfigurations / templateConfigurationsFactory | `Configuration` | matcher 链 | 空 |
+| sharedVariables | `Configuration` | `HashMap<String, TModel>` | 空（`setSharedVariable`） |
 
-## 5. 对应计划
+> 设置读取 API：`get_setting(name)/set_setting(name, value)` 字符串形式（对应 `setSetting`/`getSetting`，`Environment.java` 的 `SettingsAccess` 接口）——Rust 用 `SettingKey` enum 表达。
+
+## 3. TemplateConfiguration（`core/TemplateConfiguration.java`，按路径配置）
+
+- `apply()`（:302）：将自身设置合并覆盖到 Environment（`mergeMaps :709`、`mergeLists :724`、条件检查 :670）。
+- 匹配器链（`cache/`）：`FirstMatchTemplateConfigurationFactory`（首个匹配，可 allowNoMatch）、`MergingTemplateConfigurationFactory`（合并）、`ConditionalTemplateConfigurationFactory`（`TemplateSourceMatcher` 组合：`FileExtensionMatcher`、`FileNameGlobMatcher`、`PathGlobMatcher`、`PathRegexMatcher`、`AndMatcher`、`OrMatcher`、`NotMatcher`）。
+- Rust：`TemplateSourceMatcher` trait（matches(path)）+ 组合子；`TemplateConfiguration` 结构体 + `apply(&mut Environment)`。
+
+## 4. 模板加载与缓存（`cache/`，37 文件）
+
+### 4.1 TemplateLoader trait
+
+```rust
+pub trait TemplateLoader {
+    fn find_source(&self, name: &str) -> Result<Option<Box<dyn TemplateSource>>, TemplateError>;
+    fn last_modified(&self, src: &dyn TemplateSource) -> Result<i64, TemplateError>;
+    fn reader(&self, src: &dyn TemplateSource) -> Result<String, TemplateError>;   // 直接读为字符串
+    fn close(&self, src: Box<dyn TemplateSource>) -> Result<(), TemplateError>;
+}
+```
+
+| Java 类 | Rust | 语义要点 |
+|---|---|---|
+| `FileTemplateLoader` | `FileLoader` | 路径逃逸防护（`..` 拒绝）、大小写模拟（`emulateCaseSensitiveFileSystem`）、目录安全 |
+| `StringTemplateLoader` | `StringLoader` | 内存注册表（`put_template/remove_template`），**测试主力** |
+| `ClassTemplateLoader` | `ClassLoader`（include_bytes 资源） | 包路径前缀 |
+| `URLTemplateLoader` | `UrlLoader`（reqwest/ureq 或本地 file://） | `urlConnectionUsesCaches` 语义 |
+| `ByteArrayTemplateLoader` | `BytesLoader` | 字节注册 |
+| `MultiTemplateLoader` | `MultiLoader` | 粘性（sticky）回退：记住上次命中的 loader；`resetState` |
+
+### 4.2 TemplateCache（`cache/cache.rs`，核心 `getTemplateInternal :323-463`）
+
+- **键**：`TemplateKey { name, locale, encoding, custom_lookup_condition, template_configuration 指纹 }`（:826）。
+- **流程**：取键 → 命中且未过期（`delay` 秒内）→ 返回 `CachedTemplate`（**clone-on-use**，渲染期可变状态隔离）；过期/未命中 → `lookupTemplate` → 未找到存负查找 → 找到读 source → 解析 → 缓存。
+- **负查找缓存**：`storeNegativeLookup`（:506）—— 防止频繁磁盘 miss。
+- **局部化查找**：`localizedLookup` —— 名称按 locale 后缀回退（`foo.ftl` → `foo_en.ftl` → `foo.ftl`），`TemplateLookupContext.lookupWithLocalizedThenAcquisitionStrategy`（:940 区域）。
+- **acquisition 策略**：父目录逐级回退（`Default020300.lookup`）—— 目录化模板引用语义。
+- **名称规范化**：`TemplateNameFormat.Default020400`（`removeDotDotSteps/resolveDotDotSteps/removeRedundantSlashes`），`Default020300` 兼容版。
+- Rust：`Mutex<HashMap<TemplateKey, CachedEntry>>`（或 `dashmap`，渲染期无锁读）；`CachedEntry { template: Arc<Template>, loaded_at: Instant, last_checked: ... }`；`delay` 过期用 `checked_at + delay < now` 判定并重新验证 `last_modified`。
+
+### 4.3 CacheStorage（`cache/storage.rs`）
+
+| Java | Rust | 说明 |
+|---|---|---|
+| `StrongCacheStorage` | `HashMap` 直存 | 简单 |
+| `SoftCacheStorage` | `Weak` 值 + 容量上限 | GC 语义近似（`Weak` 无引用即淘汰） |
+| `MruCacheStorage`（强/软双段链表） | 手写 MRU（强段上限 + 软段 `Weak`） | **默认**（强 0 / 软 192 语义 → Rust 建议强段小上限 + LRU 淘汰） |
+| `NullCacheStorage` | `NullCache` | 不缓存 |
+
+> **语义差异说明**：Java 软引用由 GC 决定淘汰时机；Rust `Weak` 由引用计数决定。模板缓存被 Configuration/Environment 强引用期间 Java 也不会淘汰 —— 行为等价（P6 可优化）。
+
+## 5. 并发模型
+
+- Java：`ConcurrentHashMap` + 双重检查；Rust：缓存 `Mutex`（写入）+ 渲染只读 `Arc<Template>`。
+- `Configuration` 修改（setTemplateLoader 等）触发 `recreateTemplateCacheWith`（`Configuration.java:1048`）→ Rust 直接重建缓存容器。
+- 渲染并发：`Template`/`Configuration` 均 `Send + Sync`；`Environment` 每渲染线程独立实例。
+
+## 6. 验收标准（P4）
+
+1. `StringLoader` 驱动黄金套件全量通过（含 `include/import` 相对路径解析、局部化回退、acquisition）。
+2. `FileLoader` 安全用例（`../` 逃逸、大小写模拟）与 Java 行为一致。
+3. 缓存命中/过期/负查找时序用例（delay 设置）通过。
+4. `TemplateConfiguration` 按扩展名/glob/regex 匹配生效（`conditional-*` 用例）。
+5. 并发冒烟：多线程渲染同一 `Arc<Template>` 输出一致。
+
+---
+
+## 对应计划
 
 - `docs/superpowers/plans/2026-08-01-p1-p4-core-implementation.md`（Stage 6）
-- `docs/superpowers/plans/2026-08-04-p6-polish-alignment.md`（Task 4.1：per-template 配置补齐）
+- `docs/superpowers/plans/2026-08-04-refactor-2c-3a-3b-batches.md`（Task 3.1：per-template 配置）

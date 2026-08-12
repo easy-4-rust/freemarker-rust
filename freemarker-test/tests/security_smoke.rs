@@ -1,6 +1,6 @@
 //! 安全/边界测试套件（阶段 C1）。
 //!
-//! 覆盖 docs/release/security.md §4-5 列出的关键边界：
+//! 覆盖 specs/2026-08-03-security-model-design.md §4-5 列出的关键边界：
 //! - `?api` 内建恒错误（决策 1：无 JVM 反射）
 //! - `?new` 仅 6 个硬编码类可构造；其他 ClassNotFoundException
 //! - `ObjectWrapper.unwrap` 对 Method/Directive/TransformModel 拒绝

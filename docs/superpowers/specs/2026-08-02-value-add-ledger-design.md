@@ -1,5 +1,15 @@
 # VALUE_ADD 测试账本
 
+- **日期**：2026-08-02
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97）
+- **依赖**：`2026-08-01-testing-strategy-design.md`
+
+---
+
+# VALUE_ADD 测试账本
+
 > 依据 rust-java-migration-testing 技能 §5：记录 Java 套件之外、为捕获具体缺陷/风险而新增的测试。
 
 | # | 测试 | 位置 | 捕获的具体缺陷/风险 | 来源 |
@@ -26,3 +36,9 @@
 
 - VALUE_ADD 测试 16 组（含多断言），全部为可观察断言
 - 其中 V1、V3、V5、V15、V16 捕获了真实 bug（运算舍入、死循环、死锁、.args 急切构建、float 格式化两处）；trim 专项的 R16-R19 义务由 golden 全量守护
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-01-p1-p4-core-implementation.md`

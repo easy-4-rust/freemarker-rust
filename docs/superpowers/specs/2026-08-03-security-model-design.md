@@ -1,4 +1,12 @@
-# 安全模型
+# 安全模型设计
+
+- **日期**：2026-08-03
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97，2.3 分支线）
+- **依赖**：无外部依赖
+
+---
 
 > 本文件定义 freemarker-rust 的安全威胁模型、暴露面与限制（**受限子集**）。
 > 与 thymeleaf-rust 同口径，但 freemarker-rust 明确**不实现** JVM 反射能力。
@@ -28,7 +36,7 @@ freemarker-rust 是一款**模板渲染引擎**，处理**用户提供的模板�
 freemarker-rust **不实现** Java `freemarker.ext.beans.BeansWrapper` / `ClassIntrospector` /
 `MemberAccessPolicy` / `OverloadedMethods` 体系。
 此决策导致以下**不可恢复**的能力缺失（永久 NOT_APPLICABLE，共 15 项，分类确定化：
-golden.rs `permanent_na_reason` + docs/测试/验收报告.md v13）：
+golden.rs `permanent_na_reason` + docs/superpowers/specs/2026-08-03-acceptance-report-design.md v13）：
 
 ### 3.1 POJO 反射缺失（12 项）
 
@@ -129,4 +137,10 @@ PASS）；roxmltree 解析不加载外部实体（无 XXE 面）。
   登记（transforms）。
 - 2026-08-04：复查（1.0 晋级条件 8）—— 新增语义安全评审通过：auto include/import
   分层仅配置驱动、markup 双槽与组合格式为纯转义路径、`?new` 剥引号不改白名单；
-  无新注入面，0 unsafe 保持。覆盖率审计见 docs/测试/覆盖率审计报告.md。
+  无新注入面，0 unsafe 保持。覆盖率审计见 docs/superpowers/specs/2026-08-04-coverage-audit-design.md。
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-03-alpha0-production-readiness.md`（生产就绪）

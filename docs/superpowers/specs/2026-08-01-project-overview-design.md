@@ -6,35 +6,87 @@
 - **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97，2.3 分支线）
 - **依赖**：无外部框架依赖
 
-## 1. 目标与范围
+---
 
-在 Rust 中实现与 Apache FreeMarker 语义功能一致的模板引擎：相同模板 + 相同数据模型 -> 相同输出与相同错误行为。
+## 1. 项目目标
 
-详细设计见：`docs/01-项目概述与范围.md`
+在 Rust 中实现与 Apache FreeMarker **语义功能一致**（output-compatible，即相同模板 + 相同数据模型 → 相同输出与相同错误行为）的模板引擎：
 
-## 2. 设计来源
+| 源模块 | 目标 | 说明 |
+|---|---|---|
+| `freemarker-core`（754 Java 文件） | `freemarker-rust/freemarker`（核心引擎 crate） | 解析、渲染、数据模型、配置、缓存、格式化 |
+| `freemarker-jython25`（+ jython20 桥接实现） | `freemarker-rust/freemarker-pyo3`（Python 绑定 crate） | 基于 PyO3 0.29 的 Python 对象双向桥接 |
 
-| 文档 | 路径 | 核心内容 |
-|------|------|----------|
-| 项目概述与范围 | `docs/01-项目概述与范围.md` | 项目目标、版本基线、迁移范围（范围内/外）、功能对齐矩阵、D1-D5 决策、迁移策略、风险登记 |
+## 2. 版本基线
 
-## 3. 关键设计决策
+- **源码版本**：Apache FreeMarker **v2.3.34 标签**（commit `7926e9771`，2.3 分支线——提交信息为 "Merge remote-tracking branch 'origin/2.3-gae' into 2.3"，随后打上 v2.3.34 标签；2026-08-01 图谱构建时点）
+- **功能线**：incompatibleImprovements 支持到 **2.3.34**（最近提交将 2.3.24 → 2.3.34）
+- **解析器**：JavaCC **7.0.12**（`build.gradle.kts:102-104`），语法源 `freemarker-core/src/main/javacc/freemarker/core/FTL.jj`（4,845 行）
+- **Python 侧**：CPython 3.x + PyO3 **0.29.0**（`https://docs.rs/pyo3/0.29.0/pyo3/`）
+- 迁移锁定该 commit；后续上游更新以增量 diff 方式合入（见 §6）。
 
-| 决策 | 内容 | 影响 |
-|------|------|------|
-| D1 | serde 替代 BeansWrapper（JVM 反射不实现） | 33 项 NOT_APPLICABLE 永久保留 |
-| D2 | fancy-regex 替代 Java 正则 | 反向引用/环视支持，记录不支持清单 |
-| D3 | ICI 锁定 2.3.34 | incompatibleImprovements 支持到 2.3.34 |
-| D4 | Rust Result 替代 Java 异常传播 | 无日志框架，错误通过 Result 传播 |
-| D5 | 无日志框架 | Rust 标准 Result 传播替代 Java SLF4J |
+## 3. 迁移范围
 
-## 4. 验收标准
+### 3.1 范围内（必须实现）
 
-1. cargo build 通过
-2. cargo test 空跑绿
-3. D1-D5 有决议并落档
-4. 迁移范围明确（范围内/外清单）
+| 子系统 | 源（freemarker-core） | 语义要点 |
+|---|---|---|
+| 词法与语法 | `FTL.jj` → 生成的 `FMParser` | 全部产生式 + 5 个词法状态 |
+| AST | `core/*.java`（120+ 节点类） | TemplateElement + Expression 全家族 |
+| 渲染引擎 | `core/Environment.java`（3,709 行） | 指令栈 accept 模式、作用域、命名空间、异常处理 |
+| 指令 | `core/*Instruction.java`、`IfBlock/IteratorBlock/...`（46 类） | 见 specs/2026-08-01-rendering-engine-design.md 全清单 |
+| 表达式 | `core/*Expression.java`（30+ 类） | 类型检查、短路、`?` 链、范围、lambda |
+| 内建函数 | `core/BuiltInsFor*.java`（30 文件，133 BI） | 见 specs/2026-08-02-builtins-design.md 全清单 |
+| 数据模型 | `template/TemplateModel*.java`（接口家族）+ `Simple*` | 8 大角色 + 扩展 |
+| 对象包装 | `template/ObjectWrapper.java`、`SimpleObjectWrapper`、`DefaultObjectWrapper` | wrap/unwrap 双向 |
+| 配置 | `template/Configuration.java`（3,877 行）、`core/Configurable.java`、`core/TemplateConfiguration.java` | 全部设置项（见 specs/2026-08-01-config-cache-design.md） |
+| 缓存加载 | `cache/`（37 文件） | TemplateLoader 家族、TemplateCache、MRU |
+| 格式化 | `core/*OutputFormat*`、`*CFormat*`、`*TemplateDateFormat*`、`*TemplateNumberFormat*` | HTML/XML/JSON/JS 转义、ISO 日期、Decimal 数字 |
+| 错误 | `core/Non*Exception.java`（30+）、`template/TemplateException.java` | 类型错误消息、行号、指令栈 |
+| Python 桥 | `freemarker-jython20/ext/jython/*`（13 文件）+ jython25 适配器 | wrap/unwrap、属性/下标双查找、可调用 |
 
-## 5. 对应计划
+### 3.2 范围外（明确不迁移）
+
+| 模块 | 理由 |
+|---|---|
+| `freemarker-core16` / `freemarker-core9` | 旧版 Java 兼容 SourceSet，无新语义 |
+| `freemarker-javax-servlet` | Web 集成，与引擎语义无关 |
+| `freemarker-jython20/22` 中的 `ext/ant/*` | Ant 构建任务，PyO3 生态无对应物 |
+| `freemarker-manual` / `src/` / `osgi.bnd` | 文档与构建产物 |
+| `debug/impl/DebuggerService`、`debug/*` | 调试器 SPI（预留接口占位，不实现） |
+| `ext/beans` 反射 BeanWrapper 完整能力 | Rust 无反射；**仅实现 JSON/结构体数据适配**（见 specs/2026-08-01-data-model-design.md §5 决策） |
+| `ext/dom` | ✅ **已实现**（2026-08 收口）：`freemarker/ext/dom/NodeModel` 家族由 `src/xml/`（ns_prefixes.rs/tree.rs/node.rs）承接，golden XML 系列全 PASS（见 specs/2026-08-04-java-rust-structure-mapping-design.md §5） |
+| `ext/jdom`、`ext/rhino` | 第三方生态绑定，按需后置（NA-DESIGN） |
+
+### 3.3 决策点（D1–D4，需在 P0 评审确认）
+
+- **D1**：BeanWrapper 替代方案 —— (a) 手写 `#` 反射风格适配（serde 结构体 + 派生宏），(b) `downcast` 到 `HashMap/struct` 的简单包装，仅实现 `?api` 内建的受限子集；(c) 不实现。→ 推荐 (a)+(c) 组合：模板可见性 = 结构体字段/serde，`?api` 抛 NotSupported。
+- **D2**：测试套件移植形式 —— 直接翻译 `testcases.xml` 为 Rust 集成测试数据（.ftl + expected），还是通过 `include_str!` 全量嵌入（推荐后者，编译期即生效）。
+- **D3**：是否保留 `incompatibleImprovements` 多版本行为开关全量矩阵，还是只锁定 2.3.34 行为（推荐：锁定 2.3.34 + `classicCompatible` 开关，其余版本开关仅留常量占位）。
+- **D4**：pyo3 渲染 GIL 策略 —— 每次模型访问获取 GIL vs 渲染入口持有单次 GIL（推荐后者 + `allow_threads` 分段释放，见 specs/2026-08-01-pyo3-design.md §4）。
+
+## 4. 成功标准（验收判据）
+
+1. **黄金套件通过率 100%**：`testcases.xml` 全部用例在 freemarker-rust 下输出与 `expected/*.txt` 逐字节一致（含换行与 BOM 语义）。
+2. **错误语义对齐**：核心错误场景（未定义变量、类型不匹配、解析失败、`stop`/`break` 违规）消息文本与 Java 版一致（含模板名、行号、列号、指令栈）。
+3. **Python 桥接一致**：`freemarker-pyo3` 在 CPython 3.11+ 下通过 Python 侧测试套件（等价 jython25 套件），`wrap/unwrap` 双向类型映射 100% 覆盖。
+4. **性能达标**：简单模板渲染吞吐 ≥ Java 版 0.5×（基准测试脚本 `benches/`）；解析缓存命中路径零分配目标。
+5. **API 可用性**：Rust 用户可从纯 Rust（无 Python）构建与使用核心引擎；pyo3 为可选 feature。
+
+## 5. 约束
+
+- 纯 Rust + 少量 FFI 依赖；不引入 Java 运行时/Jython 依赖。
+- `freemarker` 与 `freemarker-pyo3` 分离编译：核心 crate 不依赖 pyo3（feature gate 隔离）。
+- 语义优先级高于性能；性能优化不得改变输出字节序。
+- 遵循工作区惯例：与 `thymeleaf-rust`、`qlexpress-rust` 保持一致的 workspace 布局、测试组织与文档风格。
+
+## 6. 上游同步策略
+
+- 以 `7926e97` 为基线快照；后续用 `git diff` 提取变更，按子系统归类更新对应迁移文档与测试基线。
+- 语义变更（如新内建、新设置项）进入路线图待办；bug 修复直接合入对应模块并补测试。
+
+---
+
+## 对应计划
 
 - `docs/superpowers/plans/2026-08-01-p0-skeleton-baseline.md`（Stage 4：依赖锁定 + 决策落档）

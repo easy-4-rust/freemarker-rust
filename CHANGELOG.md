@@ -2,13 +2,13 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与
 [语义化版本](https://semver.org/lang/zh-CN/)（晋级规则见
-[docs/release/versioning.md](docs/release/versioning.md)）。
+[docs/superpowers/specs/2026-08-03-versioning-design.md](docs/superpowers/specs/2026-08-03-versioning-design.md)）。
 
 ## [0.1.0-alpha.1] - 2026-08-03
 
 > 本版本相对 v0.1.0-alpha.0：**生产就绪计划 v2 阶段 A/B/C 全部收口**——内建 183/183、
 > golden 82 → **113/128（88%）定格**（0 FAIL / 0 BLOCKED，15 项永久 NA 分类确定化）、
-> pyo3 一键可发布。详见 `docs/测试/验收报告.md`（v13）+ `docs/测试/生产就绪审计.md`。
+> pyo3 一键可发布。详见 `docs/superpowers/specs/2026-08-03-acceptance-report-design.md`（v13）+ `docs/superpowers/specs/2026-08-03-production-readiness-audit-design.md`。
 
 ### Added
 - 内建函数补齐最后 5 个：`eval_json`/`is_date_like`/`next_sibling`/`previous_sibling`/
@@ -35,14 +35,14 @@
 ## [0.1.0-alpha.0] - 2026-08-03
 
 > 本版本相对之前提交基线（840ffe4 feat(xml) 等）：**完成 freemarker-rust 生产就绪第一轮治理 + BLOCKED 清零 + 鲁棒性/安全最小集**。
-> 详见 `docs/release/versioning.md`（alpha→1.0 晋级规则）+ `docs/release/publishing.md`（发布流程）+ `docs/release/security.md`（安全模型 + 决策 1 受限子集）。
+> 详见 `docs/superpowers/specs/2026-08-03-versioning-design.md`（alpha→1.0 晋级规则）+ `docs/superpowers/specs/2026-08-03-publishing-design.md`（发布流程）+ `docs/superpowers/specs/2026-08-03-security-model-design.md`（安全模型 + 决策 1 受限子集）。
 
 ### Added
 
 - **依赖与许可治理门禁**：`deny.toml`（licenses allow 列表：MIT/Apache-2.0/BSD/ISC/Unicode/MPL/CC0/BSL/Python-2.0/Unlicense/CDLA-Permissive-2.0；multiple-versions=warn；sources only crates.io）+ `.cargo/audit.toml`（RUSTSEC 豁免登记） + CI 接入 `EmbarkStudios/cargo-deny-action@v2` 与 `cargo audit` 步骤。
 - **公共 API 基线**：`docs/release/api-baseline.txt`（freemarker 核心 3,705 项公开 API 快照）+ CI `cargo public-api` diff 门禁。
 - **workspace 元数据补全**：`[workspace.package]` 增补 description/authors/repository/homepage/categories/keywords；各成员 crate 补 categories/keywords/repository（freemarker-pyo3 publish=true 但本轮不实际发布；freemarker-test publish=false）。
-- **版本治理文档**：`docs/release/versioning.md`（alpha→1.0 晋级规则与可执行门禁）。
+- **版本治理文档**：`docs/superpowers/specs/2026-08-03-versioning-design.md`（alpha→1.0 晋级规则与可执行门禁）。
 - **发布 workflow**：`.github/workflows/release.yml`（tag v* 触发 `cargo publish --dry-run -p freemarker` + GitHub Release 自动生成 + CHANGELOG 提取）。
 - **多 OS CI 矩阵**：ubuntu-latest + macos-latest + windows-latest × stable；MSRV 1.85 独立 job（与 Cargo.toml `rust-version = "1.85"` 对齐）。
 - **docs.rs 元数据**：`freemarker/Cargo.toml` `[package.metadata.docs.rs]`（all-features + rustdoc-args）。

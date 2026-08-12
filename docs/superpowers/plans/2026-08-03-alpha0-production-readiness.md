@@ -13,7 +13,7 @@
 - criterion（性能基准）
 - EmbarkStudios/cargo-deny-action@v2（CI）
 
-**Related Design Doc:** `docs/superpowers/specs/2026-08-01-testing-strategy-design.md`、`docs/release/versioning.md`、`docs/release/security.md`
+**Related Design Doc:** `docs/superpowers/specs/2026-08-01-testing-strategy-design.md`、`docs/superpowers/specs/2026-08-03-versioning-design.md`、`docs/superpowers/specs/2026-08-03-security-model-design.md`
 
 ---
 
@@ -80,8 +80,8 @@
 ### Task A4：版本治理文档 + release workflow
 
 **Files:**
-- Create: `docs/release/versioning.md`
-- Create: `docs/release/publishing.md`
+- Create: `docs/superpowers/specs/2026-08-03-versioning-design.md`
+- Create: `docs/superpowers/specs/2026-08-03-publishing-design.md`
 - Create: `.github/workflows/release.yml`
 
 - [x] **Step 1:** 编写 versioning.md（alpha -> 1.0 晋级规则与可执行门禁清单）
@@ -139,7 +139,7 @@
 
 **Files:**
 - Create: `freemarker-test/tests/security_smoke.rs`（7 边界）
-- Create: `docs/release/security.md`
+- Create: `docs/superpowers/specs/2026-08-03-security-model-design.md`
 
 - [x] **Step 1:** 实现 7 个边界测试（?api/?new/输出编码/unwrap/ICI）
 - [x] **Step 2:** 编写 security.md（安全模型 + 决策 1 受限子集）

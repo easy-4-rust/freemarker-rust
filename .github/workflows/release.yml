@@ -24,7 +24,7 @@ jobs:
 
       - name: cargo publish --dry-run (freemarker core)
         # 完整发布演练：打 .crate 包 + 自检 + 包内 README/LICENSE/依赖校验
-        # freemarker-pyo3 publish=true 但本轮不实际发布（PyPI 通路独立），见 docs/release/publishing.md
+        # freemarker-pyo3 publish=true 但本轮不实际发布（PyPI 通路独立），见 docs/superpowers/specs/2026-08-03-publishing-design.md
         run: cargo publish --dry-run -p freemarker --allow-dirty
 
       - name: Extract changelog section for tag

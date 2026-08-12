@@ -1,3 +1,13 @@
+# freemarker-rust 迁移测试验收报告
+
+- **日期**：2026-08-03
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97）
+- **依赖**：`2026-08-01-testing-strategy-design.md`、`2026-08-03-migration-parity-ledger-design.md`
+
+---
+
 # freemarker-rust 迁移测试验收报告（v13）
 
 > 本版相对 v12：**生产就绪计划 v2 阶段 A/B 全部收口**——内建 183/183（eval_json/is_date_like/
@@ -245,3 +255,9 @@ v1 的 10 组保留（含 3 个真实 bug 修复）＋ 既有新增：
 - 渲染流水线端到端可用：**82 个 Java 黄金用例逐字节一致（PASS=82 / FAIL=0 / SKIPPED=46）、0 个 PARTIAL、0 个未分类失败**；pyo3 桥（wrap/unwrap/异常/GIL）Rust+Python 双侧全绿
 - 依据技能红线：5 个 BLOCKED 仍存在 → **不宣称迁移完成**；覆盖率 74.20%（lib 口径）/ 57.94%（workspace 口径，实测见 §1 注 2）作为信号而非证明
 - 证据等级分布：V3_GOLDEN_DIFF（82 用例）为最强语义一致性证据；pyo3 侧 V1_RUST_LOCAL（33）+ Python 集成（22）
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-03-alpha1-governance-hardening.md`

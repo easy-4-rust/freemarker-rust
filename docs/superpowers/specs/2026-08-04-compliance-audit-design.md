@@ -1,4 +1,12 @@
-# freemarker-rust 合规审计报告
+# 合规审计设计
+
+- **日期**：2026-08-04
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97，2.3 分支线）
+- **依赖**：无外部依赖
+
+---
 
 > **审计基线**：`docs/` 中描述的 "Rust 项目约定（Rust Project Conventions）"。
 > **审计范围**：`freemarker-rust/` workspace 下全部 `.rs` 源文件及 `Cargo.toml`。
@@ -172,12 +180,12 @@
 
 ### G1. `t_model.rs` 的 11 角色合并到单一 `TModel` 结构
 
-**现状**：`t_model.rs` 用 `pub struct TModel { scalar: Option<...>, number: Option<...>, ..., kind: ModelKind }` 表达 Java `TemplateModel` 的"多接口实现"。文件头注释（`t_model.rs:1-3`）说："Rust 特有设计，对应 Java TemplateModel 多接口实现（设计决策见 docs/02 §4.1：单对象多角色用 Option 槽位表达）"。
+**现状**：`t_model.rs` 用 `pub struct TModel { scalar: Option<...>, number: Option<...>, ..., kind: ModelKind }` 表达 Java `TemplateModel` 的"多接口实现"。文件头注释（`t_model.rs:1-3`）说："Rust 特有设计，对应 Java TemplateModel 多接口实现（设计决策见 specs/2026-08-01-architecture-design.md §4.1：单对象多角色用 Option 槽位表达）"。
 
 **判断**：
 - 严格按 §1：每个 trait 应单独成文件（已分到 `template_model.rs`），但 `TModel` 槽位结构把它们聚合成一个 struct —— 是 Rust 侧的合并。这是**有意的设计决策**，不是违反。
 - 替代方案：把 `ModelKind`、`ModelNumber`、`TModel` 拆到三个文件 —— 但 `ModelNumber` 只被 `TModel` 使用，`ModelKind` 同上，拆分会降低内聚性。
-- **建议**：标记为**已备案的灰区**，文档化在 `docs/02 §4.1` 即可。
+- **建议**：标记为**已备案的灰区**，文档化在 specs/2026-08-01-architecture-design.md §4.1 即可。
 
 ### G2. `template_model.rs` 的 14 个 trait + 1 struct 合并
 
@@ -233,7 +241,7 @@
 **判断**：
 - pyo3 约定：`#[pymodule]` 必须在入口文件（`lib.rs`）。
 - 严格按 §1：`FmTemplate` 应独立 `template.rs`，但 `FmConfiguration` 可以留在 `lib.rs`（与 `#[pymodule]` 同文件）。
-- **建议**：把 `FmTemplate` 移到 `template.rs`；`FmConfiguration` 与 `#[pymodule]` 同留 `lib.rs`，并在模块顶部注释说明 pyo3 限制。
+- **建议**：把 `FmTemplate` 移到 `template.rs`；`FmConfiguration` 与 `#[pymodule]` 共存 `lib.rs`，并在模块顶部注释说明 pyo3 限制。
 
 ### G8. `template/configuration.rs` 内的 `PredefinedTransform`
 
@@ -297,7 +305,7 @@
 
 ## 7. 非违规项说明（避免误判）
 
-- **`t_model.rs::ModelKind`、`ModelNumber`、`TModel`** 三类型共生：标记为合理设计，文档化在 `docs/02 §4.1`。
+- **`t_model.rs::ModelKind`、`ModelNumber`、`TModel`** 三类型共生：标记为合理设计，文档化在 specs/2026-08-01-architecture-design.md §4.1。
 - **`expression.rs::Expr/ExprKind/StrPart/RangeKind/BuiltinVar`**：Rust enum sum type 的天然聚合；Java 端是 30+ 文件，本侧合并是语言特性。
 - **`template_element.rs::Element/AssignOp/ElementKind/CallTarget/CaseDef`**：同 `expression.rs`。
 - **9 个 `simple_*.rs` 文件**：每个只有一个类型，符合 §1。
@@ -325,3 +333,9 @@
 ---
 
 *报告结束。本审计仅核验形式合规性，不评价代码正确性、性能或功能完整性。*
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-04-compliance-and-publish-prep.md`（合规整改）

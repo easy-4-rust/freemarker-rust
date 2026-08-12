@@ -1,4 +1,12 @@
-# Java freemarker-core ↔ Rust freemarker 目录结构对照报告
+# Java-Rust 结构对照设计
+
+- **日期**：2026-08-04
+- **作者**：freemarker-rust 团队
+- **状态**：已实施
+- **上游基线**：Apache FreeMarker 2.3.34（commit 7926e97，2.3 分支线）
+- **依赖**：无外部依赖
+
+---
 
 > 核对日期：2026-08-04（第二轮核对，含补齐后状态）
 > Java 源：`apache/freemarker` freemarker-core `2.3-gae@7926e97` 的
@@ -58,7 +66,7 @@ Rust 按主题分组）——均为合理的 Rust 特有组织，满足"可以�
 
 | 类别 | 数量 | 依据 |
 |---|---|---|
-| ext/beans 反射全族 | 75 | security.md 决策 1/2（JVM 反射 + 方法重载永久 NA） |
+| ext/beans 反射全族 | 75 | specs/2026-08-03-security-model-design.md 决策 1/2（JVM 反射 + 方法重载永久 NA） |
 | `_Delayed*` 惰性消息包装 | 10 | Java 内部错误消息惰性求值优化 |
 | `_Java9`/`_Java16` 平台适配 | 4 | Java 版本条件编译 |
 | `_ObjectBuilder*` 设置语法 | 3 | Java `Configuration.setSetting` 的 Builder 解析语法 |
@@ -111,7 +119,7 @@ public-api baseline 除 builtins 新增 pub fn（与兄弟模块一致）外零�
 | S2 | 拆分 `cache/template_loader.rs` → `template_source.rs`（TemplateSource）+ `template_loader.rs`（TemplateLoader） | cache/TemplateLoader.java + URLTemplateSource.java | ✅ 已执行 |
 | S3 | 新增 `core/get_optional_template_method.rs`（GetOptionalTemplateMethod）+ `core/template_configuration.rs`（TemplateConfiguration） | 对应 Java 文件 | ✅ 已执行 |
 | S4 | 新增 `cache/` matcher 8 + factory 4 + exception 1（一文件一对象） | cache/TemplateSourceMatcher 家族 + Factory 家族 | ✅ 已执行 |
-| S5 | 文档修订：docs/01 §3.2 ext/dom 已实现（原标"范围外"） | — | ✅ 已执行 |
+| S5 | 文档修订：specs/2026-08-01-project-overview-design.md §3.2 ext/dom 已实现（原标"范围外"） | — | ✅ 已执行 |
 | S6 | `TemplateMethodModelEx::exec` 加 env 参数（Java 线程局部 → Rust 显式传参） | Java 方法模型经 `Environment.getCurrentEnvironment()` 访问上下文 | ✅ 已执行（40 处 impl + 测试机械更新） |
 
 ## 7. 缺口补齐建议（优先级）
@@ -124,3 +132,10 @@ public-api baseline 除 builtins 新增 pub fn（与兄弟模块一致）外零�
 
 *报告结束。核对依据：snake_case 文件名机械匹配脚本（561 Java ↔ 90 Rust）+ 逐文件
 语义核对（含本报告 §3 各行的 Java 行号引用）。*
+
+---
+
+## 对应计划
+
+- `docs/superpowers/plans/2026-08-04-p6-polish-alignment.md`（文件级拆分）
+- `docs/superpowers/plans/2026-08-04-refactor-2c-3a-3b-batches.md`（重构批次）
