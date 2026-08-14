@@ -5,7 +5,7 @@
 use crate::core::eval::{eval, trunc_i64};
 use crate::core::expression::{
     bounded_range_model, listable_right_unbounded_range_model,
-    nonlistable_right_unbounded_range_model,
+    non_listable_right_unbounded_range_model,
 };
 use crate::core::{Expr, RangeKind};
 use crate::error::{Result, TemplateError};
@@ -98,7 +98,7 @@ fn eval_range(
             let mut m = if env.settings.incompatible_improvements.to_int() >= 2_003_021 {
                 listable_right_unbounded_range_model(s_i)
             } else {
-                nonlistable_right_unbounded_range_model(s_i)
+                non_listable_right_unbounded_range_model(s_i)
             };
             m.range = Some(std::rc::Rc::new(crate::core::RangeSpec {
                 start: s_i,

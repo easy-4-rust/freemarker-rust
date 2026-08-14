@@ -11,7 +11,7 @@ use std::rc::Rc;
 /// `(4..)[0]` 越界 → 数字键路径按 invalid reference 报错）
 pub(crate) struct NonListableRightUnboundedRange;
 
-pub(crate) fn nonlistable_right_unbounded_range_model(_start: i64) -> TModel {
+pub(crate) fn non_listable_right_unbounded_range_model(_start: i64) -> TModel {
     // Java NonListable 同样持有 begin（构造函数），但 size=0 时无从可见
     let seq: Rc<dyn TemplateSequenceModel> = Rc::new(NonListableRightUnboundedRange);
     let coll: Rc<dyn TemplateCollectionModel> = Rc::new(NonListableRightUnboundedRange);

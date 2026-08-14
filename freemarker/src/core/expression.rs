@@ -46,8 +46,9 @@ mod listable_right_unbounded_range_model;
 mod local_lambda_expression;
 #[path = "method_call.rs"]
 mod method_call;
-#[path = "nonlistable_right_unbounded_range_model.rs"]
-mod nonlistable_right_unbounded_range_model;
+
+#[path = "non_listable_right_unbounded_range_model.rs"]
+mod non_listable_right_unbounded_range_model;
 #[path = "not_expression.rs"]
 mod not_expression;
 #[path = "number_literal.rs"]
@@ -83,7 +84,7 @@ pub use list_literal::ListLiteral;
 pub(crate) use listable_right_unbounded_range_model::listable_right_unbounded_range_model;
 pub use local_lambda_expression::LocalLambdaExpression;
 pub use method_call::MethodCall;
-pub(crate) use nonlistable_right_unbounded_range_model::nonlistable_right_unbounded_range_model;
+pub(crate) use non_listable_right_unbounded_range_model::non_listable_right_unbounded_range_model;
 pub use not_expression::NotExpression;
 pub use number_literal::NumberLiteral;
 pub use or_expression::OrExpression;
