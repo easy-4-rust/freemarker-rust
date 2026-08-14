@@ -10,7 +10,7 @@ use crate::error::Result;
 use crate::template::TModel;
 use indexmap::IndexMap;
 
-use crate::builtins::markup_outputs::escape_plain_text;
+use crate::core::built_ins_for_markup_outputs::escape_plain_text;
 
 /// 加/拼接表达式（对应 AddConcatExpression.java；解析器经 `ExprKind::Add` 承载）
 pub struct AddConcatExpression {
@@ -146,7 +146,7 @@ pub(crate) fn eval_add(env: &mut crate::core::Environment, a: &Expr, b: &Expr) -
             }
             (false, false) => unreachable!(),
         };
-        return Ok(crate::builtins::markup_outputs::markup_model_with(
+        return Ok(crate::core::built_ins_for_markup_outputs::markup_model_with(
             out, plain, fmt,
         ));
     }

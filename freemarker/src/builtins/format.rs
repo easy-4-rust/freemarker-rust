@@ -10,7 +10,7 @@
 //! - DecimalFormat 子集：`0`/`#`/`.`/`,`（分组）/`'...'`（引号字面量），HALF_EVEN 舍入，
 //!   locale 相关小数点与分组符（en/fr/de/es/tr）；完整模式（E、%、‰、货币等）属 P4。
 
-use crate::builtins::strings_encoding::{java_string_enc, js_string_enc};
+use crate::core::built_ins_for_strings_encoding::{java_string_enc, js_string_enc};
 use crate::core::Environment;
 use crate::error::{Result, TemplateError};
 use crate::value::TNumber;

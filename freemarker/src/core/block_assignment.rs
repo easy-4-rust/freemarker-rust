@@ -47,7 +47,7 @@ impl BlockAssignment {
                 ) {
                     // Java fromMarkup：仅存 markup 内容，无源纯文本槽（跨格式转换
                     // 不可逆 → 插值于其他 markup 格式时报错，DollarVariable.java:78-92）
-                    crate::builtins::markup_outputs::markup_model_with(text, None, fmt)
+                    crate::core::built_ins_for_markup_outputs::markup_model_with(text, None, fmt)
                 } else {
                     TModel::from_scalar(text)
                 };

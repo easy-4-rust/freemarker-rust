@@ -496,7 +496,7 @@ fn builtin_impl(
             let s = m.get_scalar()?;
             Ok(Some(TModel::from_number(parse_number(&s)?)))
         }
-        "eval_json" => crate::builtins::strings_misc::eval_json(env, target, args.exprs),
+        "eval_json" => crate::core::built_ins_for_strings_misc::eval_json(env, target, args.exprs),
         "boolean" => {
             // Java booleanBI（BuiltInsForStringsMisc.java:37）：布尔原样；字符串仅接受
             // 精确 "true"/"false" 或当前 boolean_format 的 true/false 串
@@ -611,12 +611,12 @@ fn builtin_impl(
                 m.type_name
             )))
         }
-        "join" => crate::builtins::sequences::join(env, target, args.exprs),
-        "reverse" => crate::builtins::sequences::reverse(env, target, args.exprs),
-        "seq_contains" => crate::builtins::sequences::seq_contains(env, target, args.exprs),
+        "join" => crate::core::built_ins_for_sequences::join(env, target, args.exprs),
+        "reverse" => crate::core::built_ins_for_sequences::reverse(env, target, args.exprs),
+        "seq_contains" => crate::core::built_ins_for_sequences::seq_contains(env, target, args.exprs),
         // ---- 哈希（Java BuiltInsForHashes.java）----
-        "keys" => crate::builtins::hashes::keys(env, target, args.exprs),
-        "values" => crate::builtins::hashes::values(env, target, args.exprs),
+        "keys" => crate::core::built_ins_for_hashes::keys(env, target, args.exprs),
+        "values" => crate::core::built_ins_for_hashes::values(env, target, args.exprs),
         // ---- 输出/格式化（Java BuiltInsForMultipleTypes.java）----
         "has_content" => {
             // Java hasContentBI：evalMaybeNonexistentTarget（仅括号目标抑制）→ isEmpty

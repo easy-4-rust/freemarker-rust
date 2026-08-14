@@ -10,7 +10,7 @@
 //! - pad 按 UTF-16 码元计数（Java String.length 语义），filling 循环填充；
 //! - 目标强制转字符串（EvalUtil.coerceModelToStringOrMarkup：数字/布尔可转）。
 
-use crate::builtins::strings_regexp::{compile_pattern, parse_flags, FlagSet};
+use crate::core::built_ins_for_strings_regexp::{compile_pattern, parse_flags, FlagSet};
 use crate::core::eval_util::{arg_count, arg_string, check_arg_count, target_string};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};

@@ -46,7 +46,7 @@ pub(crate) fn eval_interp_str(
             StrPart::Text(t) => {
                 if let Some(cur) = &mut markup {
                     let f = fmt.unwrap();
-                    cur.push_str(&crate::builtins::markup_outputs::escape_plain_text(f, t));
+                    cur.push_str(&crate::core::built_ins_for_markup_outputs::escape_plain_text(f, t));
                     if let Some(p) = &mut plain {
                         p.push_str(t);
                     }
@@ -76,7 +76,7 @@ pub(crate) fn eval_interp_str(
                         if cur_fmt == mfmt {
                             cur.push_str(&m.get_scalar()?);
                         } else if let Some(rp) = &m.markup_plain {
-                            cur.push_str(&crate::builtins::markup_outputs::escape_plain_text(
+                            cur.push_str(&crate::core::built_ins_for_markup_outputs::escape_plain_text(
                                 cur_fmt, rp,
                             ));
                         } else if let Some(lp) = &plain {
@@ -84,7 +84,7 @@ pub(crate) fn eval_interp_str(
                             // （rightOF.concat(rightOF.fromPlainTextByEscaping(leftPT), rightMO)）
                             *cur = format!(
                                 "{}{}",
-                                crate::builtins::markup_outputs::escape_plain_text(mfmt, lp),
+                                crate::core::built_ins_for_markup_outputs::escape_plain_text(mfmt, lp),
                                 m.get_scalar()?
                             );
                             fmt = Some(mfmt);
@@ -114,7 +114,7 @@ pub(crate) fn eval_interp_str(
                         fmt = Some(mfmt);
                         let mut s = String::new();
                         if !p.is_empty() {
-                            s.push_str(&crate::builtins::markup_outputs::escape_plain_text(
+                            s.push_str(&crate::core::built_ins_for_markup_outputs::escape_plain_text(
                                 mfmt, &p,
                             ));
                         }
@@ -125,7 +125,7 @@ pub(crate) fn eval_interp_str(
                 } else if let Some(cur) = &mut markup {
                     // markup 结果后的纯文本段：按 markup 格式转义（Java :101-104）
                     let s = model_to_string(env, &m)?;
-                    cur.push_str(&crate::builtins::markup_outputs::escape_plain_text(
+                    cur.push_str(&crate::core::built_ins_for_markup_outputs::escape_plain_text(
                         fmt.unwrap(),
                         &s,
                     ));
@@ -139,7 +139,7 @@ pub(crate) fn eval_interp_str(
         }
     }
     match markup {
-        Some(m) => Ok(crate::builtins::markup_outputs::markup_model_with(
+        Some(m) => Ok(crate::core::built_ins_for_markup_outputs::markup_model_with(
             m,
             plain,
             fmt.unwrap(),

@@ -1090,10 +1090,10 @@ pub fn seq_contains(
     // 序列优先（2.3.x BC），否则集合迭代；参数缺失变量 → null → modelsEqual false
     crate::core::eval_util::check_arg_count("seq_contains", args, 1, 1)?;
     let m = eval(env, target)?;
-    let needle = crate::builtins::sequences::eval_arg_lenient(env, args, 0)?;
-    let items = crate::builtins::sequences::seq_or_collection_items(&m, "seq_contains")?;
+    let needle = crate::core::built_ins_for_sequences::eval_arg_lenient(env, args, 0)?;
+    let items = crate::core::built_ins_for_sequences::seq_or_collection_items(&m, "seq_contains")?;
     for (i, item) in items.iter().enumerate() {
-        if crate::builtins::sequences::models_equal(i, item, &needle, Some(env))? {
+        if crate::core::built_ins_for_sequences::models_equal(i, item, &needle, Some(env))? {
             return Ok(Some(TModel::from_boolean(true)));
         }
     }
