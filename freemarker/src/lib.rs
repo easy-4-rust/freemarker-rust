@@ -10,6 +10,7 @@ pub mod builtins;
 pub mod cache;
 pub mod core;
 pub mod error;
+pub mod ext;
 pub mod parser;
 pub mod span;
 pub mod template;
