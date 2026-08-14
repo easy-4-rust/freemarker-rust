@@ -86,3 +86,35 @@
 ## 对应计划
 
 - `docs/superpowers/plans/2026-08-04-coverage-test-completion.md`
+
+---
+
+## 覆盖率复核（2026-08-14）：重排+镜像补齐后
+
+> 命令：`cargo llvm-cov --workspace --exclude freemarker-pyo3 --summary-only`
+> 基线对比：85.19%（2026-08-04 审计终值，commit `f4de1bf`）
+
+### 总体结果
+
+| 指标 | 原始值（全文件） | 排除纯锚点后对照 |
+|---|---|---|
+| 行覆盖率 | **85.02%**（46046 行，missed 6896） | **84.96%**（45859 行，missed 6895） |
+| 分支覆盖率 | 81.09% | 81.01% |
+| 区域覆盖率 | 84.85% | 84.79% |
+
+- 排除规则：`--ignore-filename-regex "(markup_output_format|template_markup_output_model|template_plain_output_model|template_output_model|attr_value|misc_node_model|text_model|comment_model|entity_model|processing_instruction_model|cdata_model|attribute_node_model|node_outputter|node_list_model|element_model)\.rs$"`
+- 锚点文件共 15 个，187 行，仅 1 行 missed（覆盖率 99.5%），排除后覆盖率反而略降——说明锚点文件覆盖表现优于整体平均
+
+### 与 85.19% 基线对比
+
+| 维度 | 差值 | 原因分析 |
+|---|---|---|
+| 原始 85.02% vs 基线 85.19% | **-0.17pp** | 新增 182 镜像文件（锚点+语义+真实现），总行数从 ~45209 增至 46046（+837 行），新增文件多为 `#[allow(dead_code)]` struct / trait 空壳 / 语义占位，行覆盖率低于整体平均，拖低 0.17pp |
+| 排除锚点 84.96% vs 基线 85.19% | **-0.23pp** | 排除 15 个高覆盖锚点文件后分母减少但分子也减少，净效应为负 |
+
+### 结论
+
+- 覆盖率下降 0.17pp 在预期内：本轮新增 ~182 个镜像文件（锚点 ~140 / 语义 ~35 / 真实现 4 / 已存在跳过 8），其中锚点文件虽行覆盖率高（99.5%），但语义镜像文件（~35 个 0% 覆盖的 trait impl / 空 struct）拉低了整体均值
+- 锚点文件排除效果不显著（仅 15 个 187 行），说明本轮新增的覆盖拖累主要来自非锚点的语义镜像文件（`#[allow(dead_code)]` 的 trait impl / 空 struct），而非纯锚点
+- **不做排除处理**：如实报告原始值 85.02%；按技能红线"不为覆盖率硬凑测试"
+- 测试总数从 972 增至 995（+23，见 Task 4 验证），覆盖缺口集中在新增语义镜像文件，与既有的 A 类/ B 类缺口模式一致
