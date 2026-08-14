@@ -7,5 +7,5 @@ use crate::error::TemplateError;
 /// Java `MiscTemplateException(Environment, String)` 的 Rust 入口
 #[allow(dead_code)]
 pub(crate) fn new(message: impl Into<String>) -> TemplateError {
-    crate::error::_misc_template_exception::new(message)
+    crate::core::_misc_template_exception::new(message)
 }
