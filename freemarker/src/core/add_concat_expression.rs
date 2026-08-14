@@ -146,9 +146,7 @@ pub(crate) fn eval_add(env: &mut crate::core::Environment, a: &Expr, b: &Expr) -
             }
             (false, false) => unreachable!(),
         };
-        return Ok(crate::core::built_ins_for_markup_outputs::markup_model_with(
-            out, plain, fmt,
-        ));
+        return Ok(crate::core::built_ins_for_markup_outputs::markup_model_with(out, plain, fmt));
     }
     let ls = model_to_string(env, &l)?;
     let rs = model_to_string(env, &r)?;

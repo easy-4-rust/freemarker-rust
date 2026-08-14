@@ -14,8 +14,8 @@
 use crate::builtins::format::{
     format_c_number, format_c_string, format_number, format_number_with, CFormatKind,
 };
-use crate::core::built_ins_for_strings_encoding::java_string_enc;
 use crate::cache::TemplateNameFormat;
+use crate::core::built_ins_for_strings_encoding::java_string_enc;
 use crate::core::eval_util::{arg_count, arg_string, check_arg_count, coerce_to_string};
 use crate::core::{Environment, Expr};
 use crate::error::{Result, TemplateError};

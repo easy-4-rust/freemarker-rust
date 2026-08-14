@@ -613,7 +613,9 @@ fn builtin_impl(
         }
         "join" => crate::core::built_ins_for_sequences::join(env, target, args.exprs),
         "reverse" => crate::core::built_ins_for_sequences::reverse(env, target, args.exprs),
-        "seq_contains" => crate::core::built_ins_for_sequences::seq_contains(env, target, args.exprs),
+        "seq_contains" => {
+            crate::core::built_ins_for_sequences::seq_contains(env, target, args.exprs)
+        }
         // ---- 哈希（Java BuiltInsForHashes.java）----
         "keys" => crate::core::built_ins_for_hashes::keys(env, target, args.exprs),
         "values" => crate::core::built_ins_for_hashes::values(env, target, args.exprs),

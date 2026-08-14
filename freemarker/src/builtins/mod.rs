@@ -15,11 +15,15 @@
 //! - core/built_ins_for_loop_variables.rs → BuiltInsForLoopVariables.java
 //! - core/built_ins_for_existence_handling.rs → BuiltInsForExistenceHandling.java
 //! - core/built_ins_for_callables.rs      → BuiltInsForCallables.java
+//!
 //! 本模块保留 format/iso_date_format/java_date_format（聚合实现，非单一 Java 类镜像）。
 
 pub mod format;
 pub mod iso_date_format;
 pub mod java_date_format;
+
+/// 兼容转发：strings_encoding 已归位 core/，保留外部访问路径
+pub use crate::core::built_ins_for_strings_encoding as strings_encoding;
 
 use crate::core::{Environment, Expr};
 use crate::error::Result;
@@ -144,9 +148,13 @@ pub fn lookup(name: &str) -> Option<BuiltinFn> {
         "is_date_only" => Some(crate::core::built_ins_for_multiple_types::is_date_only),
         "is_time" => Some(crate::core::built_ins_for_multiple_types::is_time),
         "is_datetime" => Some(crate::core::built_ins_for_multiple_types::is_datetime),
-        "is_unknown_date_like" => Some(crate::core::built_ins_for_multiple_types::is_unknown_date_like),
+        "is_unknown_date_like" => {
+            Some(crate::core::built_ins_for_multiple_types::is_unknown_date_like)
+        }
         "namespace" => Some(crate::core::built_ins_for_multiple_types::namespace),
-        "absolute_template_name" => Some(crate::core::built_ins_for_multiple_types::absolute_template_name),
+        "absolute_template_name" => {
+            Some(crate::core::built_ins_for_multiple_types::absolute_template_name)
+        }
         "api" => Some(crate::core::built_ins_for_multiple_types::api),
         "markup_string" => Some(crate::core::built_ins_for_markup_outputs::markup_string),
         // ---- 惰性条件（BuiltInsWithLazyConditionals.java）----
