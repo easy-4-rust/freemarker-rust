@@ -15,11 +15,17 @@ impl CacheStorage for NullCacheStorage {
         None
     }
 
-    fn put(&mut self, _key: &str, _value: Rc<Template>) {}
+    fn put(&mut self, _key: &str, _value: Rc<Template>) {
+        // Java NullCacheStorage.put: "do nothing" — 不缓存任何条目
+    }
 
-    fn remove(&mut self, _key: &str) {}
+    fn remove(&mut self, _key: &str) {
+        // Java NullCacheStorage.remove: "do nothing" — 无条目可移除
+    }
 
-    fn clear(&mut self) {}
+    fn clear(&mut self) {
+        // Java NullCacheStorage.clear: "do nothing" — 无条目可清空
+    }
 }
 
 impl CacheStorageWithGetSize for NullCacheStorage {

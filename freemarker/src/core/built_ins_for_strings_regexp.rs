@@ -79,7 +79,11 @@ impl FlagSet {
     }
 
     /// 非正则模式下 m/s/c flag → 仅告警（Java checkNonRegexpFlags；replace/split 用）
-    pub fn check_non_regexp_warn(&self, _bi: &str) {}
+    /// Java 行为：通过 Logger.warn 记录日志（flagWarningsEnabled + MAX_FLAG_WARNINGS_LOGGED 限制）。
+    /// Rust 降级：无日志机制时静默忽略——strict 版本（check_non_regexp_strict）已覆盖报错场景。
+    pub fn check_non_regexp_warn(&self, _bi: &str) {
+        // Java RegexpHelper.checkNonRegexpFlags → logFlagWarning；Rust 无对应日志 → 静默忽略
+    }
 
     /// 编译为内联 flags 前缀（fancy-regex 支持 (?i)(?m)(?s)(?x)）
     fn inline_prefix(&self) -> String {
