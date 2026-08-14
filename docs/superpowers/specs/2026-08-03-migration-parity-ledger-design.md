@@ -154,6 +154,88 @@
 
 ---
 
+## java_ported 补充轮（2026-08-14）
+
+> 盘点方法：对照 Java `freemarker-core/src/test`（149 个 `*Test.java` 文件，排除辅助类后 149 个测试类）
+> 与 Rust `freemarker-test/tests/java_ported/`（119 个模块）进行 snake_case 归一化比对。
+> 归一化规则：CamelCase→snake_case + 去除 `_test` 后缀匹配 + 处理已知拼写变体（`ActualNamingConvetion`→`ActualNamingConvention`、`GetOptionalTemplate`→`GetOptionalTemplateMethod`）。
+
+### 盘点结果
+
+| 类别 | 数量 |
+|---|---|
+| Java 测试类总数 | 149 |
+| 已移植（含归一化匹配） | 116 |
+| 本次新移植（MIRRORED） | **0** |
+| NOT_APPLICABLE | **33** |
+| BLOCKED | 0 |
+| ALREADY_PORTED（名称变体） | 4 |
+
+### 已移植名称变体映射（ALREADY_PORTED，4 项）
+
+| Java 类 | Rust 模块 | 匹配方式 |
+|---|---|---|
+| `MistakenlyPublicImportAPIsTest` | `mistakenly_public_import_apis_test` | `APIs`→`apis`（非 `ap_is`） |
+| `MistakenlyPublicMacroAPIsTest` | `mistakenly_public_macro_apis_test` | 同上 |
+| `JavaCCExceptionAsEOFFixTest` | `javacc_exception_as_eof_fix_test` | `JavaCC`→`javacc`（非 `java_cc`） |
+| `ErrorMessagesTest` | `error_message_parity` | 不同命名但同一语义 |
+
+### NOT_APPLICABLE 处置表（33 项）
+
+所有 33 个未移植测试类均位于 `freemarker.ext.beans`（30 个）或 `freemarker.ext.dom`（3 个）包，
+测试 Java 反射/BeansWrapper/DOM XML 特有功能，Rust 无对应实现，全部标记为 NOT_APPLICABLE。
+
+#### freemarker.ext.beans（30 项）—— 理由：Java BeansWrapper/反射特有
+
+| # | Java 类 | 理由 |
+|---|---|---|
+| 1 | `AbstractParallelIntrospectionTest` | Java 反射并行 introspection |
+| 2 | `BeansAPINewInstanceTest` | Java Beans API newInstance |
+| 3 | `BeansWrapperCachesTest` | BeansWrapper 模型缓存 |
+| 4 | `BeansWrapperMiscTest` | BeansWrapper 杂项功能 |
+| 5 | `BeansWrapperReadOnlyTest` | BeansWrapper 只读包装 |
+| 6 | `BeansWrapperSingletonsTest` | BeansWrapper 单例 |
+| 7 | `CommonSupertypeForUnwrappingHintTest` | Java unwrap 类型推断 |
+| 8 | `DefaultMemberAccessPolicyTest` | Java 成员访问策略 |
+| 9 | `DefaultObjectWrapperMemberAccessPolicyTest` | Java DOW 成员访问 |
+| 10 | `EnumModelsTest` | Java enum 反射模型 |
+| 11 | `FineTuneMethodAppearanceTest` | Java 方法外观微调 |
+| 12 | `GetPropertyNameFromReaderMethodNameTest` | Java Bean 属性名提取 |
+| 13 | `IsApplicableTest` | Java 方法适用性判断 |
+| 14 | `IsMoreSpecificParameterTypeTest` | Java 方法参数类型特化 |
+| 15 | `Java8BeansWrapperBridgeMethodsTest` | Java 8 桥接方法 |
+| 16 | `Java8BeansWrapperTest` | Java 8 BeansWrapper |
+| 17 | `Java9InstrospectorBugWorkaroundTest` | Java 9 内省器 bug 绕过 |
+| 18 | `LegacyDefaultMemberAccessPolicyTest` | 遗留成员访问策略 |
+| 19 | `MemberAccessMonitoringTest` | 成员访问监控 |
+| 20 | `MemberSelectorListMemberAccessPolicyTest` | 成员选择器列表策略 |
+| 21 | `MethodMatcherTest` | Java 方法匹配器 |
+| 22 | `MethodUtilTest` | Java 方法工具类 |
+| 23 | `MiscNumericalOperationsTest` | BeansWrapper 数值类型转换 |
+| 24 | `ModelCacheTest` | BeansWrapper 模型缓存 |
+| 25 | `OverloadedNumberUtilTest` | 重载数值工具 |
+| 26 | `ParameterListPreferabilityTest` | 参数列表优先级 |
+| 27 | `PrallelObjectIntrospectionTest` | 并行对象内省 |
+| 28 | `PrallelStaticIntrospectionTest` | 并行静态内省 |
+| 29 | `StaticModelsTest` | Java 静态模型 |
+| 30 | `TypeFlagsTest` | BeansWrapper 类型标志位 |
+
+#### freemarker.ext.dom（3 项）—— 理由：Java DOM XML 处理特有
+
+| # | Java 类 | 理由 |
+|---|---|---|
+| 31 | `DOMConvenienceStaticsTest` | Java DOM 便捷静态方法 |
+| 32 | `DOMSiblingTest` | Java DOM 兄弟节点遍历 |
+| 33 | `DOMTest` | Java DOM 模型 |
+
+### 结论
+
+freemarker-core 的 149 个 Java 测试类中，**116 个（77.9%）已移植至 Rust java_ported**，
+剩余 33 个全部为 Java 扩展包（ext.beans/ext.dom）的反射/DOM 特有测试，无 Rust 对等实现，
+标记为 NOT_APPLICABLE。**核心包（freemarker.core/freemarker.template/freemarker.cache）测试覆盖率为 100%**。
+
+---
+
 ## 对应计划
 
 - `docs/superpowers/plans/2026-08-03-alpha1-governance-hardening.md`（Task B6 golden 收口）
