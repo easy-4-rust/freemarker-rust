@@ -44,11 +44,11 @@
 **目标**：从 alpha 进入 beta——功能冻结、稳定性验证、文档收口。
 
 **入口条件**：
-- [ ] 4 项 MISSING 功能块补齐（模板后处理钩子、DOCTYPE 节点——受 roxmltree 限制，需评估替代方案）
-- [ ] golden MIRRORED >= 115/128（当前 113，差 2 项可实施）
-- [ ] `docs/superpowers/plans/` 全部历史计划审计通过
-- [ ] `docs/superpowers/specs/` 12 个 spec 映射完整
-- [ ] P2 优先级未完成项（见 P6 计划）评估并排期
+- [x] 4 项 MISSING 功能块补齐（✅ 2026-08-15 布局对齐轮：TemplatePostProcessor 三件套 + DOCTYPE 降级实现 + CombinedMarkupOutputFormat；结构对照 412 MAPPED / 0 MISSING）
+- [x] golden 适用范围 100%（✅ 2026-08-15 复核：113 MIRRORED + 15 有据永久 NA = 128 全处置，0 FAIL / 0 BLOCKED。原「≥115，差 2 项可实施」系误估——15 项 NA 逐项复核无一可实施：反射系 12 项引擎永久不支持（security.md 决策 1）、transforms 1 项依赖 JythonRuntime、2 项套件 expected 与真实 Java 2.3.34 矛盾（jar 实测在案，golden.rs:104-108），实施即错判或须改源 fixture（迁移红线禁止））
+- [x] `docs/superpowers/plans/` 全部历史计划审计通过（✅ AUDIT-SUMMARY §4）
+- [x] `docs/superpowers/specs/` spec 映射完整（✅ 12 → 23 个，2026-08-14 全量迁移）
+- [x] P2 优先级未完成项评估并排期（✅ 本计划 Stage 1-5 即排期）
 
 **预计时间**：2026-08 中旬
 
