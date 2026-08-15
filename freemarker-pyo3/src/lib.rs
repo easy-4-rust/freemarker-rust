@@ -25,8 +25,9 @@ use ::freemarker as fm;
 
 use crate::errors::{template_error_to_pyerr, FreeMarkerError};
 use crate::wrapper::{PyObjectWrapper, PyObjectWrapperInner};
-use fm::cache::StringLoader;
-use fm::core::TzSetting;
+use fm::builtins::format::CFormatKind;
+use fm::cache::{LookupStrategyKind, StringLoader};
+use fm::core::{AutoEscaping, OutputFormatKind, TzSetting};
 use fm::template::TModel;
 use fm::Template;
 use pyo3::prelude::*;
@@ -121,6 +122,231 @@ impl FmConfiguration {
             inner: template,
             wrapper: self.wrapper.clone(),
         })
+    }
+
+    // ===================================================================
+    // 配置桥接方法 —— 对应 Java Configuration / Configurable 设置
+    // ===================================================================
+
+    // --- 格式/渲染设置（直写 Settings 字段）---
+
+    /// 对应 Java `Configuration.setLocale(Locale)`
+    fn set_locale(&mut self, locale: String) {
+        self.inner.settings.locale = locale;
+    }
+
+    /// 对应 Java `Configuration.setTimeZone(TimeZone)`
+    /// 解析 IANA 名称或 GMT±HH:MM 固定偏移；非法值抛 ValueError。
+    fn set_time_zone(&mut self, tz: String) -> PyResult<()> {
+        match tz.parse::<TzSetting>() {
+            Ok(t) => {
+                self.inner.settings.time_zone = t;
+                self.inner.settings.time_zone_id = fm::core::java_time_zone_id(&tz);
+                Ok(())
+            }
+            Err(()) => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid time zone: {tz}"
+            ))),
+        }
+    }
+
+    /// 对应 Java `Configuration.setNumberFormat(String)`
+    fn set_number_format(&mut self, fmt: String) {
+        self.inner.settings.number_format = fmt;
+    }
+
+    /// 对应 Java `Configuration.setBooleanFormat(String)`
+    fn set_boolean_format(&mut self, fmt: String) {
+        self.inner.settings.boolean_format = fmt;
+    }
+
+    /// 对应 Java `Configuration.setDateFormat(String)`
+    fn set_date_format(&mut self, fmt: String) {
+        self.inner.settings.date_format = fmt;
+    }
+
+    /// 对应 Java `Configuration.setTimeFormat(String)`
+    fn set_time_format(&mut self, fmt: String) {
+        self.inner.settings.time_format = fmt;
+    }
+
+    /// 对应 Java `Configuration.setDateTimeFormat(String)`
+    fn set_date_time_format(&mut self, fmt: String) {
+        self.inner.settings.date_time_format = fmt;
+    }
+
+    /// 对应 Java `Configuration.setOutputFormat(OutputFormat)`
+    /// 接受 "HTML"/"XML"/"XHTML"/"PlainText"/"JavaScript"/"JSON"/"CSS"/"RTF"。
+    fn set_output_format(&mut self, name: String) -> PyResult<()> {
+        match OutputFormatKind::parse(&name) {
+            Some(kind) => {
+                self.inner.settings.output_format = kind;
+                Ok(())
+            }
+            None => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Unknown output format: {name}"
+            ))),
+        }
+    }
+
+    /// 对应 Java `Configuration.setAutoEscapingPolicy(int)`
+    /// 接受 "ON"/"OFF"/"DEFAULT"（大小写不敏感）。
+    fn set_auto_escaping(&mut self, policy: String) -> PyResult<()> {
+        match policy.to_lowercase().as_str() {
+            "on" => {
+                self.inner.settings.auto_escaping = AutoEscaping::On;
+                Ok(())
+            }
+            "off" => {
+                self.inner.settings.auto_escaping = AutoEscaping::Off;
+                Ok(())
+            }
+            "default" => {
+                self.inner.settings.auto_escaping = AutoEscaping::Default;
+                Ok(())
+            }
+            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid auto escaping policy: {policy}"
+            ))),
+        }
+    }
+
+    /// 对应 Java `Configuration.setCFormat(CFormat)`
+    /// 接受 "JavaScript or JSON"/"JavaScript"/"JSON"/"Java"/"legacy"/"XS"。
+    fn set_c_format(&mut self, name: String) -> PyResult<()> {
+        match CFormatKind::parse(&name) {
+            Some(kind) => {
+                self.inner.settings.c_format = kind;
+                Ok(())
+            }
+            None => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Unknown C format: {name}"
+            ))),
+        }
+    }
+
+    /// 对应 Java `Configuration.setURLEscapingCharset(String)`
+    fn set_url_escaping_charset(&mut self, charset: String) {
+        self.inner.settings.url_escaping_charset = charset;
+    }
+
+    /// 对应 Java `Configuration.setOutputEncoding(String)`
+    /// 仅存储；process() 返回 str 语义不变（UTF-8 解码）。
+    fn set_output_encoding(&mut self, encoding: String) {
+        self.inner.settings.output_encoding = encoding;
+    }
+
+    // --- 解析期设置 ---
+
+    /// 对应 Java `Configuration.setStrictSyntaxMode(boolean)`
+    fn set_strict_syntax(&mut self, strict: bool) {
+        self.inner.settings.strict_syntax = strict;
+    }
+
+    /// 对应 Java `Configuration.setWhitespaceStripping(boolean)`
+    fn set_whitespace_stripping(&mut self, strip: bool) {
+        self.inner.settings.whitespace_stripping = strip;
+    }
+
+    /// 对应 Java `Configuration.setClassicCompatible(boolean)`（Configurable 级）
+    fn set_classic_compatible(&mut self, compat: bool) {
+        self.inner.settings.classic_compatible = compat;
+    }
+
+    /// 对应 Java `Configuration.setDefaultEncoding(String)`（input_encoding 设置）
+    fn set_input_encoding(&mut self, encoding: String) {
+        self.inner.settings.input_encoding = Some(encoding);
+    }
+
+    // --- 行为设置 ---
+
+    /// 对应 Java `Configurable.setFallbackOnNullLoopVariable(boolean)`
+    fn set_fallback_on_null_loop_variable(&mut self, fallback: bool) {
+        self.inner.settings.fallback_on_null_loop_variable = fallback;
+    }
+
+    /// 对应 Java `Configuration.setLocalizedLookup(boolean)`
+    fn set_localized_lookup(&mut self, localized: bool) {
+        self.inner.settings.localized_lookup = localized;
+    }
+
+    /// 对应 Java `Configuration.setTemplateExceptionHandler(TemplateExceptionHandler)`
+    /// 接受 "rethrow"/"debug"/"html_debug"/"ignore"。
+    fn set_template_exception_handler(&mut self, handler: String) -> PyResult<()> {
+        match handler.to_lowercase().as_str() {
+            "rethrow" | "debug" | "html_debug" | "ignore" => {
+                self.inner.settings.template_exception_handler = handler;
+                Ok(())
+            }
+            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid template exception handler: {handler}"
+            ))),
+        }
+    }
+
+    /// 对应 Java `Configuration.setLazyImports(boolean)`
+    fn set_lazy_imports(&mut self, lazy: bool) {
+        self.inner.set_lazy_imports(lazy);
+    }
+
+    /// 对应 Java `Configurable.setLazyAutoImports(Boolean)`
+    /// 接受 True/False/None（None = 未设置 → 回退 lazyImports）。
+    fn set_lazy_auto_imports(&mut self, lazy: Option<bool>) {
+        self.inner.set_lazy_auto_imports(lazy);
+    }
+
+    /// 对应 Java `Configuration.setTemplateUpdateDelay(int)`
+    fn set_delay(&mut self, delay: u64) {
+        self.inner.settings.delay = delay;
+    }
+
+    // --- 模板查找 ---
+
+    /// 对应 Java `Configuration.addAutoImport(String, String)`
+    /// 可多次累积（同名覆盖，对齐 Java addAutoImports）。
+    fn set_auto_import(&mut self, namespace_var_name: String, template_name: String) {
+        self.inner
+            .add_auto_import(&namespace_var_name, &template_name);
+    }
+
+    /// 对应 Java `Configuration.addAutoInclude(String)`
+    /// 可多次累积（同名去重，对齐 Java addAutoIncludes）。
+    fn set_auto_include(&mut self, template_name: String) {
+        self.inner.add_auto_include(&template_name);
+    }
+
+    /// 对应 Java `Configuration.setTemplateLookupStrategy(TemplateLookupStrategy)`
+    /// 当前仅支持 "default"（Default020300）。
+    fn set_lookup_strategy(&mut self, name: String) -> PyResult<()> {
+        match name.to_lowercase().as_str() {
+            "default" => {
+                self.inner.settings.lookup_strategy = LookupStrategyKind::Default020300;
+                Ok(())
+            }
+            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Unknown lookup strategy: {name}"
+            ))),
+        }
+    }
+
+    // --- Getter ---
+
+    /// 对应 Java `Configuration.getLocale()`
+    #[getter]
+    fn get_locale(&self) -> String {
+        self.inner.settings.locale.clone()
+    }
+
+    /// 对应 Java `Configuration.getOutputEncoding()`
+    #[getter]
+    fn get_output_encoding(&self) -> String {
+        self.inner.settings.output_encoding.clone()
+    }
+
+    /// 对应 Java `Configuration.getNumberFormat()`
+    #[getter]
+    fn get_number_format(&self) -> String {
+        self.inner.settings.number_format.clone()
     }
 }
 

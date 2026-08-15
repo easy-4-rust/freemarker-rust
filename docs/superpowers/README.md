@@ -147,3 +147,5 @@ docs/superpowers/
 | `2026-08-04-coverage-test-completion.md` | 覆盖率补齐 + 安全文档 | 2026-08-04 | XML 深度覆盖 + 单元测试补全 + 对照文档更新 |
 | `2026-08-04-p6-polish-alignment.md` | P6 打磨与对齐 | 2026-08-04~05 | 文件拆分 + 语义补全 + 结构对齐 |
 | `2026-08-05-parser-on-evaljson.md` | parser #on/?eval_json | 2026-08-05 | #on 指令 + ?eval_json 内建（P6 收官） |
+| `2026-08-14-layout-parity-migration.md` | 布局对齐轮 | 2026-08-14 | 472 文件 1:1 + PostProcessor/DOCTYPE 实现 |
+| `2026-08-15-production-readiness.md` | 生产就绪（beta.0） | 2026-08-15 | pyo3 35 方法 + grammar 拆分 + soak + 发版 |

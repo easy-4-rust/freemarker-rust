@@ -9,16 +9,16 @@
 
 | 指标 | 当前值 | 备注 |
 |------|--------|------|
-| 当前版本 | `0.1.0-alpha.1` | tag 于 2026-08-03 |
+| 当前版本 | `0.1.0-beta.0` | tag 于 2026-08-15（生产就绪计划 Stage 0-5 收口） |
 | golden MIRRORED | **113/128**（88%） | 0 FAIL / 0 BLOCKED，15 项永久 NA |
 | builtins 覆盖 | **183/183**（100%） | Java 2.3.34 全集 |
-| 测试数 | **1009** passing | cargo test --workspace |
-| .rs 文件数 | **291**（freemarker/src） | 从 P0 的 ~10 增长到 291 |
+| 测试数 | **997** workspace + pytest 81 | cargo test / pytest（2026-08-15 实测） |
+| .rs 文件数 | **472**（freemarker/src） | 布局对齐轮 291→472（412 MAPPED / 0 MISSING） |
 | 结构对照 | 422 MAPPED / 4 MISSING / 115 NA-DESIGN | 见 `docs/superpowers/specs/2026-08-04-java-rust-structure-mapping-design.md` |
 | 公共 API 基线 | 0 diff（locked） | `docs/release/api-baseline.txt` |
 | proptest fuzz | 10000 cases | expression + parser target |
 | criterion 基准 | 5 metrics | 见 `docs/release/benchmarks.md` |
-| pyo3 发布就绪 | 元数据完整，未实际发布 | pyproject.toml + LICENSE 完备 |
+| pyo3 API 面 | **35 方法**（原 7） | 2026-08-15 Stage 2；发布仍属 0.1.0 |
 
 ### 1.0 晋级条件 8 项状态
 
@@ -44,11 +44,11 @@
 **目标**：从 alpha 进入 beta——功能冻结、稳定性验证、文档收口。
 
 **入口条件**：
-- [ ] 4 项 MISSING 功能块补齐（模板后处理钩子、DOCTYPE 节点——受 roxmltree 限制，需评估替代方案）
-- [ ] golden MIRRORED >= 115/128（当前 113，差 2 项可实施）
-- [ ] `docs/superpowers/plans/` 全部历史计划审计通过
-- [ ] `docs/superpowers/specs/` 12 个 spec 映射完整
-- [ ] P2 优先级未完成项（见 P6 计划）评估并排期
+- [x] 4 项 MISSING 功能块补齐（✅ 2026-08-15 布局对齐轮：TemplatePostProcessor 三件套 + DOCTYPE 降级实现 + CombinedMarkupOutputFormat；结构对照 412 MAPPED / 0 MISSING）
+- [x] golden 适用范围 100%（✅ 2026-08-15 复核：113 MIRRORED + 15 有据永久 NA = 128 全处置，0 FAIL / 0 BLOCKED。原「≥115，差 2 项可实施」系误估——15 项 NA 逐项复核无一可实施：反射系 12 项引擎永久不支持（security.md 决策 1）、transforms 1 项依赖 JythonRuntime、2 项套件 expected 与真实 Java 2.3.34 矛盾（jar 实测在案，golden.rs:104-108），实施即错判或须改源 fixture（迁移红线禁止））
+- [x] `docs/superpowers/plans/` 全部历史计划审计通过（✅ AUDIT-SUMMARY §4）
+- [x] `docs/superpowers/specs/` spec 映射完整（✅ 12 → 23 个，2026-08-14 全量迁移）
+- [x] P2 优先级未完成项评估并排期（✅ 本计划 Stage 1-5 即排期）
 
 **预计时间**：2026-08 中旬
 
