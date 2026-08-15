@@ -92,15 +92,10 @@ jobs:
       - name: List artifacts
         run: ls -la dist/
 
-      - name: Publish to PyPI (API token)
-        if: ${{ secrets.PYPI_API_TOKEN != '' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist
-          password: ${{ secrets.PYPI_API_TOKEN }}
-
       - name: Publish to PyPI (Trusted Publishing)
-        if: ${{ secrets.PYPI_API_TOKEN == '' }}
+        # OIDC Trusted Publishing（PyPI 发布者已配置：本仓库 + 本 workflow + env pypi）。
+        # 注意：secrets 上下文不可用于 step 级 if:（GitHub 表达式限制，曾致工作流
+        # 解析失败、tag 从未触发）。如需 API token 认证，改用 password 参数传入。
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
