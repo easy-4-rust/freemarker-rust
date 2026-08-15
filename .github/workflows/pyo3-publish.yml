@@ -1,17 +1,14 @@
 name: Publish pyo3 (PyPI)
 
-# Python 绑定发布（用户决策：准备到可发布，实际上传由仓库维护者手动触发）。
-# 流程：tag 触发 → 构建 sdist + 各平台 wheel → 上传 PyPI。
-# 认证双路径：
-#   1. 优先仓库 Secrets 的 PYPI_API_TOKEN（PyPI Account settings → API tokens 生成）
-#   2. 无 token 时走 Trusted Publishing（需在 PyPI 配置发布者：
-#      https://docs.pypi.org/trusted-publishers/ —— GitHub 用户 easy-4-rust、
-#      仓库 freemarker-rust、Environment 留空或填 pypi、项目 freemarker-pyo3）
+# Python 绑定发布：tag pyo3-v* 触发 → 跨平台 wheel 矩阵构建（abi3-py39，
+# 每平台单轮子覆盖 CPython ≥3.9）+ sdist → Trusted Publishing 上传 PyPI。
+# 认证：优先仓库 Secrets 的 PYPI_API_TOKEN，无 token 走 OIDC Trusted Publishing
+# （PyPI 发布者配置：easy-4-rust/freemarker-rust + 本 workflow + environment pypi）。
 
 on:
   push:
     tags:
-      - 'pyo3-v*'        # 示例：pyo3-v0.1.0-alpha.1
+      - 'pyo3-v*'        # 示例：pyo3-v0.1.0-beta.0
   workflow_dispatch: {}  # 手动触发（重跑发布无需新 tag）
 
 permissions:
@@ -19,30 +16,83 @@ permissions:
   id-token: write        # Trusted Publishing
 
 jobs:
-  build-and-publish:
-    name: Build & publish to PyPI
-    runs-on: ubuntu-latest
-    environment: pypi
+  build-wheels:
+    name: Build wheel (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            target: x86_64
+            manylinux: "2_28"
+          - os: ubuntu-latest
+            platform: linux-aarch64
+            target: aarch64
+            manylinux: "2_28"
+          - os: macos-14          # arm64
+            platform: macos-arm64
+            target: aarch64
+          - os: macos-13          # x86_64
+            platform: macos-x86_64
+            target: x86_64
+          - os: windows-latest
+            platform: windows-x86_64
+            target: x86_64
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Build wheel (abi3-py39)
+        uses: PyO3/maturin-action@v1
         with:
-          python-version: "3.13"
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          # abi3-py39：单轮子覆盖 CPython ≥3.9（pyproject §abi3 注释的正式启用）
+          args: --release --features pyo3/abi3-py39 --out dist
+          working-directory: freemarker-pyo3
+          sccache: true
 
-      - name: Install maturin
-        run: pip install maturin
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: freemarker-pyo3/dist/*.whl
 
-      - name: Build sdist and wheels
-        working-directory: freemarker-pyo3
-        run: maturin build --release --sdist --out ../dist
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          args: --release --sdist --out dist
+          working-directory: freemarker-pyo3
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: freemarker-pyo3/dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
 
       - name: Publish to PyPI (API token)
-        # PYPI_API_TOKEN secret 已配置 → token 认证
         if: ${{ secrets.PYPI_API_TOKEN != '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -50,10 +100,7 @@ jobs:
           password: ${{ secrets.PYPI_API_TOKEN }}
 
       - name: Publish to PyPI (Trusted Publishing)
-        # 无 token → OIDC Trusted Publishing（需 PyPI 发布者配置）
         if: ${{ secrets.PYPI_API_TOKEN == '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
-          # TestPyPI 演练用：
-          # repository-url: https://test.pypi.org/legacy/
