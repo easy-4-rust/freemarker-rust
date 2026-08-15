@@ -54,40 +54,40 @@ impl TemplateError {
     /// 附加指令栈（Java TemplateException 层级；实现见
     /// error/template_exception.rs::with_stack）
     pub fn with_stack(self, stack: Vec<crate::error::StackFrame>) -> Self {
-        crate::error::template_exception::with_stack(self, stack)
+        crate::core::template_exception::with_stack(self, stack)
     }
 
     /// 变量缺失（Java InvalidReferenceException；实现见
     /// error/invalid_reference_exception.rs::new_instance）
     pub fn invalid_reference(name: impl Into<String>) -> Self {
-        crate::error::invalid_reference_exception::new_instance(name)
+        crate::core::invalid_reference_exception::new_instance(name)
     }
 
     /// 带 blame 表达式位置的变量缺失（Java `InvalidReferenceException.getInstance(blamed, env)`；
     /// 渲染层未提供位置时以元素位置回退）
     pub fn invalid_reference_at(name: impl Into<String>, span: Span) -> Self {
-        crate::error::invalid_reference_exception::new_instance_at(name, span)
+        crate::core::invalid_reference_exception::new_instance_at(name, span)
     }
 
     /// 附加点链缺失 Tip（Java Dot._eval 的 `newInvalidReferenceException`）
     pub fn with_dot_tip(self) -> Self {
-        crate::error::invalid_reference_exception::with_dot_tip(self)
+        crate::core::invalid_reference_exception::with_dot_tip(self)
     }
 
     /// 类型不匹配（Java UnexpectedTypeException 族；实现见
     /// error/unexpected_type_exception.rs）
     pub fn type_mismatch(expected: &'static str, actual: impl Into<String>) -> Self {
-        crate::error::unexpected_type_exception::new_type_mismatch(expected, actual)
+        crate::core::unexpected_type_exception::new_type_mismatch(expected, actual)
     }
 
     /// 带 blame 表达式位置的类型不匹配
     pub fn type_mismatch_at(expected: &'static str, actual: impl Into<String>, span: Span) -> Self {
-        crate::error::unexpected_type_exception::new_type_mismatch_at(expected, actual, span)
+        crate::core::unexpected_type_exception::new_type_mismatch_at(expected, actual, span)
     }
 
     /// 附加 blamer 前缀与 blame 表达式（Java `_ErrorDescriptionBuilder.blame(blamed)`）
     pub fn with_blame(self, node_type_symbol: &str, role: &str, blamed_expr: &str) -> Self {
-        crate::error::unexpected_type_exception::with_blame(
+        crate::core::unexpected_type_exception::with_blame(
             self,
             node_type_symbol,
             role,
@@ -104,7 +104,7 @@ impl TemplateError {
         template_name: &str,
         span: Span,
     ) -> Self {
-        crate::error::unexpected_type_exception::with_blame_at(
+        crate::core::unexpected_type_exception::with_blame_at(
             self,
             node_type_symbol,
             role,
@@ -116,12 +116,12 @@ impl TemplateError {
 
     /// 附加赋值目标变量（Java `UnexpectedTypeException(blamedAssignmentTargetVarName, ...)`）
     pub fn with_assignment_target(self, target: &str) -> Self {
-        crate::error::unexpected_type_exception::with_assignment_target(self, target)
+        crate::core::unexpected_type_exception::with_assignment_target(self, target)
     }
 
     /// 附加 Tip（Java `_ErrorDescriptionBuilder.tip(...)`）
     pub fn with_tip(self, tip: &str) -> Self {
-        crate::error::unexpected_type_exception::with_tip(self, tip)
+        crate::core::unexpected_type_exception::with_tip(self, tip)
     }
 
     /// 附加 blame 位置（模板名 + 表达式起始行列；Java `Expression.getStartLocation` +
@@ -158,13 +158,13 @@ impl TemplateError {
 
     /// 覆盖期望类型描述（Java `unexpectedTypeErrorDescription` 的 expectedTypesDesc）
     pub fn with_expected_phrase(self, phrase: &str) -> Self {
-        crate::error::unexpected_type_exception::with_expected_phrase(self, phrase)
+        crate::core::unexpected_type_exception::with_expected_phrase(self, phrase)
     }
 
     /// 通用运行时错误（Java _MiscTemplateException；实现见
     /// error/_misc_template_exception.rs::new）
     pub fn misc(message: impl Into<String>) -> Self {
-        crate::error::_misc_template_exception::new(message)
+        crate::core::_misc_template_exception::new(message)
     }
 
     pub fn to_user_message(&self) -> String {
@@ -256,17 +256,17 @@ impl TemplateError {
 /// Java InvalidReferenceException 的提示段（InvalidReferenceException.java，
 /// `Tip:` 字面，jar 实测逐字）
 pub(crate) const INVALID_REFERENCE_TIP: &str =
-    crate::error::invalid_reference_exception::INVALID_REFERENCE_TIP;
+    crate::core::invalid_reference_exception::INVALID_REFERENCE_TIP;
 
 /// 期望类型描述的 a/an 形式（Java `unexpectedTypeErrorDescription` 的 expectedTypesDesc；
 /// 实现见 error/unexpected_type_exception.rs）
 fn expected_phrase_for(expected: &'static str) -> String {
-    crate::error::unexpected_type_exception::expected_phrase_for(expected)
+    crate::core::unexpected_type_exception::expected_phrase_for(expected)
 }
 
 /// `_DelayedAOrAn`：按首字母元音判定 a/an（实现见 error/unexpected_type_exception.rs）
 fn a_or_an(type_name: &str) -> String {
-    crate::error::unexpected_type_exception::a_or_an(type_name)
+    crate::core::unexpected_type_exception::a_or_an(type_name)
 }
 
 /// Tips 段（Java `_ErrorDescriptionBuilder.toString` :134-164）：

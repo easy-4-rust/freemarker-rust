@@ -19,6 +19,8 @@ pub struct XmlNode {
     node_id: NodeId,
     /// Some(属性名)：包装的是 node_id 元素上的属性节点（Java Attr 节点）
     attr: Option<String>,
+    /// true: this node represents a DocumentType node
+    doctype: bool,
 }
 
 impl XmlNode {
@@ -29,6 +31,7 @@ impl XmlNode {
             node_id: tree.doc.root().id(),
             tree,
             attr: None,
+            doctype: false,
         })
     }
 
@@ -56,9 +59,13 @@ impl XmlNode {
             .collect()
     }
 
-    /// 子节点（Java simplify 后：注释/PI 已移除；text 与元素保留）
+    /// 子节点（Java simplify 后：注释/PI 已移除；text 与元素保留；
+    ///  文档节点含 doctype 时按 DOM 顺序注入 DocumentType 节点）
     fn child_nodes(&self) -> Vec<XmlNode> {
         let mut out = Vec::new();
+        // 文档节点且有 doctype 时，在第一个元素子节点前注入 DocumentType 节点
+        let is_root = self.node().node_type() == roxmltree::NodeType::Root;
+        let mut doctype_injected = false;
         for c in self.node().children() {
             if matches!(
                 c.node_type(),
@@ -66,10 +73,30 @@ impl XmlNode {
             ) {
                 continue;
             }
+            // 在第一个元素子节点前注入 doctype 节点（DOM 顺序：doctype 在元素前）
+            if is_root && !doctype_injected && c.is_element() && self.tree.doctype.is_some() {
+                out.push(XmlNode {
+                    tree: self.tree.clone(),
+                    node_id: self.node_id, // 复用根节点 id（doctype 不是真实 DOM 节点）
+                    attr: None,
+                    doctype: true,
+                });
+                doctype_injected = true;
+            }
             out.push(XmlNode {
                 tree: self.tree.clone(),
                 node_id: c.id(),
                 attr: None,
+                doctype: false,
+            });
+        }
+        // 若没有元素子节点但有 doctype（如空文档），仍注入
+        if is_root && !doctype_injected && self.tree.doctype.is_some() {
+            out.push(XmlNode {
+                tree: self.tree.clone(),
+                node_id: self.node_id,
+                attr: None,
+                doctype: true,
             });
         }
         out
@@ -97,6 +124,7 @@ impl XmlNode {
                     tree: self.tree.clone(),
                     node_id: c.id(),
                     attr: None,
+                    doctype: false,
                 });
             }
         }
@@ -121,6 +149,7 @@ impl XmlNode {
                     tree: self.tree.clone(),
                     node_id: c.id(),
                     attr: None,
+                    doctype: false,
                 });
             }
         }
@@ -144,6 +173,7 @@ impl XmlNode {
                     tree: self.tree.clone(),
                     node_id: d.id(),
                     attr: None,
+                    doctype: false,
                 });
             }
         }
@@ -152,6 +182,11 @@ impl XmlNode {
 
     /// 元素本地名 / 文本 / 属性名（Java getNodeName 的各实现）
     fn node_name(&self) -> Option<String> {
+        if self.doctype {
+            // Java DocumentTypeModel.getNodeName："@document_type$" + name
+            let name = self.tree.doctype.as_ref()?.name.clone();
+            return Some(format!("@document_type${name}"));
+        }
         if let Some(an) = &self.attr {
             // Java AttributeNodeModel.getNodeName：localName
             return Some(local_part(an));
@@ -172,8 +207,12 @@ impl XmlNode {
         }
     }
 
-    /// 节点类型（Java NodeModel.getNodeType：CDATA 也算 "text"；PI = "pi"）
+    /// 节点类型（Java NodeModel.getNodeType：CDATA 也算 "text"；PI = "pi"；
+    ///  doctype = "document_type"）
     fn node_type(&self) -> String {
+        if self.doctype {
+            return "document_type".to_string();
+        }
         if self.is_attr() {
             return "attribute".to_string();
         }
@@ -232,6 +271,7 @@ impl XmlNode {
                             tree: self.tree.clone(),
                             node_id: c.id(),
                             attr: None,
+                            doctype: false,
                         };
                         out.push_str(&sub.text_content());
                     }
@@ -246,6 +286,7 @@ impl XmlNode {
                             tree: self.tree.clone(),
                             node_id: c.id(),
                             attr: None,
+                            doctype: false,
                         };
                         out.push_str(&sub.text_content());
                     }
@@ -257,8 +298,18 @@ impl XmlNode {
     }
 
     /// 标量值（Java 各模型 getAsString：元素仅允许无元素子节点；文本 = data；
-    /// 属性 = value；PI = data；注释 = data）
+    /// 属性 = value；PI = data；注释 = data；doctype = 原始声明串）
     fn scalar_value(&self) -> Result<String> {
+        // doctype 节点：返回原始声明串（Java 的 getAsString 是 ProcessingInstruction
+        // 误转型怪癖——按 DOM 真实语义降级为返回原始声明串）
+        if self.doctype {
+            return Ok(self
+                .tree
+                .doctype
+                .as_ref()
+                .map(|d| d.raw.clone())
+                .unwrap_or_default());
+        }
         if let Some(v) = self.attribute_value() {
             return Ok(v);
         }
@@ -313,6 +364,7 @@ impl XmlNode {
                 tree: self.tree.clone(),
                 node_id: self.node_id,
                 attr: None,
+                doctype: false,
             });
         }
         let n = self.node();
@@ -323,6 +375,7 @@ impl XmlNode {
             tree: self.tree.clone(),
             node_id: p.id(),
             attr: None,
+            doctype: false,
         })
     }
 
@@ -332,6 +385,7 @@ impl XmlNode {
             tree: self.tree.clone(),
             node_id: self.tree.doc.root().id(),
             attr: None,
+            doctype: false,
         }
     }
 
@@ -342,6 +396,7 @@ impl XmlNode {
             tree: self.tree.clone(),
             node_id: n.id(),
             attr: None,
+            doctype: false,
         })
     }
 
@@ -353,6 +408,12 @@ impl XmlNode {
     pub(crate) fn hash_get(&self, env: &mut Environment, key: &str) -> Result<Option<TModel>> {
         if key.starts_with("@@") {
             return Ok(Some(self.atat_key(env, key)?));
+        }
+        if self.doctype {
+            // Java DocumentTypeModel.get：访问 DTD 属性不支持
+            return Err(TemplateError::misc(
+                "accessing properties of a DTD is not currently supported",
+            ));
         }
         if self.is_attr() {
             // 属性节点：Java NodeModel.get → XPath（子集在属性节点上无意义）
@@ -399,6 +460,7 @@ impl XmlNode {
                                 tree: self.tree.clone(),
                                 node_id: self.node_id,
                                 attr: Some(a.name().to_string()),
+                                doctype: false,
                             }
                             .into_model()
                         })
@@ -476,6 +538,7 @@ impl XmlNode {
                     tree: self.tree.clone(),
                     node_id: self.node_id,
                     attr: Some(a.name().to_string()),
+                    doctype: false,
                 });
             }
             // 前缀形式 `p:attr`：解析 p → URI，匹配 (URI, localName)
@@ -496,6 +559,7 @@ impl XmlNode {
                             tree: self.tree.clone(),
                             node_id: self.node_id,
                             attr: Some(local.to_string()),
+                            doctype: false,
                         });
                     }
                 }
@@ -569,6 +633,7 @@ impl XmlNode {
                             tree: self.tree.clone(),
                             node_id: self.node_id,
                             attr: Some(a.name().to_string()),
+                            doctype: false,
                         }
                         .into_model()
                     })
@@ -621,6 +686,7 @@ impl XmlNode {
                         tree: self.tree.clone(),
                         node_id: t.id(),
                         attr: None,
+                        doctype: false,
                     }
                     .into_model()),
                     None => Ok(TModel::from_sequence(Vec::new())),
@@ -736,6 +802,7 @@ impl XmlNode {
                     tree: self.tree.clone(),
                     node_id: d.id(),
                     attr: None,
+                    doctype: false,
                 };
                 if wildcard || d_node.matches_name(env, rest) {
                     matches.push(d_node);
@@ -920,8 +987,9 @@ impl XmlNode {
 
     /// 构造 TModel（node + node_hash + scalar 角色；Java NodeModel 单对象多角色）
     pub(crate) fn into_model(self) -> TModel {
-        // Java：element/text/comment/attr/PI 实现 TemplateScalarModel；document 不实现
-        let is_document = self.node_type() == "document";
+        // Java：element/text/comment/attr/PI 实现 TemplateScalarModel；document 不实现；
+        // doctype 实现 TemplateScalarModel（返回原始声明串）
+        let is_document = self.node_type() == "document" && !self.doctype;
         let mut m = TModel::nothing();
         m.node = Some(Rc::new(self.clone()) as Rc<dyn TemplateNodeModel>);
         m.node_hash = Some(Rc::new(self.clone()) as Rc<dyn NodeHashModel>);
@@ -940,6 +1008,12 @@ impl TemplateNodeModel for XmlNode {
     }
 
     fn children(&self) -> Result<Vec<TModel>> {
+        if self.doctype {
+            // Java DocumentTypeModel.getChildren：DTD 子节点不支持
+            return Err(TemplateError::misc(
+                "entering the child nodes of a DTD node is not currently supported",
+            ));
+        }
         if self.is_attr() {
             return Ok(Vec::new());
         }
@@ -1183,16 +1257,19 @@ mod sibling_tests {
             tree: doc.tree.clone(),
             node_id: a.id(),
             attr: None,
+            doctype: false,
         };
         let b_node = XmlNode {
             tree: doc.tree.clone(),
             node_id: b.id(),
             attr: None,
+            doctype: false,
         };
         let c_node = XmlNode {
             tree: doc.tree.clone(),
             node_id: c.id(),
             attr: None,
+            doctype: false,
         };
 
         // a 的下一个兄弟 = text 节点（不是 b；b 是 text 之后）

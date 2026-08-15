@@ -1,46 +1,5 @@
 pub mod freemarker
 pub mod freemarker::builtins
-pub mod freemarker::builtins::callables
-pub fn freemarker::builtins::callables::with_args(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::callables::with_args_last(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::dates
-pub fn freemarker::builtins::dates::date(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::date_builtin(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>, freemarker::value::DateType) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::date_if_unknown(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::datetime(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::datetime_if_unknown(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_fz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_h(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_h_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_local(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_local_h(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_local_h_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_local_m(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_local_m_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_local_ms(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_local_ms_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_local_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_m(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_m_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_ms(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_ms_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc_fz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc_h(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc_h_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc_m(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc_m_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc_ms(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc_ms_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::iso_utc_nz(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::time(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::dates::time_if_unknown(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::existence
-pub fn freemarker::builtins::existence::blank_to_null(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::existence::empty_to_null(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::existence::trim_to_null(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::format
 pub enum freemarker::builtins::format::CFormatKind
 pub freemarker::builtins::format::CFormatKind::Java
@@ -134,9 +93,6 @@ pub fn freemarker::builtins::format::format_decimal(&freemarker::builtins::forma
 pub fn freemarker::builtins::format::format_number(&freemarker::Environment<'_>, &freemarker::value::TNumber) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::builtins::format::format_number_with(&str, &str, &freemarker::value::TNumber) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::builtins::format::parse_decimal_format(&str, &str) -> freemarker::Result<freemarker::builtins::format::DecimalFmt>
-pub mod freemarker::builtins::hashes
-pub fn freemarker::builtins::hashes::keys(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::hashes::values(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::iso_date_format
 pub enum freemarker::builtins::iso_date_format::Accuracy
 pub freemarker::builtins::iso_date_format::Accuracy::Hours
@@ -242,92 +198,6 @@ pub mod freemarker::builtins::java_date_format
 pub fn freemarker::builtins::java_date_format::format_java(&str, &freemarker::value::DateValue, &str, &freemarker::core::TzSetting) -> freemarker::Result<alloc::string::String>
 pub fn freemarker::builtins::java_date_format::parse_java(&str, &str, freemarker::value::DateType, &str, &freemarker::core::TzSetting) -> freemarker::Result<freemarker::value::DateValue>
 pub fn freemarker::builtins::java_date_format::resolve_named_style(&str, freemarker::value::DateType, &str) -> core::option::Option<alloc::string::String>
-pub mod freemarker::builtins::lazy
-pub fn freemarker::builtins::lazy::switch(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::lazy::then(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::loop_vars
-pub fn freemarker::builtins::loop_vars::item_cycle(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::loop_vars::item_parity(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::loop_vars::item_parity_cap(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::markup_outputs
-pub fn freemarker::builtins::markup_outputs::esc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::markup_outputs::markup_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::markup_outputs::no_esc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::multi
-pub fn freemarker::builtins::multi::absolute_template_name(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::api(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::c(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::cn(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::is_collection_ex(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::is_date_only(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::is_datetime(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::is_time(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::is_unknown_date_like(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::namespace(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::multi::string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::nodes
-pub fn freemarker::builtins::nodes::ancestors(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::nodes::children(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::nodes::next_sibling(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::nodes::node_name(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::nodes::node_namespace(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::nodes::node_type(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::nodes::parent(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::nodes::previous_sibling(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::nodes::root(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::numbers
-pub fn freemarker::builtins::numbers::abs(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::byte(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::ceiling(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::floor(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::is_infinite(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::is_nan(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::lower_abc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::number_to_date(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::number_to_datetime(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::number_to_time(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::round(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::short(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::numbers::upper_abc(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::sequences
-pub fn freemarker::builtins::sequences::chunk(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::drop_while(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::filter(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::join(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::map(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::max(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::min(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::reverse(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::seq_contains(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::seq_index_of(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::seq_last_index_of(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::sequence(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::sort(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::sort_by(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::sequences::take_while(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::strings
-pub fn freemarker::builtins::strings::c_lower_case(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::c_upper_case(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::capitalize(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::chop_linebreak(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::ensure_ends_with(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::ensure_starts_with(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::keep_after(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::keep_after_last(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::keep_before(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::keep_before_last(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::last_index_of(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::left_pad(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::remove_beginning(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::remove_ending(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::right_pad(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::truncate(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::truncate_c(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::truncate_c_m(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::truncate_m(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::truncate_w(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::truncate_w_m(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings::uncap_first(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::builtins::strings_encoding
 pub fn freemarker::builtins::strings_encoding::j_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::java_string_enc(&str) -> alloc::string::String
@@ -338,141 +208,6 @@ pub fn freemarker::builtins::strings_encoding::rtf(&mut freemarker::Environment<
 pub fn freemarker::builtins::strings_encoding::url(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::url_path(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::strings_encoding::xhtml(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::strings_misc
-pub fn freemarker::builtins::strings_misc::eval_json(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub mod freemarker::builtins::strings_regexp
-pub struct freemarker::builtins::strings_regexp::FlagSet
-pub freemarker::builtins::strings_regexp::FlagSet::case_insensitive: bool
-pub freemarker::builtins::strings_regexp::FlagSet::comments: bool
-pub freemarker::builtins::strings_regexp::FlagSet::dotall: bool
-pub freemarker::builtins::strings_regexp::FlagSet::first_only: bool
-pub freemarker::builtins::strings_regexp::FlagSet::multiline: bool
-pub freemarker::builtins::strings_regexp::FlagSet::regexp: bool
-impl freemarker::builtins::strings_regexp::FlagSet
-pub fn freemarker::builtins::strings_regexp::FlagSet::check_non_regexp_strict(&self, &str) -> freemarker::Result<()>
-pub fn freemarker::builtins::strings_regexp::FlagSet::check_non_regexp_warn(&self, &str)
-impl core::clone::Clone for freemarker::builtins::strings_regexp::FlagSet
-pub fn freemarker::builtins::strings_regexp::FlagSet::clone(&self) -> freemarker::builtins::strings_regexp::FlagSet
-impl core::cmp::Eq for freemarker::builtins::strings_regexp::FlagSet
-impl core::cmp::PartialEq for freemarker::builtins::strings_regexp::FlagSet
-pub fn freemarker::builtins::strings_regexp::FlagSet::eq(&self, &freemarker::builtins::strings_regexp::FlagSet) -> bool
-impl core::default::Default for freemarker::builtins::strings_regexp::FlagSet
-pub fn freemarker::builtins::strings_regexp::FlagSet::default() -> freemarker::builtins::strings_regexp::FlagSet
-impl core::fmt::Debug for freemarker::builtins::strings_regexp::FlagSet
-pub fn freemarker::builtins::strings_regexp::FlagSet::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for freemarker::builtins::strings_regexp::FlagSet
-impl core::marker::StructuralPartialEq for freemarker::builtins::strings_regexp::FlagSet
-impl core::marker::Freeze for freemarker::builtins::strings_regexp::FlagSet
-impl core::marker::Send for freemarker::builtins::strings_regexp::FlagSet
-impl core::marker::Sync for freemarker::builtins::strings_regexp::FlagSet
-impl core::marker::Unpin for freemarker::builtins::strings_regexp::FlagSet
-impl core::marker::UnsafeUnpin for freemarker::builtins::strings_regexp::FlagSet
-impl core::panic::unwind_safe::RefUnwindSafe for freemarker::builtins::strings_regexp::FlagSet
-impl core::panic::unwind_safe::UnwindSafe for freemarker::builtins::strings_regexp::FlagSet
-impl<Q, K> equivalent::Equivalent<K> for freemarker::builtins::strings_regexp::FlagSet where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::FlagSet::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for freemarker::builtins::strings_regexp::FlagSet where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::FlagSet::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for freemarker::builtins::strings_regexp::FlagSet where U: core::convert::From<T>
-pub fn freemarker::builtins::strings_regexp::FlagSet::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for freemarker::builtins::strings_regexp::FlagSet where U: core::convert::Into<T>
-pub type freemarker::builtins::strings_regexp::FlagSet::Error = core::convert::Infallible
-pub fn freemarker::builtins::strings_regexp::FlagSet::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for freemarker::builtins::strings_regexp::FlagSet where U: core::convert::TryFrom<T>
-pub type freemarker::builtins::strings_regexp::FlagSet::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn freemarker::builtins::strings_regexp::FlagSet::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for freemarker::builtins::strings_regexp::FlagSet where T: core::clone::Clone
-pub type freemarker::builtins::strings_regexp::FlagSet::Owned = T
-pub fn freemarker::builtins::strings_regexp::FlagSet::clone_into(&self, &mut T)
-pub fn freemarker::builtins::strings_regexp::FlagSet::to_owned(&self) -> T
-impl<T> core::any::Any for freemarker::builtins::strings_regexp::FlagSet where T: 'static + ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::FlagSet::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for freemarker::builtins::strings_regexp::FlagSet where T: ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::FlagSet::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for freemarker::builtins::strings_regexp::FlagSet where T: ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::FlagSet::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for freemarker::builtins::strings_regexp::FlagSet where T: core::clone::Clone
-pub unsafe fn freemarker::builtins::strings_regexp::FlagSet::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for freemarker::builtins::strings_regexp::FlagSet
-pub fn freemarker::builtins::strings_regexp::FlagSet::from(T) -> T
-pub struct freemarker::builtins::strings_regexp::MatchWithGroups
-pub freemarker::builtins::strings_regexp::MatchWithGroups::groups: alloc::vec::Vec<core::option::Option<alloc::string::String>>
-pub freemarker::builtins::strings_regexp::MatchWithGroups::matched: alloc::string::String
-impl core::clone::Clone for freemarker::builtins::strings_regexp::MatchWithGroups
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::clone(&self) -> freemarker::builtins::strings_regexp::MatchWithGroups
-impl core::fmt::Debug for freemarker::builtins::strings_regexp::MatchWithGroups
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for freemarker::builtins::strings_regexp::MatchWithGroups
-impl core::marker::Send for freemarker::builtins::strings_regexp::MatchWithGroups
-impl core::marker::Sync for freemarker::builtins::strings_regexp::MatchWithGroups
-impl core::marker::Unpin for freemarker::builtins::strings_regexp::MatchWithGroups
-impl core::marker::UnsafeUnpin for freemarker::builtins::strings_regexp::MatchWithGroups
-impl core::panic::unwind_safe::RefUnwindSafe for freemarker::builtins::strings_regexp::MatchWithGroups
-impl core::panic::unwind_safe::UnwindSafe for freemarker::builtins::strings_regexp::MatchWithGroups
-impl<T, U> core::convert::Into<U> for freemarker::builtins::strings_regexp::MatchWithGroups where U: core::convert::From<T>
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for freemarker::builtins::strings_regexp::MatchWithGroups where U: core::convert::Into<T>
-pub type freemarker::builtins::strings_regexp::MatchWithGroups::Error = core::convert::Infallible
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for freemarker::builtins::strings_regexp::MatchWithGroups where U: core::convert::TryFrom<T>
-pub type freemarker::builtins::strings_regexp::MatchWithGroups::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for freemarker::builtins::strings_regexp::MatchWithGroups where T: core::clone::Clone
-pub type freemarker::builtins::strings_regexp::MatchWithGroups::Owned = T
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::clone_into(&self, &mut T)
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::to_owned(&self) -> T
-impl<T> core::any::Any for freemarker::builtins::strings_regexp::MatchWithGroups where T: 'static + ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for freemarker::builtins::strings_regexp::MatchWithGroups where T: ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for freemarker::builtins::strings_regexp::MatchWithGroups where T: ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for freemarker::builtins::strings_regexp::MatchWithGroups where T: core::clone::Clone
-pub unsafe fn freemarker::builtins::strings_regexp::MatchWithGroups::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for freemarker::builtins::strings_regexp::MatchWithGroups
-pub fn freemarker::builtins::strings_regexp::MatchWithGroups::from(T) -> T
-pub struct freemarker::builtins::strings_regexp::RegexMatchData
-pub freemarker::builtins::strings_regexp::RegexMatchData::flags: freemarker::builtins::strings_regexp::FlagSet
-pub freemarker::builtins::strings_regexp::RegexMatchData::input: alloc::string::String
-pub freemarker::builtins::strings_regexp::RegexMatchData::parts: core::cell::RefCell<core::option::Option<alloc::vec::Vec<freemarker::builtins::strings_regexp::MatchWithGroups>>>
-pub freemarker::builtins::strings_regexp::RegexMatchData::pattern: alloc::string::String
-pub freemarker::builtins::strings_regexp::RegexMatchData::whole: core::cell::RefCell<core::option::Option<(bool, alloc::vec::Vec<core::option::Option<alloc::string::String>>)>>
-impl freemarker::builtins::strings_regexp::RegexMatchData
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::parts(&self) -> freemarker::Result<alloc::vec::Vec<freemarker::builtins::strings_regexp::MatchWithGroups>>
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::whole(&self) -> freemarker::Result<(bool, alloc::vec::Vec<core::option::Option<alloc::string::String>>)>
-impl !core::marker::Freeze for freemarker::builtins::strings_regexp::RegexMatchData
-impl core::marker::Send for freemarker::builtins::strings_regexp::RegexMatchData
-impl !core::marker::Sync for freemarker::builtins::strings_regexp::RegexMatchData
-impl core::marker::Unpin for freemarker::builtins::strings_regexp::RegexMatchData
-impl core::marker::UnsafeUnpin for freemarker::builtins::strings_regexp::RegexMatchData
-impl !core::panic::unwind_safe::RefUnwindSafe for freemarker::builtins::strings_regexp::RegexMatchData
-impl core::panic::unwind_safe::UnwindSafe for freemarker::builtins::strings_regexp::RegexMatchData
-impl<T, U> core::convert::Into<U> for freemarker::builtins::strings_regexp::RegexMatchData where U: core::convert::From<T>
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for freemarker::builtins::strings_regexp::RegexMatchData where U: core::convert::Into<T>
-pub type freemarker::builtins::strings_regexp::RegexMatchData::Error = core::convert::Infallible
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for freemarker::builtins::strings_regexp::RegexMatchData where U: core::convert::TryFrom<T>
-pub type freemarker::builtins::strings_regexp::RegexMatchData::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for freemarker::builtins::strings_regexp::RegexMatchData where T: 'static + ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for freemarker::builtins::strings_regexp::RegexMatchData where T: ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for freemarker::builtins::strings_regexp::RegexMatchData where T: ?core::marker::Sized
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for freemarker::builtins::strings_regexp::RegexMatchData
-pub fn freemarker::builtins::strings_regexp::RegexMatchData::from(T) -> T
-pub fn freemarker::builtins::strings_regexp::compile_pattern(&str, &freemarker::builtins::strings_regexp::FlagSet) -> freemarker::Result<fancy_regex::Regex>
-pub fn freemarker::builtins::strings_regexp::groups(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings_regexp::match_element_model(freemarker::builtins::strings_regexp::MatchWithGroups) -> freemarker::TModel
-pub fn freemarker::builtins::strings_regexp::matcher_model(alloc::rc::Rc<freemarker::builtins::strings_regexp::RegexMatchData>) -> freemarker::TModel
-pub fn freemarker::builtins::strings_regexp::matches(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings_regexp::parse_flags(&str) -> freemarker::Result<freemarker::builtins::strings_regexp::FlagSet>
-pub fn freemarker::builtins::strings_regexp::replace(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
-pub fn freemarker::builtins::strings_regexp::replace_all(&fancy_regex::Regex, &str, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::builtins::strings_regexp::replace_first(&fancy_regex::Regex, &str, &str) -> freemarker::Result<alloc::string::String>
-pub fn freemarker::builtins::strings_regexp::split(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub fn freemarker::builtins::lookup(&str) -> core::option::Option<freemarker::builtins::BuiltinFn>
 pub type freemarker::builtins::BuiltinFn = fn(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub mod freemarker::cache
@@ -1677,6 +1412,16 @@ pub fn freemarker::cache::PathRegexMatcher::matches(&self, &str) -> bool
 pub fn freemarker::cache::get_class_name_for_to_string(&dyn freemarker::cache::TemplateLoader) -> alloc::string::String
 pub type freemarker::cache::FindFn<'a> = &'a mut dyn core::ops::function::FnMut(&str) -> freemarker::Result<core::option::Option<alloc::boxed::Box<dyn freemarker::cache::TemplateSource>>>
 pub mod freemarker::core
+pub mod freemarker::core::built_ins_for_strings_encoding
+pub fn freemarker::core::built_ins_for_strings_encoding::j_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::core::built_ins_for_strings_encoding::java_string_enc(&str) -> alloc::string::String
+pub fn freemarker::core::built_ins_for_strings_encoding::js_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::core::built_ins_for_strings_encoding::js_string_enc(&str, bool) -> alloc::string::String
+pub fn freemarker::core::built_ins_for_strings_encoding::json_string(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::core::built_ins_for_strings_encoding::rtf(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::core::built_ins_for_strings_encoding::url(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::core::built_ins_for_strings_encoding::url_path(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
+pub fn freemarker::core::built_ins_for_strings_encoding::xhtml(&mut freemarker::Environment<'_>, &freemarker::core::Expr, core::option::Option<&[freemarker::core::Expr]>) -> freemarker::Result<core::option::Option<freemarker::TModel>>
 pub enum freemarker::core::AssignOp
 pub freemarker::core::AssignOp::DivideEq
 pub freemarker::core::AssignOp::Equals
@@ -2516,6 +2261,7 @@ impl<T> core::convert::From<T> for freemarker::core::BigDecimalEngine
 pub fn freemarker::core::BigDecimalEngine::from(T) -> T
 pub struct freemarker::core::CaseDef
 pub freemarker::core::CaseDef::body: alloc::vec::Vec<freemarker::core::Element>
+pub freemarker::core::CaseDef::is_on: bool
 pub freemarker::core::CaseDef::value: freemarker::core::Expr
 impl core::clone::Clone for freemarker::core::CaseDef
 pub fn freemarker::core::CaseDef::clone(&self) -> freemarker::core::CaseDef
@@ -3442,6 +3188,8 @@ impl<T> core::convert::From<T> for freemarker::core::CmpOp
 pub fn freemarker::core::CmpOp::from(T) -> T
 pub fn freemarker::eval::compare_models(&mut freemarker::Environment<'_>, &freemarker::TModel, &freemarker::TModel, freemarker::core::CmpOp) -> freemarker::Result<bool>
 pub fn freemarker::eval::eval(&mut freemarker::Environment<'_>, &freemarker::core::Expr) -> freemarker::Result<freemarker::TModel>
+pub mod freemarker::ext
+pub mod freemarker::ext::dom
 pub mod freemarker::parser
 pub fn freemarker::parser::parse(&alloc::rc::Rc<freemarker::Configuration>, &str, &str) -> freemarker::Result<freemarker::Template>
 pub fn freemarker::parser::parse_expression(&alloc::rc::Rc<freemarker::Configuration>, &str) -> freemarker::Result<freemarker::core::Expr>
@@ -4400,6 +4148,7 @@ pub freemarker::template::Configuration::template_loader: alloc::sync::Arc<dyn f
 impl freemarker::Configuration
 pub fn freemarker::Configuration::add_auto_import(&mut self, &str, &str)
 pub fn freemarker::Configuration::add_auto_include(&mut self, &str)
+pub fn freemarker::Configuration::add_template_post_processor(&self, alloc::boxed::Box<dyn freemarker::core::template_post_processor::TemplatePostProcessor>)
 pub fn freemarker::Configuration::clear_template_cache(&self)
 pub fn freemarker::Configuration::get_template(&self, &str) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
 pub fn freemarker::Configuration::get_template_encoded(&self, &str, core::option::Option<&str>) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
@@ -4407,6 +4156,7 @@ pub fn freemarker::Configuration::get_template_localized(&self, &str, core::opti
 pub fn freemarker::Configuration::new() -> Self
 pub fn freemarker::Configuration::remove_auto_import(&mut self, &str)
 pub fn freemarker::Configuration::remove_auto_include(&mut self, &str)
+pub fn freemarker::Configuration::remove_template_post_processor(&self, usize) -> bool
 pub fn freemarker::Configuration::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
 pub fn freemarker::Configuration::set_lazy_imports(&mut self, bool)
 pub fn freemarker::Configuration::set_shared_variable(&mut self, &str, freemarker::TModel)
@@ -6053,6 +5803,7 @@ pub freemarker::Configuration::template_loader: alloc::sync::Arc<dyn freemarker:
 impl freemarker::Configuration
 pub fn freemarker::Configuration::add_auto_import(&mut self, &str, &str)
 pub fn freemarker::Configuration::add_auto_include(&mut self, &str)
+pub fn freemarker::Configuration::add_template_post_processor(&self, alloc::boxed::Box<dyn freemarker::core::template_post_processor::TemplatePostProcessor>)
 pub fn freemarker::Configuration::clear_template_cache(&self)
 pub fn freemarker::Configuration::get_template(&self, &str) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
 pub fn freemarker::Configuration::get_template_encoded(&self, &str, core::option::Option<&str>) -> freemarker::Result<alloc::rc::Rc<freemarker::Template>>
@@ -6060,6 +5811,7 @@ pub fn freemarker::Configuration::get_template_localized(&self, &str, core::opti
 pub fn freemarker::Configuration::new() -> Self
 pub fn freemarker::Configuration::remove_auto_import(&mut self, &str)
 pub fn freemarker::Configuration::remove_auto_include(&mut self, &str)
+pub fn freemarker::Configuration::remove_template_post_processor(&self, usize) -> bool
 pub fn freemarker::Configuration::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
 pub fn freemarker::Configuration::set_lazy_imports(&mut self, bool)
 pub fn freemarker::Configuration::set_shared_variable(&mut self, &str, freemarker::TModel)

@@ -2586,6 +2586,7 @@ impl<'a> Parser<'a> {
 
     /// `</#switch>` 之后组装（Java 允许空 switch —— switch.ftl 用例
     /// `[<#switch 213></#switch>]`，空 switch 渲染为空）
+    #[allow(clippy::too_many_arguments)]
     fn finish_switch(
         &mut self,
         line: u32,

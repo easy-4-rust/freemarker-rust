@@ -6,12 +6,14 @@ use crate::cache::{
     NameFormatDefault020300, StringLoader, TemplateCache, TemplateConfigurationFactory,
     TemplateLoader,
 };
+use crate::core::template_post_processor::{TemplatePostProcessor, TemplatePostProcessorRegistry};
 use crate::core::Settings;
 use crate::error::{Result, TemplateError};
 use crate::parser;
 use crate::template::TModel;
 use crate::template::Template;
 use crate::template::Version;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -34,6 +36,11 @@ pub struct Configuration {
     /// Java 的 factory 绑定 Configuration 机制 Rust 侧无对应——Arc 共享持有，
     /// 文档注明）
     pub template_configurations: Option<Arc<dyn TemplateConfigurationFactory>>,
+    /// 模板后处理器链 —— 对应 Java `Configuration.templatePostProcessors`
+    /// （模板解析/缓存完成后依次执行 AST 变换；
+    ///  addTemplatePostProcessor/removeTemplatePostProcessor 管理；
+    ///  RefCell 提供内部可变性——配置阶段单线程修改，get_template 时只读借用）
+    pub(crate) post_processors: RefCell<TemplatePostProcessorRegistry>,
 }
 
 impl Clone for Configuration {
@@ -48,6 +55,8 @@ impl Clone for Configuration {
             auto_imports: self.auto_imports.clone(),
             auto_includes: self.auto_includes.clone(),
             template_configurations: self.template_configurations.clone(),
+            // 后处理器不随 clone 复制（Java Configuration.clone 同样不复制 postProcessors）
+            post_processors: RefCell::new(TemplatePostProcessorRegistry::default()),
         }
     }
 }
@@ -87,6 +96,7 @@ impl Default for Configuration {
             auto_imports: Vec::new(),
             auto_includes: Vec::new(),
             template_configurations: None,
+            post_processors: RefCell::new(TemplatePostProcessorRegistry::default()),
         }
     }
 }
@@ -178,6 +188,21 @@ impl Configuration {
         Ok(())
     }
 
+    /// 添加模板后处理器 —— 对应 Java `Configuration.addTemplatePostProcessor`
+    ///
+    /// 处理器按添加顺序执行。每次 get_template 加载新模板（非缓存命中）时，
+    /// 注册的后处理器链会依次对模板 AST 执行变换。
+    pub fn add_template_post_processor(&self, processor: Box<dyn TemplatePostProcessor>) {
+        self.post_processors.borrow_mut().add(processor);
+    }
+
+    /// 移除指定位置的后处理器 —— 对应 Java `Configuration.removeTemplatePostProcessor`
+    ///
+    /// 返回 true 表示成功移除，false 表示索引越界。
+    pub fn remove_template_post_processor(&self, index: usize) -> bool {
+        self.post_processors.borrow_mut().remove(index)
+    }
+
     /// 清空模板缓存 —— 对应 Java `Configuration.clearTemplateCache()`
     /// （→ TemplateCache.clear :645-657：清空存储；若加载器实现
     /// StatefulTemplateLoader 则同步调用其 resetState —— Java 的 instanceof
@@ -238,6 +263,13 @@ impl Configuration {
         // per-template 配置（Java TemplateCache.loadTemplate 的
         // getTemplateConfiguration 应用点）
         self.apply_template_configuration(&normalized, &mut t)?;
+        // 后处理器链（Java TemplateCache.loadTemplate 的 postProcess 调用点；
+        // 在模板配置应用后、入缓存前执行 AST 变换）
+        if let Err(e) = self.post_processors.borrow().apply_all(&mut t) {
+            return Err(TemplateError::misc(format!(
+                "Template post-processor failed for \"{normalized}\": {e}"
+            )));
+        }
         Ok(Rc::new(t))
     }
 
@@ -252,6 +284,13 @@ impl Configuration {
             // per-template 配置（Java TemplateCache.loadTemplate 应用点；
             // 失败时模板尚未入缓存）
             self.apply_template_configuration(n, &mut t)?;
+            // 后处理器链（Java TemplateCache.loadTemplate 的 postProcess 调用点；
+            // 在模板配置应用后、入缓存前执行 AST 变换）
+            if let Err(e) = self.post_processors.borrow().apply_all(&mut t) {
+                return Err(TemplateError::misc(format!(
+                    "Template post-processor failed for \"{n}\": {e}"
+                )));
+            }
             Ok(Rc::new(t))
         })?;
         // Ok(None) = 负查找缓存（Java storeNegativeLookup 后抛 TemplateNotFoundException）

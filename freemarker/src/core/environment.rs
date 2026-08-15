@@ -1232,7 +1232,8 @@ impl<'a> Environment<'a> {
                 .markup_format
                 .unwrap_or(self.settings.output_format);
             let cur_fmt = self.settings.output_format;
-            if mo_fmt == cur_fmt || crate::builtins::markup_outputs::format_mixing_allowed(cur_fmt)
+            if mo_fmt == cur_fmt
+                || crate::core::built_ins_for_markup_outputs::format_mixing_allowed(cur_fmt)
             {
                 return Ok(s);
             }
