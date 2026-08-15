@@ -234,6 +234,28 @@ ebcbca8 refactor(layout): 4 个 built_in/range_model 命名尾巴对齐 + range 
 
 ---
 
+## >800 行文件债务（1.0 前清偿）
+
+> grammar.rs 6838 行已于 Stage 3 拆分为 13 个 ≤800 行文件（2026-08-15）。
+> 以下为项目中剩余 >800 行文件，需在 1.0 前按相同模式拆分。
+
+| 文件 | 行数 | 职责 | 拆分优先级 |
+|------|------|------|-----------|
+| `core/environment.rs` | 3358 | 模板执行环境（变量作用域、设置、输出） | P0 |
+| `core/built_ins_for_sequences.rs` | 1777 | 序列内建方法（sort/reverse/chunk 等） | P1 |
+| `parser/lexer.rs` | 1659 | 词法分析器（5 词法状态） | P1 |
+| `xml/node.rs` | 1290 | XML 节点模型 | P2 |
+| `core/exec.rs` | 1231 | 指令执行（Element 渲染） | P1 |
+| `core/eval.rs` | 1218 | 表达式求值 | P1 |
+| `builtins/iso_date_format.rs` | 1122 | ISO 日期格式化 | P2 |
+| `core/built_ins_for_strings_basic.rs` | 1075 | 字符串基础内建方法 | P2 |
+| `core/built_in.rs` | 1000 | 内建方法基类与注册 | P2 |
+| `builtins/java_date_format.rs` | 969 | Java 日期格式化 | P2 |
+| `builtins/format.rs` | 853 | ?format 内建方法 | P3 |
+| `core/built_ins_for_strings_regexp.rs` | 852 | 字符串正则内建方法 | P3 |
+
+---
+
 ## 对应计划
 
 - `docs/superpowers/plans/2026-08-04-p6-polish-alignment.md`（文件级拆分）
