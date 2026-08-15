@@ -4,6 +4,42 @@
 [语义化版本](https://semver.org/lang/zh-CN/)（晋级规则见
 [docs/superpowers/specs/2026-08-03-versioning-design.md](docs/superpowers/specs/2026-08-03-versioning-design.md)）。
 
+## [0.1.0-beta.0] - 2026-08-15
+
+> 本版本相对 v0.1.0-alpha.1：**布局对齐轮 + 生产就绪计划 Stage 0-5 全部收口**——
+> Java↔Rust 目录/文件 1:1（472 文件，412 MAPPED / 0 MISSING）、pyo3 API 面补齐、
+> 解析器拆分、soak/proptest 稳定性验证。详见
+> `docs/superpowers/plans/2026-08-15-production-readiness.md`。
+
+### Added
+
+- **布局 1:1 对齐**（2026-08-15 布局对齐轮，13 提交）：`xml/`→`ext/dom/`、
+  `error/`/`builtins/` Java 对应文件→`core/`、`core/expression/` 平铺；
+  182 个镜像文件补齐（TemplatePostProcessor 完整实现 + DOCTYPE 降级实现 +
+  CFormat 家族/BuiltIn 基类/惰性集合/输出模型锚点）；结构对照 412 MAPPED / 0 MISSING
+- **pyo3 配置桥接**：`FmConfiguration` 7 → **35 方法**（格式化 12 + 解析期 4 + 行为 6 +
+  模板查找 3 + getter 3 等）；Python golden 套件翻转 3 用例
+  （import/localization/number-literal，34→37）
+- **soak 稳定性套件**（`soak_smoke.rs`）：8 线程 × 64000 次并发渲染全成功 +
+  首末输出逐字节一致 + 120s 死锁守卫；内存探针 5000 轮无退化
+- **TEMPLATE 后处理钩子**：`TemplatePostProcessor` trait + 注册表 +
+  `Configuration::add/remove_template_post_processor` + TemplateCache 集成（7 测试）
+- **DOCTYPE 降级支持**：自扫 DOCTYPE 声明（roxmltree 0.21 无 API）+
+  `@document_type$name` 语义对齐（7 测试）
+
+### Changed
+
+- **解析器拆分**：`grammar.rs` 6,837 行 → 13 文件（全部 ≤800 行），
+  零行为变化（995 测试全绿 + public-api diff = 0）
+- **public-api 基线**：6302 → 6054 项（路径重排所致，CI 门禁已验证绿）
+
+### 验证（beta.0 门禁复核）
+
+- workspace 测试 **997 passed / 0 failed**（含 soak）+ pytest 81 passed
+- golden 113/128 MIRRORED + 15 有据永久 NA = **适用范围 100%**（0 FAIL / 0 BLOCKED）
+- proptest **50000** 用例无 panic（单轮扩量实测）
+- cargo-llvm-cov 85.02%；cargo fmt/clippy/deny/audit 全绿；多 OS CI 12 job 全绿
+
 ## [0.1.0-alpha.1] - 2026-08-03
 
 > 本版本相对 v0.1.0-alpha.0：**生产就绪计划 v2 阶段 A/B/C 全部收口**——内建 183/183、

@@ -9,16 +9,16 @@
 
 | 指标 | 当前值 | 备注 |
 |------|--------|------|
-| 当前版本 | `0.1.0-alpha.1` | tag 于 2026-08-03 |
+| 当前版本 | `0.1.0-beta.0` | tag 于 2026-08-15（生产就绪计划 Stage 0-5 收口） |
 | golden MIRRORED | **113/128**（88%） | 0 FAIL / 0 BLOCKED，15 项永久 NA |
 | builtins 覆盖 | **183/183**（100%） | Java 2.3.34 全集 |
-| 测试数 | **1009** passing | cargo test --workspace |
-| .rs 文件数 | **291**（freemarker/src） | 从 P0 的 ~10 增长到 291 |
+| 测试数 | **997** workspace + pytest 81 | cargo test / pytest（2026-08-15 实测） |
+| .rs 文件数 | **472**（freemarker/src） | 布局对齐轮 291→472（412 MAPPED / 0 MISSING） |
 | 结构对照 | 422 MAPPED / 4 MISSING / 115 NA-DESIGN | 见 `docs/superpowers/specs/2026-08-04-java-rust-structure-mapping-design.md` |
 | 公共 API 基线 | 0 diff（locked） | `docs/release/api-baseline.txt` |
 | proptest fuzz | 10000 cases | expression + parser target |
 | criterion 基准 | 5 metrics | 见 `docs/release/benchmarks.md` |
-| pyo3 发布就绪 | 元数据完整，未实际发布 | pyproject.toml + LICENSE 完备 |
+| pyo3 API 面 | **35 方法**（原 7） | 2026-08-15 Stage 2；发布仍属 0.1.0 |
 
 ### 1.0 晋级条件 8 项状态
 
