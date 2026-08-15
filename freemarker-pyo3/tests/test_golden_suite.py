@@ -150,9 +150,77 @@ def build_config() -> fm.FmConfiguration:
     见 freemarker-pyo3/src/lib.rs FmConfiguration::get_template 注释）。
     """
     cfg = fm.FmConfiguration()
+    # 与 Rust golden harness 默认对齐（freemarker-test/tests/common/mod.rs:65
+    # strict_syntax = true；引擎 strict 模式下兼容 jython25 旧式标签，探针实测
+    # number-literal 仅在 strict=True 下逐字节通过）。
+    cfg.set_strict_syntax(True)
     cfg.set_shared_variable("message", MESSAGE)
     load_shared_templates(cfg)
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# 用例级设置（对应 manifest.json 的 settings 字段）
+# ---------------------------------------------------------------------------
+
+#: 用例级设置映射（base → settings dict）；缺失的用例走默认配置。
+CASE_SETTINGS = {
+    "import": {"auto_import": "import_lib.ftl as my"},
+    "localization": {"locale": "en_AU"},
+    "number-literal": {"locale": "fr_FR"},
+    # manifest 用例级 strict_syntax 覆盖 harness 默认（true）
+    "non-strict-syntax": {"strict_syntax": "N"},
+    "strictinheader": {"strict_syntax": "N"},
+}
+
+
+def apply_settings(cfg: fm.FmConfiguration, settings: dict) -> None:
+    """应用用例级设置（对应 golden.rs apply_settings）。"""
+    for k, v in settings.items():
+        if k == "locale":
+            cfg.set_locale(v)
+        elif k == "strict_syntax":
+            # golden.rs：v == "Y" || v == "1"（兼容 bool 形态）
+            cfg.set_strict_syntax(v in (True, "Y", "1", "true"))
+        elif k == "auto_import":
+            # Java SettingStringParser.parseAsImportList："path as ns" 逗号分隔
+            for item in v.split(","):
+                item = item.strip()
+                if not item:
+                    continue
+                if " as " in item:
+                    path, ns = item.split(" as ", 1)
+                    cfg.set_auto_import(ns.strip(), path.strip())
+
+
+def localized_template_name(cfg: fm.FmConfiguration, name: str) -> str:
+    """局部化模板名回退（对应 golden.rs get_template_localized /
+    TemplateCache.lookupWithLocalizedThenAcquisitionStrategy）：
+    "foo.ftl" + locale "en_AU" → 依次尝试 foo_en_AU.ftl、foo_en.ftl、foo.ftl，
+    首个在 StringLoader 中存在的使用。"""
+    locale = cfg.locale
+    if not locale or locale == "en_US":
+        return name
+    last_dot = name.rfind(".")
+    if last_dot < 0:
+        prefix, suffix = name, ""
+    else:
+        prefix, suffix = name[:last_dot], name[last_dot:]
+    # 逐级缩短 locale：en_AU → en → ""
+    loc = f"_{locale}"
+    while True:
+        candidate = f"{prefix}{loc}{suffix}"
+        try:
+            cfg.get_template(candidate)
+            return candidate
+        except fm.FreeMarkerError:
+            pass
+        # 去掉最后一段
+        underscore = loc.rfind("_", 1)
+        if underscore < 0:
+            break
+        loc = loc[:underscore]
+    return name
 
 
 def render_case(base: str):
@@ -166,9 +234,14 @@ def render_case(base: str):
     except UnicodeDecodeError:
         return None, "模板为非 UTF-8 字节（input_encoding 设置 Java 特有）"
     cfg = build_config()
+    # 应用用例级设置（须在 put_template / get_template 之前）
+    if base in CASE_SETTINGS:
+        apply_settings(cfg, CASE_SETTINGS[base])
     cfg.put_template(f"{base}.ftl", strip_ftl_copyright(src))
+    # 局部化模板查找（locale 非 en_US 时尝试变体名）
+    tpl_name = localized_template_name(cfg, f"{base}.ftl")
     try:
-        template = cfg.get_template(f"{base}.ftl")
+        template = cfg.get_template(tpl_name)
     except fm.FreeMarkerError as e:
         return None, f"解析失败：{e}"
     try:
@@ -220,11 +293,12 @@ def diff_preview(base: str, out: str) -> str:
 #:   空根即可渲染且逐字节匹配 → 实测 PASS，归类为 pass。
 PASS_CASES = {
     "arithmetic", "comment", "compress", "default", "escapes",
-    "hashconcat", "identifier-escaping", "identifier-non-ascii", "include",
-    "interpret", "iterators", "lastcharacter", "listhashliteral", "listliteral",
-    "loopvariable", "macros-return", "macros2", "nested", "new-defaultresolver",
-    "new-unrestricted", "newlines1", "newlines2", "non-strict-syntax", "noparse",
-    "numerical-cast", "output-encoding1", "precedence", "root", "strictinheader",
+    "hashconcat", "identifier-escaping", "identifier-non-ascii", "import",
+    "include", "interpret", "iterators", "lastcharacter", "listhashliteral",
+    "listliteral", "localization", "loopvariable", "macros-return", "macros2",
+    "nested", "new-defaultresolver", "new-unrestricted", "newlines1", "newlines2",
+    "non-strict-syntax", "noparse", "number-literal", "numerical-cast",
+    "output-encoding1", "precedence", "root", "strictinheader",
     "string-builtins2", "stringliteral", "variables", "whitespace-trim",
     "wstrip-in-header",
 }
@@ -321,11 +395,8 @@ SKIP_REASONS = {
     "var-layers": "需要 Java 数据模型（x/z/y 变量分层）",
     "varargs": "需要 Java Bean 方法模型（VarArgTestModel 签名调度）",
 
-    # --- 依赖 Java 配置设置（Python API 未暴露）---
+    # --- 依赖 Java 配置设置（部分已翻转，剩余保持 SKIP）---
     "classic-compatible": "classic_compatible=Y 设置 + Java 数据模型（beansArray/...）",
-    "import": "auto_import 设置（'import_lib.ftl as my'，Java 特有）",
-    "localization": "局部化模板查找（localized_lookup，locale=en_AU 设置无法应用）",
-    "number-literal": "需要 locale=fr_FR 与 strict_syntax=true 配置（Python API 未暴露）",
     "output-encoding2": "output_encoding=UTF-16 设置（Java Writer 输出编码，Python API 固定 UTF-8 str）",
     "output-encoding3": "output_encoding=ISO-8859-1 设置（Java Writer 输出编码，Python API 固定 UTF-8 str）",
 
