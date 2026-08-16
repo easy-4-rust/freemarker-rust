@@ -480,6 +480,9 @@ extension point as the Rust engine. Java users will recognize the shape as the s
 | Migration ledger | [`specs/2026-08-03-migration-parity-ledger-design.md`](docs/superpowers/specs/2026-08-03-migration-parity-ledger-design.md) | 同左 |
 | Acceptance report | [`specs/2026-08-03-acceptance-report-design.md`](docs/superpowers/specs/2026-08-03-acceptance-report-design.md) | 同左 |
 | Production audit | [`specs/2026-08-03-production-readiness-audit-design.md`](docs/superpowers/specs/2026-08-03-production-readiness-audit-design.md) | 同左 |
+| Examples | [`freemarker/examples/`](freemarker/examples/) | 7 runnable examples — `cargo run --example <name>` |
+| User guide (migration) | [`docs/user-guide.md`](docs/user-guide.md) | Java → Rust migration guide with code comparisons |
+| API stability | [`docs/api-stability.md`](docs/api-stability.md) | Versioning strategy, SemVer commitment, API baseline |
 | API reference | [docs.rs](https://docs.rs/freemarker) | Source rustdoc includes bilingual notes |
 
 ## Development and release
