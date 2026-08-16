@@ -194,3 +194,34 @@ def test_error_boolean_tip_alignment():
     msg = str(ei.value)
     assert "?string('yes', 'no')" in msg or "?string(" in msg
     assert "?c" in msg
+
+
+# ---------------------------------------------------------------------------
+# 4. 非 dict 根统一拒绝（2026-08-16 修复：对齐 Java Template.process 对非
+#    TemplateHashModel 抛 IllegalArgumentException；jython number/sequence/
+#    string 模型均非 hash——此前 list/int 静默渲染属桥层偏差）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("root", [[1, 2], (1, 2), 42, 3.14, True, "s", b"x"])
+def test_non_dict_root_uniformly_rejected(root):
+    cfg = fm.FmConfiguration()
+    cfg.put_template("t.ftl", "ok")
+    with pytest.raises(fm.FreeMarkerError, match="must be a hash"):
+        cfg.get_template("t.ftl").process(root)
+
+
+def test_dict_and_generic_object_root_accepted():
+    import datetime
+
+    cfg = fm.FmConfiguration()
+    cfg.put_template("t.ftl", "${m.k}")
+
+    class Bag:
+        k = "generic-ok"
+
+    assert cfg.get_template("t.ftl").process({"m": {"k": "dict-ok"}}) == "dict-ok"
+    assert cfg.get_template("t.ftl").process({"m": Bag()}) == "generic-ok"
+    # datetime 作为根值同样拒绝（date 模型非 hash）
+    with pytest.raises(fm.FreeMarkerError, match="must be a hash"):
+        cfg.get_template("t.ftl").process(datetime.datetime(2026, 8, 16))

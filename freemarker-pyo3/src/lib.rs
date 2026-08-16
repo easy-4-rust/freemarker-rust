@@ -381,17 +381,42 @@ impl FmTemplate {
     /// v1 不使用 py.allow_threads()：纯文本输出段短暂，释放/重取 GIL 收益低
     /// （docs/10 §4「v1 简单持有」）。
     fn process(&self, py: Python<'_>, root: Py<PyAny>) -> PyResult<String> {
-        // ① wrap 根（Java：process 内部经 objectWrapper.wrap(rootMap)）
+        // ① 根类型守卫（Java Template.process → Environment 构造对非
+        //    TemplateHashModel 抛 IllegalArgumentException；jython 侧
+        //    number/sequence/string 模型均非 hash——仅 dict 与通用对象放行，
+        //    标量/序列根统一拒绝，对齐 docs/10 §2 包装角色）
+        {
+            use pyo3::prelude::PyAnyMethods as _;
+            use pyo3::types::{
+                PyBool, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple,
+            };
+            use pyo3::types::{PyBytes, PyDate, PyTime};
+            let r = root.bind(py);
+            let scalar_or_seq = r.is_instance_of::<PyBool>()
+                || r.is_instance_of::<PyInt>()
+                || r.is_instance_of::<PyFloat>()
+                || r.is_instance_of::<PyString>()
+                || r.is_instance_of::<PyBytes>()
+                || r.is_instance_of::<PyDateTime>()
+                || r.is_instance_of::<PyDate>()
+                || r.is_instance_of::<PyTime>()
+                || r.is_instance_of::<PyList>()
+                || r.is_instance_of::<PyTuple>();
+            if scalar_or_seq && !r.is_instance_of::<PyDict>() {
+                return Err(FreeMarkerError::new_err("The data model must be a hash"));
+            }
+        }
+        // ② wrap 根（Java：process 内部经 objectWrapper.wrap(rootMap)）
         let root_model = match self.wrapper.wrap(py, root.bind(py), self.tz())? {
             Some(m) => m,
             None => TModel::nothing(),
         };
-        // ② 渲染到内存缓冲（核心引擎不感知 GIL）
+        // ③ 渲染到内存缓冲（核心引擎不感知 GIL）
         let mut out = Vec::new();
         self.inner
             .process(root_model, &mut out)
             .map_err(template_error_to_pyerr)?;
-        // ③ UTF-8 输出转 str（Java Writer 输出语义）
+        // ④ UTF-8 输出转 str（Java Writer 输出语义）
         String::from_utf8(out).map_err(|e| {
             FreeMarkerError::new_err(format!("template output is not valid UTF-8: {e}"))
         })
