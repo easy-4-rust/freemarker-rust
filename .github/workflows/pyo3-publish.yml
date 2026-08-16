@@ -34,7 +34,7 @@ jobs:
           - os: macos-14          # arm64
             platform: macos-arm64
             target: aarch64
-          - os: macos-13          # x86_64
+          - os: macos-14          # arm64 runner 上交叉编译 x86_64-apple-darwin
             platform: macos-x86_64
             target: x86_64
           - os: windows-latest
