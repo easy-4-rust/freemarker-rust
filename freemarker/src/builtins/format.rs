@@ -597,6 +597,12 @@ pub fn format_number(env: &Environment, n: &TNumber) -> Result<String> {
             j_quote(&name)
         )));
     }
+    if fmt == "currency" {
+        return Ok(format_currency_number(locale, n));
+    }
+    if fmt == "percent" {
+        return Ok(format_percent_number(locale, n));
+    }
     if fmt == "number" || fmt.is_empty() {
         // 默认模式解析结果缓存（首次解析后复用，热路径避免每次模式解析；
         // 键为 (number_format, locale)，`<#setting>` 改动后自动失效）
@@ -624,6 +630,55 @@ pub fn format_number(env: &Environment, n: &TNumber) -> Result<String> {
     }
 }
 
+/// 预定义货币格式 locale 表（Java NumberFormat.getCurrencyInstance 的常用
+/// locale 子集；Java 实测基线见本文件 tests::currency_percent_java_baseline）。
+/// 返回 (符号, 小数位, 是否前缀)；未覆盖 locale 回退国际货币符 ¤ 前缀 + 2 位。
+fn currency_spec(locale: &str) -> (&'static str, usize, bool) {
+    match locale {
+        "en_US" => ("$", 2, true),
+        "en_GB" => ("£", 2, true),
+        "zh_CN" | "zh_TW" => ("¥", 2, true),
+        "ja_JP" => ("￥", 0, true), // 全角￥；日元无小数
+        "de_DE" | "de_AT" | "de_CH" => (" €", 2, false),
+        "fr_FR" => (" €", 2, false),
+        _ => ("¤", 2, true),
+    }
+}
+
+/// 预定义 percent 格式的 % 后缀（de/fr 数值与 % 间有空格——Java 实测）
+fn percent_suffix(locale: &str) -> &'static str {
+    match locale.split('_').next().unwrap_or("en") {
+        "de" | "fr" => " %",
+        _ => "%",
+    }
+}
+
+/// Java NumberFormat.getCurrencyInstance(locale) 复刻（符号位置/小数位/分组
+/// 按 locale；数字部分经 DecimalFmt 复用 locale 分隔符）
+fn format_currency_number(locale: &str, n: &TNumber) -> String {
+    let (sym, frac, prefix) = currency_spec(locale);
+    let pattern = if frac == 0 { "#,##0" } else { "#,##0.00" };
+    let num = match parse_decimal_format(pattern, locale) {
+        Ok(df) => format_decimal(&df, n),
+        Err(_) => n.to_plain_string(),
+    };
+    if prefix {
+        format!("{sym}{num}")
+    } else {
+        format!("{num}{sym}")
+    }
+}
+
+/// Java NumberFormat.getPercentInstance(locale) 复刻（值×100、0 位小数、分组）
+fn format_percent_number(locale: &str, n: &TNumber) -> String {
+    let scaled = TNumber::Decimal(n.as_big_decimal() * bigdecimal::BigDecimal::from(100));
+    let num = match parse_decimal_format("#,##0", locale) {
+        Ok(df) => format_decimal(&df, &scaled),
+        Err(_) => scaled.to_plain_string(),
+    };
+    format!("{num}{}", percent_suffix(locale))
+}
+
 /// 与 format_number 相同，但显式指定格式串（?string('pattern') 用；
 /// Java ?string 的格式串同样经 getTemplateNumberFormat → `@` 检查）
 pub fn format_number_with(fmt: &str, locale: &str, n: &TNumber) -> Result<String> {
@@ -632,6 +687,14 @@ pub fn format_number_with(fmt: &str, locale: &str, n: &TNumber) -> Result<String
             "No custom number format was defined with name {}",
             j_quote(&name)
         )));
+    }
+    if fmt == "currency" {
+        // Java 预定义格式名（JavaTemplateNumberFormatFactory；实测
+        // `?string.currency` → getCurrencyInstance，非 DecimalFormat 模式）
+        return Ok(format_currency_number(locale, n));
+    }
+    if fmt == "percent" {
+        return Ok(format_percent_number(locale, n));
     }
     if fmt == "number" || fmt.is_empty() {
         // Java NumberFormat.getNumberInstance(locale) 的 v1 复刻：`#,##0.###`
@@ -689,6 +752,57 @@ pub(crate) fn j_quote(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Java 实测基线（freemarker 2.3.29 jar，2026-08-16）：
+    /// `?string.currency` / `?string.percent` 为预定义格式名，
+    /// `?string.integer` 非预定义 → DecimalFormat 模式字面量（integer1235）。
+    #[test]
+    fn currency_percent_java_baseline() {
+        let n = TNumber::Double(1234.56);
+        // currency（符号位置/小数位随 locale）
+        assert_eq!(
+            format_number_with("currency", "en_US", &n).unwrap(),
+            "$1,234.56"
+        );
+        assert_eq!(
+            format_number_with("currency", "de_DE", &n).unwrap(),
+            "1.234,56 €"
+        );
+        assert_eq!(
+            format_number_with("currency", "zh_CN", &n).unwrap(),
+            "¥1,234.56"
+        );
+        assert_eq!(
+            format_number_with("currency", "ja_JP", &n).unwrap(),
+            "￥1,235"
+        );
+        assert_eq!(
+            format_number_with("currency", "fr_FR", &n).unwrap(),
+            "1\u{202F}234,56 €"
+        );
+        // percent（值×100、0 位小数；de/fr 数值与 % 间空格）
+        assert_eq!(
+            format_number_with("percent", "en_US", &n).unwrap(),
+            "123,456%"
+        );
+        assert_eq!(
+            format_number_with("percent", "de_DE", &n).unwrap(),
+            "123.456 %"
+        );
+        assert_eq!(
+            format_number_with("percent", "fr_FR", &n).unwrap(),
+            "123\u{202F}456 %"
+        );
+        assert_eq!(
+            format_number_with("percent", "zh_CN", &n).unwrap(),
+            "123,456%"
+        );
+        // 非预定义名 → 模式字面量（与 Java 一致）
+        assert_eq!(
+            format_number_with("integer", "en_US", &n).unwrap(),
+            "integer1235"
+        );
+    }
 
     #[test]
     fn c_format_integers_and_decimals() {

@@ -7,6 +7,8 @@
 //! ```text
 //! number (default): 1,234.56
 //! number (pattern): 1234.56
+//! currency: $1,234.56
+//! percent: 123,456%
 //! boolean: YES / NO
 //! HTML auto-escaped: &lt;script&gt;alert(&amp;)&lt;/script&gt;
 //! ```
@@ -34,6 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "formatting",
         r#"number (default): ${amount?string.number}
 number (pattern): ${amount?string["0.##"]}
+currency: ${amount?string.currency}
+percent: ${amount?string.percent}
 boolean: ${flag?string("YES", "NO")} / ${(!flag)?string("YES", "NO")}
 HTML auto-escaped: ${xss}"#,
     )?;
