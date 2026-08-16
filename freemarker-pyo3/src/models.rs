@@ -230,7 +230,7 @@ fn py_class_name(_py: Python<'_>, obj: &Bound<'_, PyAny>) -> String {
     obj.get_type()
         .name()
         .ok()
-        .and_then(|n| n.to_str().ok().map(str::to_owned))
+        .and_then(|n| n.to_cow().ok().map(|s| s.into_owned()))
         .unwrap_or_else(|| "object".to_string())
 }
 

@@ -24,7 +24,7 @@ pub(crate) fn py_err_to_template_error(py: Python<'_>, err: PyErr) -> TemplateEr
         .get_type(py)
         .name()
         .ok()
-        .and_then(|n| n.to_str().ok().map(str::to_owned))
+        .and_then(|n| n.to_cow().ok().map(|s| s.into_owned()))
         .unwrap_or_else(|| "Exception".to_string());
     // 异常详情（PyException.__str__ 语义近似）
     let value_str = err
