@@ -472,6 +472,9 @@ Python 面 API 以 `freemarker-pyo3/src/lib.rs` 为准，包含 `FmConfiguration
 | 迁移测试台账 | [`specs/2026-08-03-migration-parity-ledger-design.md`](docs/superpowers/specs/2026-08-03-migration-parity-ledger-design.md) | 同左 |
 | 验收报告 | [`specs/2026-08-03-acceptance-report-design.md`](docs/superpowers/specs/2026-08-03-acceptance-report-design.md) | 同左 |
 | 生产就绪审计 | [`specs/2026-08-03-production-readiness-audit-design.md`](docs/superpowers/specs/2026-08-03-production-readiness-audit-design.md) | 同左 |
+| 可运行示例 | [`freemarker/examples/`](freemarker/examples/) | 7 个示例——`cargo run --example <name>` |
+| 用户迁移指南 | [`docs/user-guide.md`](docs/user-guide.md) | Java → Rust 迁移指南（含代码对照） |
+| API 稳定性承诺 | [`docs/api-stability.md`](docs/api-stability.md) | 版本策略、SemVer 承诺、API 基线 |
 | API 参考 | [docs.rs](https://docs.rs/freemarker) | 源码 rustdoc 内含中英文注释 |
 
 ## 开发与发布

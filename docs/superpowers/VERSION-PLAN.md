@@ -57,11 +57,11 @@
 **目标**：首个功能完整、文档齐备的 0.x 稳定版。
 
 **入口条件**：
-- [ ] beta.0 无 blocker issue
-- [ ] 公共 API 面经至少 1 个 beta 版本无变更
-- [ ] 用户文档（README + API docs + 迁移指南）完整
-- [ ] pyo3 绑定实际发布到 PyPI（首个版本）
-- [ ] crates.io 发布 `freemarker` crate
+- [x] beta.0 无 blocker issue（✅ 2026-08-15 发版；后续发现的 3 项边缘缺陷均已当日修复：非 dict 根统一拒绝 086cca5、currency/percent 预定义格式 9a10174、PyPI 发布链路 4 项修复）
+- [x] 公共 API 面经至少 1 个 beta 版本无变更（✅ 冻结窗口 2026-08-15 起，api-baseline CI 门禁守护，beta.0→今 diff=0）
+- [x] 用户文档（README + API docs + 迁移指南）完整（✅ 2026-08-16：docs/user-guide.md 508 行差异矩阵 + docs/api-stability.md + examples/×7 可运行示例，c71af40）
+- [x] pyo3 绑定实际发布到 PyPI（✅ 2026-08-16 提前完成：freemarker-pyo3 0.1.0b0 上线，5 平台 abi3 wheel + sdist，端到端验证）
+- [ ] crates.io 发布 `freemarker` crate（⏳ 待维护者 token：beta.0 版本就绪，cargo publish --dry-run 通过）
 
 **预计时间**：2026-08 下旬 ~ 2026-09
 
