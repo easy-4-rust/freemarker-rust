@@ -4,7 +4,7 @@
 
 ## 设计规格
 
-全部 24 个设计规格位于 `docs/superpowers/specs/`，详见
+全部 25 个设计规格位于 `docs/superpowers/specs/`，详见
 [`docs/superpowers/README.md`](superpowers/README.md) 的完整索引。
 
 ## 保留的测量数据与测试证据
