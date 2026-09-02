@@ -95,8 +95,11 @@ getTemplate → getTemplateInternal(:323)
 └─ storeNegativeLookup（:381/:505）  ← 负查找同样缓存（防反复 IO）
 ```
 
-**Rust 对照**：TemplateKey/负查找/delay 三机制中，v1 已实现 TemplateCache 基础版；
-负查找缓存与 CacheStorage 容量策略同属已登记 NA/债务项（结构对照 spec §4）。
+**Rust 对照**：三机制（TemplateKey/负查找/delay）均已实现——负查找条目返回
+None、delay 内不验证（template_cache.rs:52/:67-71，注释锚 Java:350-365），
+详见 `2026-08-16-rust-side-architecture-design.md` §7（2026-08-16 修正：原表述
+「负查找未覆盖」有误，以 Rust 侧报告为准）；仍为 NA 的仅 CacheStorage
+容量/淘汰策略（MRU/Soft，结构对照 spec §4）。
 
 ## 7. 格式化工厂继承树
 

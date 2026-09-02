@@ -12,7 +12,7 @@ docs/superpowers/
 ├── AUDIT-SUMMARY.md       # 历史计划合规审计总结
 ├── plans/                 # 实施计划（12 个）
 │   └── YYYY-MM-DD-<kebab-name>.md
-└── specs/                 # 设计规格（24 个，完整内容 + 元数据）
+└── specs/                 # 设计规格（25 个，完整内容 + 元数据）
     └── YYYY-MM-DD-<kebab-name>-design.md
 ```
 
@@ -101,7 +101,7 @@ docs/superpowers/
 引用源文档中的验收条件。
 ```
 
-## 规格索引（24 个）
+## 规格索引（25 个）
 
 | 规格文件 | 日期 | 核心内容 |
 |---------|------|---------|
@@ -123,6 +123,7 @@ docs/superpowers/
 | `specs/2026-08-04-java-rust-structure-mapping-design.md` | 2026-08-04 | 561 Java↔90 Rust 对照、422 MAPPED / 4 MISSING |
 | `specs/2026-08-04-compliance-audit-design.md` | 2026-08-04 | 88% 合规、33 项违规、整改建议 |
 | `specs/2026-08-16-java-upstream-architecture-design.md` | 2026-08-16 | Java 基线机制级事实：内建注册/变量链/缓存/格式工厂/错误装配（CodeGraph 实证） |
+| `specs/2026-08-16-rust-side-architecture-design.md` | 2026-08-16 | Rust 实现机制级事实：渲染链/分派/变量链/缓存/格式化/桥（与 Java 报告配对） |
 | `specs/2026-08-02-rust-obligation-ledger-design.md` | 2026-08-02 | R1-R20 Rust 正确性义务账本（所有权/类型化错误/数值精度/UTF-16/pyo3 GIL 等） |
 | `specs/2026-08-02-value-add-ledger-design.md` | 2026-08-02 | V1-V16 VALUE_ADD 测试账本（真实 bug 捕获：运算舍入/死循环/死锁/.args 急切构建/float 格式化） |
 | `specs/2026-08-03-migration-parity-ledger-design.md` | 2026-08-03 | SOURCE_PARITY 128 用例 disposition 对照表（113 MIRRORED / 15 NOT_APPLICABLE / 0 BLOCKED） |
