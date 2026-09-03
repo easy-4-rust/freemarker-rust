@@ -15,19 +15,32 @@
 - 生成产物：`FMParser`（顶层入口 `FMParser(Configuration, Reader, ParserConfiguration)`，构造即解析 → `Template` 持有根 `TemplateElement`）
 - Java 侧解析入口：`template/Template.java:247` `new FMParser(this, reader, actualParserConfiguration)`
 
-> **Rust 方案**：手写递归下降解析器（对应全部产生式）。不引 pest/nom —— FreeMarker 词法有 5 个状态且指令/表达式上下文交织（如 `[#list]` 与 `${}` 的嵌套、`<#-- -->` 注释中的 NO_PARSE 状态），手写最可控。
+> **Rust 方案**：手写递归下降解析器（对应全部产生式）。不引 pest/nom —— FreeMarker 词法有 7 个状态且指令/表达式上下文交织（如 `[#list]` 与 `${}` 的嵌套、`<#-- -->` 注释中的 NO_PARSE 状态），手写最可控。
 
 ## 2. 词法设计（对应 FTL.jj TOKEN 块）
 
-### 2.1 五个词法状态（`DEFAULT` 之外的 state 声明）
+### 2.1 词法状态（2026-08-16 修正：正文实际 7 个）
+
+> **修正说明**（CodeGraph 实证）：FTL.jj:585 注释称「5 lexical states:
+> DEFAULT, FM_EXPRESSION, IN_PAREN, NO_PARSE, EXPRESSION_COMMENT」——**注释已陈旧**，
+> 与正文不符（EXPRESSION_COMMENT 无 SwitchTo 调用、缺 NO_SPACE/NAMED_PARAMETER/
+> NO_DIRECTIVE）。以 grammar 正文的 `<STATE> TOKEN` 声明段与 SwitchTo 调用为准，
+> 实际 **7 个状态**（原表 5 态为不完整子集；行为无缺陷——Rust 词法器测试全绿 +
+> golden 逐字节）。
 
 | 状态 | 用途 | 进入方式 |
 |---|---|---|
 | `DEFAULT` | 模板文本扫描（找 `<`、`${`、`[#`） | 初始 |
-| `IN_PAREN` | 指令参数区（括号内忽略部分 `<` 含义） | `<#if (a<b)>` 等 |
-| `NO_SPACE_EXPRESSION` | 无空格表达式（`<#if x==y>` 紧贴） | 指令名后无空格 |
-| `NAMED_PARAMETER_EXPRESSION` | 命名参数上下文 | `<#list ... as x = 1>` 等 |
+| `FM_EXPRESSION` | 表达式扫描区（`${` 之后、指令名之后的表达式；空白忽略） | SwitchTo(FM_EXPRESSION) ×4 |
+| `IN_PAREN` | 表达式且在括号内——`>`/`>=` 仅此处合法（避免与指令结束符歧义） | 括号表达式 |
+| `NO_SPACE_EXPRESSION` | 无空格表达式（紧贴指令名，`<#if x==y>`） | 指令名后无空格 |
+| `NAMED_PARAMETER_EXPRESSION` | 命名参数上下文 | `<#list ... as x>` 等 |
 | `NO_PARSE` | `<#-- -->` 注释与 `<#noparse>` 块内容 | 注释块 |
+| `NO_DIRECTIVE` | re-parse 路径：`<#interpret>` 内嵌模板自 parentTokenSource 继承（:289-291），标签不作指令处理 | SwitchTo(NO_DIRECTIVE)；`<DEFAULT, NO_DIRECTIVE>` 声明 STATIC_TEXT_WS（:1181） |
+
+**Rust 建模对照**：不建全局状态机，JavaCC 状态语义折叠进 `ExprCtx`（Tag/Expression
+上下文）+ `TagSyntax` + `TextStop/TagOpen` + Lexer 字段（lexer.rs:28-163）——
+等价实现，与 ExprKind/ElementKind 同属"聚合上下文"设计哲学。
 
 ### 2.2 主要 token 清单（语义要点）
 

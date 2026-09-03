@@ -165,6 +165,26 @@ accept 内抛 → handleTemplateException → 最近 AttemptBlock → recover �
 - `specs/2026-08-01-error-handling-design.md`（70 场景 parity）
 - `docs/user-guide.md` §差异矩阵（面向用户的 10 条边界）
 
+## 12. FTL.jj 词法状态（2026-08-16 第三轮实证：正文 7 个，:585 注释陈旧）
+
+| 来源 | 记录的状态 | 评定 |
+|------|-----------|------|
+| FTL.jj:585 注释 | 5 个：DEFAULT, FM_EXPRESSION, IN_PAREN, NO_PARSE, EXPRESSION_COMMENT | **陈旧**——与正文不符（EXPRESSION_COMMENT 无 SwitchTo 调用；缺 NO_SPACE/NAMED_PARAMETER/NO_DIRECTIVE） |
+| 正文 SwitchTo 调用 + `<STATE> TOKEN` 声明 | **7 个**：DEFAULT、FM_EXPRESSION（×4）、IN_PAREN、NO_SPACE_EXPRESSION、NAMED_PARAMETER_EXPRESSION、NO_PARSE、NO_DIRECTIVE（×1） | **以此为准** |
+| docs/03 原记录（现 parser spec §2.1） | 5 个：DEFAULT/IN_PAREN/NO_SPACE_EXPRESSION/NAMED_PARAMETER_EXPRESSION/NO_PARSE | TOKEN 声明 4 态 + DEFAULT 的子集，漏 FM_EXPRESSION/NO_DIRECTIVE；已修正 |
+
+关键状态语义：
+- `FM_EXPRESSION`：表达式扫描区（`${` 之后/指令名之后），空白忽略；
+- `IN_PAREN`：表达式且在括号内——`>`/`>=` 仅此处合法（与指令结束符歧义消解）；
+- `NO_DIRECTIVE`：re-parse 路径——`<#interpret>` 内嵌模板自 parentTokenSource
+  继承命名约定后 SwitchTo（FTL.jj:289-291），标签不作指令处理；
+  `<DEFAULT, NO_DIRECTIVE>` 段声明 STATIC_TEXT_WS（:1181）；
+- 产生式规模：顶格签名 77 个（含 helper）；「24 表达式 + 13 指令」为命名核心子集。
+
+**Rust 对照**：不建全局状态机——JavaCC 状态语义折叠进 `ExprCtx`（Tag/Expression）+
+`TagSyntax` + `TextStop/TagOpen` + Lexer 字段（lexer.rs:28-163），等价实现
+（lexer.rs:3 注释与 parser spec §2.1 已按本节同步修正）。
+
 ---
 
 ## 对应计划
