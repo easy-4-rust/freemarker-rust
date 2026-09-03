@@ -1,8 +1,10 @@
 //! 字符串工具 —— 对应 Java `freemarker.template.utility.StringUtil`
 //! （转义/裁剪/glob 转正则；Java trim 语义差异见 docs/05 §3）
 
-/// HTML 转义（对应 `StringUtil.XHTMLEnc`：`& < > " '`）
-pub fn html_escape(s: &str) -> String {
+/// 转义公共核心（A2-04 合并：三个转义仅撇号映射不同）
+/// - `Some(entity)`：`'` → entity（XHTMLEnc=`&#39;`，XMLEnc=`&apos;`）
+/// - `None`：`'` 原样（HTMLEnc/XMLEncNA 不转义撇号）
+fn escape_core(s: &str, apos: Option<&str>) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -10,50 +12,36 @@ pub fn html_escape(s: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
+            '\'' => match apos {
+                Some(entity) => out.push_str(entity),
+                None => out.push('\''),
+            },
             _ => out.push(c),
         }
     }
     out
+}
+
+/// HTML 转义（对应 `StringUtil.XHTMLEnc`：`& < > " '`）
+pub fn html_escape(s: &str) -> String {
+    escape_core(s, Some("&#39;"))
 }
 
 /// 旧版 HTML 转义（对应 `StringUtil.HTMLEnc` = `XMLEncNA`，StringUtil.java:69-70：
 /// 与 XHTMLEnc 的差异——**不转义 `'`**）。?html 内建在 ICI < 2.3.20 时使用
 /// （BuiltInsForStringsEncoding.java:38-43 htmlBI.BIBeforeICI2d3d20）
 pub fn html_enc_legacy(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(c),
-        }
-    }
-    out
+    escape_core(s, None)
 }
 
 /// XML 转义（对应 `StringUtil.XMLEnc`）
 pub fn xml_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            _ => out.push(c),
-        }
-    }
-    out
+    escape_core(s, Some("&apos;"))
 }
 
 /// Java 风格 trim（对应 `String.trim`：仅 ≤ U+0020，非 Unicode 空白）
 pub fn java_trim(s: &str) -> &str {
-    let s = s.trim_start_matches(|c: char| c <= '\u{20}');
-    s.trim_end_matches(|c: char| c <= '\u{20}')
+    s.trim_matches(|c: char| c <= '\u{20}')
 }
 
 /// Glob → 正则（对应 `StringUtil.globToRegularExpression`，StringUtil.java:2100-2185；
@@ -66,7 +54,8 @@ pub fn java_trim(s: &str) -> &str {
 /// - `[` / `{` 保留（Java 报错；须用 `\` 转义）
 ///   非法 glob 模式 → Err（对应 Java IllegalArgumentException）
 pub fn glob_to_regex(glob: &str, case_insensitive: bool) -> Result<regex::Regex, String> {
-    let mut regex = String::new();
+    // A2-05：预分配容量（glob 每字符最多膨胀 ~6 倍转义；pattern 预留标志+锚定开销）
+    let mut regex = String::with_capacity(glob.len() * 6);
     let chars: Vec<char> = glob.chars().collect();
     let ln = chars.len();
     let mut next_start = 0;
@@ -119,7 +108,7 @@ pub fn glob_to_regex(glob: &str, case_insensitive: bool) -> Result<regex::Regex,
     }
     push_literal_glob_section(&mut regex, &chars, next_start, ln);
 
-    let mut pattern = String::new();
+    let mut pattern = String::with_capacity(regex.len() + 16);
     if case_insensitive {
         pattern.push_str("(?iu)");
     }

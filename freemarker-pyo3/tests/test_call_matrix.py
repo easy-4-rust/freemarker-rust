@@ -225,3 +225,52 @@ def test_dict_and_generic_object_root_accepted():
     # datetime 作为根值同样拒绝（date 模型非 hash）
     with pytest.raises(fm.FreeMarkerError, match="must be a hash"):
         cfg.get_template("t.ftl").process(datetime.datetime(2026, 8, 16))
+
+
+# ---------------------------------------------------------------------------
+# 5. 字节 API（2026-08-16：put_template_bytes / process_bytes / get_template
+#    的 input_encoding 自动路径——翻转 golden 编码类 SKIP 的底层能力）
+# ---------------------------------------------------------------------------
+
+
+def test_put_template_bytes_non_utf8_template():
+    # ISO-8859-5 字节模板 + input_encoding 自动解码路径（charset-in-header 语义）
+    # "Hello" 的 ISO-8859-5 字节与 ASCII 相同，附加一个高位字节验证非 UTF-8 路径
+    data = b"<#ftl encoding=\"ISO-8859-5\">\xe4\xeb\xeb\xeb!"  # 非法 UTF-8 序列
+    cfg = fm.FmConfiguration()
+    cfg.set_input_encoding("ISO-8859-5")
+    cfg.put_template_bytes("b.ftl", data)
+    out = cfg.get_template("b.ftl").process({})  # 输出默认 UTF-8 → str
+    assert "!" in out
+
+
+def test_process_bytes_utf16_transcode():
+    cfg = fm.FmConfiguration()
+    cfg.set_output_encoding("UTF-16")
+    cfg.put_template("u.ftl", "Hi")
+    data = cfg.get_template("u.ftl").process_bytes({})
+    assert data[:2] in (b"\xfe\xff", b"\xff\xfe")  # UTF-16 BOM
+    text = data.decode("utf-16")
+    assert text == "Hi"
+
+
+def test_process_bytes_latin1_transcode():
+    cfg = fm.FmConfiguration()
+    cfg.set_output_encoding("ISO-8859-1")
+    cfg.put_template("l.ftl", "a é b")
+    data = cfg.get_template("l.ftl").process_bytes({})
+    assert data == "a é b".encode("latin-1")
+
+
+def test_process_bytes_utf8_matches_str():
+    cfg = fm.FmConfiguration()
+    cfg.put_template("s.ftl", "ok ${1 + 1}")
+    raw = cfg.get_template("s.ftl").process_bytes({})
+    assert raw.decode("utf-8") == cfg.get_template("s.ftl").process({})
+
+
+def test_process_bytes_non_dict_root_guarded():
+    cfg = fm.FmConfiguration()
+    cfg.put_template("g.ftl", "x")
+    with pytest.raises(fm.FreeMarkerError, match="must be a hash"):
+        cfg.get_template("g.ftl").process_bytes([1])

@@ -31,7 +31,7 @@ use fm::core::{AutoEscaping, OutputFormatKind, TzSetting};
 use fm::template::TModel;
 use fm::Template;
 use pyo3::prelude::*;
-use pyo3::types::PyModule;
+use pyo3::types::{PyBytes, PyModule};
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -109,15 +109,31 @@ impl FmConfiguration {
         self.loader.put(&name, &source);
     }
 
+    /// 对应 Java `StringTemplateLoader.putTemplate` 的原始字节路径（chars 存储的
+    /// 字节等价）：非 UTF-8 模板（charset-in-header：ISO-8859-5 等）须经此注册，
+    /// 渲染时按 `input_encoding`（get_template 自动应用）或 include 的 encoding
+    /// 属性解码。UTF-8 源请用 put_template（语义相同）。
+    fn put_template_bytes(&mut self, name: String, data: &[u8]) {
+        self.loader.put_bytes(&name, data);
+    }
+
     /// 对应 Java `Configuration.getTemplate(name)` → Template 完整缓存流程
     /// （NotFound → FreeMarkerError）
     /// 注意：模板解析时 Configuration 被快照进 Rc<Configuration>（核心 crate 设计），
     /// 故 get_template 之后调用 set_shared_variable 不作用于该模板（需先设共享变量）。
+    /// `input_encoding` 设置时自动走编码解码路径（Java getTemplate 用 cfg 默认
+    /// 编码的等价语义；charset-in-header 用例依赖此行为）。
     fn get_template(&self, name: String) -> PyResult<FmTemplate> {
-        let template = self
-            .inner
-            .get_template(&name)
-            .map_err(template_error_to_pyerr)?;
+        let template = match self.inner.settings.input_encoding.as_deref() {
+            Some(enc) => self
+                .inner
+                .get_template_encoded(&name, Some(enc))
+                .map_err(template_error_to_pyerr)?,
+            None => self
+                .inner
+                .get_template(&name)
+                .map_err(template_error_to_pyerr)?,
+        };
         Ok(FmTemplate {
             inner: template,
             wrapper: self.wrapper.clone(),
@@ -381,46 +397,68 @@ impl FmTemplate {
     /// v1 不使用 py.allow_threads()：纯文本输出段短暂，释放/重取 GIL 收益低
     /// （docs/10 §4「v1 简单持有」）。
     fn process(&self, py: Python<'_>, root: Py<PyAny>) -> PyResult<String> {
-        // ① 根类型守卫（Java Template.process → Environment 构造对非
-        //    TemplateHashModel 抛 IllegalArgumentException；jython 侧
-        //    number/sequence/string 模型均非 hash——仅 dict 与通用对象放行，
-        //    标量/序列根统一拒绝，对齐 docs/10 §2 包装角色）
-        {
-            use pyo3::prelude::PyAnyMethods as _;
-            use pyo3::types::{
-                PyBool, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple,
-            };
-            use pyo3::types::{PyBytes, PyDate, PyTime};
-            let r = root.bind(py);
-            let scalar_or_seq = r.is_instance_of::<PyBool>()
-                || r.is_instance_of::<PyInt>()
-                || r.is_instance_of::<PyFloat>()
-                || r.is_instance_of::<PyString>()
-                || r.is_instance_of::<PyBytes>()
-                || r.is_instance_of::<PyDateTime>()
-                || r.is_instance_of::<PyDate>()
-                || r.is_instance_of::<PyTime>()
-                || r.is_instance_of::<PyList>()
-                || r.is_instance_of::<PyTuple>();
-            if scalar_or_seq && !r.is_instance_of::<PyDict>() {
-                return Err(FreeMarkerError::new_err("The data model must be a hash"));
-            }
-        }
-        // ② wrap 根（Java：process 内部经 objectWrapper.wrap(rootMap)）
+        ensure_hash_root(py, &root)?;
+        // ① wrap 根（Java：process 内部经 objectWrapper.wrap(rootMap)）
         let root_model = match self.wrapper.wrap(py, root.bind(py), self.tz())? {
             Some(m) => m,
             None => TModel::nothing(),
         };
-        // ③ 渲染到内存缓冲（核心引擎不感知 GIL）
+        // ② 渲染到内存缓冲（核心引擎不感知 GIL）
         let mut out = Vec::new();
         self.inner
             .process(root_model, &mut out)
             .map_err(template_error_to_pyerr)?;
-        // ④ UTF-8 输出转 str（Java Writer 输出语义）
+        // ③ UTF-8 输出转 str（Java Writer 输出语义）
         String::from_utf8(out).map_err(|e| {
             FreeMarkerError::new_err(format!("template output is not valid UTF-8: {e}"))
         })
     }
+
+    /// 对应 Java `Template.process(dataModel, OutputStream)`（字节输出语义）：
+    /// 返回按 `output_encoding` 转码后的原始字节（核心 process 已完成转码；
+    /// UTF-8 时与 process(str) 内容一致）。非 UTF-8 输出（UTF-16/ISO-8859-x）
+    /// 须经本 API 获取——str 版会强行按 UTF-8 解码损坏。
+    fn process_bytes<'py>(
+        &self,
+        py: Python<'py>,
+        root: Py<PyAny>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        ensure_hash_root(py, &root)?;
+        let root_model = match self.wrapper.wrap(py, root.bind(py), self.tz())? {
+            Some(m) => m,
+            None => TModel::nothing(),
+        };
+        let mut out = Vec::new();
+        self.inner
+            .process(root_model, &mut out)
+            .map_err(template_error_to_pyerr)?;
+        Ok(PyBytes::new(py, &out))
+    }
+}
+
+/// 根类型守卫（process / process_bytes 共用）：Java Template.process → Environment
+/// 构造对非 TemplateHashModel 抛 IllegalArgumentException；jython 侧
+/// number/sequence/string 模型均非 hash——仅 dict 与通用对象放行，
+/// 标量/序列根统一拒绝（对齐 docs/10 §2 包装角色）。
+fn ensure_hash_root(py: Python<'_>, root: &Py<PyAny>) -> PyResult<()> {
+    use pyo3::prelude::PyAnyMethods as _;
+    use pyo3::types::{PyBool, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
+    use pyo3::types::{PyBytes, PyDate, PyTime};
+    let r = root.bind(py);
+    let scalar_or_seq = r.is_instance_of::<PyBool>()
+        || r.is_instance_of::<PyInt>()
+        || r.is_instance_of::<PyFloat>()
+        || r.is_instance_of::<PyString>()
+        || r.is_instance_of::<PyBytes>()
+        || r.is_instance_of::<PyDateTime>()
+        || r.is_instance_of::<PyDate>()
+        || r.is_instance_of::<PyTime>()
+        || r.is_instance_of::<PyList>()
+        || r.is_instance_of::<PyTuple>();
+    if scalar_or_seq && !r.is_instance_of::<PyDict>() {
+        return Err(FreeMarkerError::new_err("The data model must be a hash"));
+    }
+    Ok(())
 }
 
 /// Python 模块入口 —— 对应 Java `freemarker.ext.jython` 包的对外 API 面
