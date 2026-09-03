@@ -101,3 +101,21 @@ cargo publish -p freemarker               # crates.io 上传
 ## 对应计划
 
 - `docs/superpowers/plans/2026-08-03-alpha0-production-readiness.md`（生产就绪）
+
+
+---
+
+## 2026-08-16 升级：release.yml 具备真实发布能力（wxrust 模板适配）
+
+原 workflow 仅 dry-run + GitHub Release；现按 wxrust release 模板重写为完整
+发布流水线：`validate-tag → build-and-test（test/clippy/fmt 全门禁）→
+dry-run-publish → publish-crates（真实上传 crates.io）→ create-release`。
+
+- 固定 toolchain 1.97.1 + `concurrency: release-{ref}`（cancel-in-progress: false）；
+- token 前置守卫（未配置立即失败）+ 3 次重试（45s 退避）+ 幂等重跑
+  （"already uploaded/exists" 视为成功，rerun 安全）；
+- 预发布 tag（`vX.Y.Z-suffix`）通过 validate-tag 正则，GitHub Release 自动标
+  prerelease；`pyo3-v*` 不触发本 workflow；
+- create-release 依赖 publish 成功（发布失败不产生 Release），正文仍取
+  CHANGELOG.md 对应版本段，找不到时回退链接；
+- 前置条件：org 级 `CARGO_REGISTRY_TOKEN`（与 wxrust/easypdf 同一 secret）。
