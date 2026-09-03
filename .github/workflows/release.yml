@@ -1,48 +1,190 @@
 name: Release
 
+# crates.io 发布流水线（wxrust 模板适配）：
+# tag v* 触发 → validate-tag → 全门禁（test/clippy/fmt）→ dry-run → publish → GitHub Release。
+# 与 wxrust release.yml 同构：固定 toolchain / concurrency / dry-run 分层 /
+# token 前置守卫 + 3 次重试 + 幂等重跑 / create-release 依赖 publish 成功。
+# 差异点：单发布 crate（freemarker；freemarker-test publish=false、
+# freemarker-pyo3 走 pyo3-publish.yml 独立发 PyPI）、支持预发布 tag（vX.Y.Z- suffix）、
+# Release 正文取自 CHANGELOG.md 对应版本段。
+
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release (e.g. v0.1.0)
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # 与 ci.yml 对齐：固定工具链，避免 stable 漂移影响发布产物
+  RUST_TOOLCHAIN: "1.97.1"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  publish-core:
-    name: cargo publish --dry-run (freemarker core)
+  validate-tag:
+    name: Validate Tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      prerelease: ${{ steps.extract.outputs.prerelease }}
+    steps:
+      - name: Extract and validate version
+        id: extract
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.version }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          # 接受正式版与预发布版（v0.1.0-beta.0），拒绝 pyo3-v* 等其他前缀
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid tag format: $TAG (expected vX.Y.Z or vX.Y.Z-suffix)"
+            exit 1
+          fi
+          if [[ "$TAG" == *"-"* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Validated version: $TAG"
+
+  build-and-test:
+    name: Build & Test
+    needs: validate-tag
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy, rustfmt
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: cargo publish --dry-run (freemarker core)
-        # 完整发布演练：打 .crate 包 + 自检 + 包内 README/LICENSE/依赖校验
-        # freemarker-pyo3 publish=true 但本轮不实际发布（PyPI 通路独立），见 docs/superpowers/specs/2026-08-03-publishing-design.md
+      # 发布前全门禁（与 ci.yml 同口径；pyo3 走独立 Python bindings job，
+      # 其 crates 侧 publish=false 不参与 crates.io 发布）
+      - name: cargo test
+        run: cargo test --workspace --exclude freemarker-pyo3
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --exclude freemarker-pyo3 -- -D warnings
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+  dry-run-publish:
+    name: Dry-run Publish
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Layer 0：freemarker 无内部依赖（freemarker-test publish=false 不在依赖图），
+      # 完整 dry-run：打 .crate 包 + 自检 + 包内 README/LICENSE/依赖校验
+      - name: cargo publish --dry-run (freemarker)
         run: cargo publish --dry-run -p freemarker --allow-dirty
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: [validate-tag, dry-run-publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Publish freemarker
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # 前置守卫：token 未配置立即失败（避免空 token 重试的假绿）
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret 未配置（org Settings -> Secrets -> Actions）"
+            exit 1
+          fi
+          ok=0
+          for attempt in 1 2 3; do
+            if out=$(cargo publish -p freemarker --allow-dirty 2>&1); then
+              echo "Successfully published freemarker"
+              ok=1
+              break
+            fi
+            # 幂等重跑：版本已上传视为成功（rerun 场景，wxrust 同款）
+            if echo "$out" | grep -qiE "already (uploaded|exists)"; then
+              echo "freemarker already published (version exists), skipping"
+              ok=1
+              break
+            fi
+            echo "$out" | tail -5
+            echo "Attempt $attempt failed, waiting before retry..."
+            sleep 45
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "::error::freemarker 3 次重试后仍发布失败"
+            exit 1
+          fi
+
+  create-release:
+    name: Create GitHub Release
+    needs: [validate-tag, publish-crates]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Extract changelog section for tag
         id: changelog
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          VERSION="${{ needs.validate-tag.outputs.version }}"
+          VERSION="${VERSION#v}"
           awk -v v="$VERSION" '
             /^## \[/ { if (found) exit; if (index($0, "[" v "]") > 0) { found=1; print; next } }
             found { print }
           ' CHANGELOG.md > changelog-section.md || true
+          # 找不到对应段时回退到链接正文（不产生空 Release）
+          if [ ! -s changelog-section.md ]; then
+            echo "See [CHANGELOG.md](CHANGELOG.md) for details." > changelog-section.md
+          fi
           cat changelog-section.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
+          tag_name: ${{ needs.validate-tag.outputs.version }}
+          name: ${{ needs.validate-tag.outputs.version }}
           draft: false
+          prerelease: ${{ needs.validate-tag.outputs.prerelease }}
           generate_release_notes: false
           body_path: changelog-section.md
         env:
