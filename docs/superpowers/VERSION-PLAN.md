@@ -9,7 +9,7 @@
 
 | 指标 | 当前值 | 备注 |
 |------|--------|------|
-| 当前版本 | `0.1.0-beta.0` | tag 于 2026-08-15（生产就绪计划 Stage 0-5 收口） |
+| 当前版本 | `0.1.0` | 2026-09-03（0.x 收官；三渠道发布齐备） |
 | golden MIRRORED | **113/128**（88%） | 0 FAIL / 0 BLOCKED，15 项永久 NA |
 | builtins 覆盖 | **183/183**（100%） | Java 2.3.34 全集 |
 | 测试数 | **997** workspace + pytest 81 | cargo test / pytest（2026-08-15 实测） |
@@ -19,7 +19,7 @@
 | proptest fuzz | 10000 cases | expression + parser target |
 | criterion 基准 | 5 metrics | 见 `docs/release/benchmarks.md` |
 | pyo3 API 面 | **35 方法**（原 7） | PyPI 已上线 0.1.0b0（5 平台 abi3 wheel） |
-| crates.io | freemarker **0.1.0-beta.0** | 2026-09-03 发布（release.yml 新流水线首航） |
+| crates.io | freemarker **0.1.0** | 2026-09-03 发布（release.yml 流水线） |
 
 ### 1.0 晋级条件 8 项状态
 
