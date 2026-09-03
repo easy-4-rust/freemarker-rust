@@ -1,6 +1,7 @@
 //! 词法器 —— 对应 Java `freemarker.core.FMParserTokenManager`（FTL.jj TOKEN 块）
 //!
-//! JavaCC 的 5 个词法状态（docs/03 §2.1）在本实现中由调用上下文隐式表达：
+//! JavaCC 正文实际 7 个词法状态（FTL.jj:585 注释陈旧，SwitchTo 实证；
+//! parser spec §2.1 与 Java 上游报告 §12 已修正）在本实现中由调用上下文隐式表达：
 //! - `DEFAULT`：模板文本扫描（`scan_text_chunk`，识别 `<#`/`<@`/`${`/`<#--` 等）；
 //! - `FM_EXPRESSION` / `NO_SPACE_EXPRESSION` / `NAMED_PARAMETER_EXPRESSION`：
 //!   `next_expr_token(ExprCtx)` 按表达式上下文出 token（三个状态的差异在本实现中

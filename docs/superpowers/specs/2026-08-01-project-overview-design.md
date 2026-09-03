@@ -31,7 +31,7 @@
 
 | 子系统 | 源（freemarker-core） | 语义要点 |
 |---|---|---|
-| 词法与语法 | `FTL.jj` → 生成的 `FMParser` | 全部产生式 + 5 个词法状态 |
+| 词法与语法 | `FTL.jj` → 生成的 `FMParser` | 全部产生式 + 7 个词法状态（2026-08-16 修正，见 parser spec §2.1 / Java 上游报告 §12） |
 | AST | `core/*.java`（120+ 节点类） | TemplateElement + Expression 全家族 |
 | 渲染引擎 | `core/Environment.java`（3,709 行） | 指令栈 accept 模式、作用域、命名空间、异常处理 |
 | 指令 | `core/*Instruction.java`、`IfBlock/IteratorBlock/...`（46 类） | 见 specs/2026-08-01-rendering-engine-design.md 全清单 |
