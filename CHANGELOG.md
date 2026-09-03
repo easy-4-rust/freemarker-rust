@@ -4,6 +4,23 @@
 [语义化版本](https://semver.org/lang/zh-CN/)（晋级规则见
 [docs/superpowers/specs/2026-08-03-versioning-design.md](docs/superpowers/specs/2026-08-03-versioning-design.md)）。
 
+## [Unreleased]
+
+### Added
+- pyo3 字节 API：`FmTemplate.process_bytes`（按 output_encoding 转码的原始字节输出）、
+  `FmConfiguration.put_template_bytes`（非 UTF-8 模板原始字节注册）、
+  `get_template` 自动应用 input_encoding（charset-in-header 语义）
+
+### Fixed
+- `?string.currency`/`?string.percent` 预定义格式实现（5 locale Java 实测基线）
+- pyo3 非 dict 根统一拒绝（对齐 Java Template.process 语义）
+- A2 约束检查 minor 项：string_util 三套 escape 合并公共核心（A2-04）、
+  glob_to_regex 预分配消除增长重分配（A2-05）、java_trim 单次调用（A2-07）
+
+### Changed
+- golden Python 套件翻转 3 用例：charset-in-header / output-encoding2 /
+  output-encoding3（115 passed / 69 skipped；harness 共享模板改全量字节注册）
+
 ## [0.1.0-beta.0] - 2026-08-15
 
 > 本版本相对 v0.1.0-alpha.1：**布局对齐轮 + 生产就绪计划 Stage 0-5 全部收口**——

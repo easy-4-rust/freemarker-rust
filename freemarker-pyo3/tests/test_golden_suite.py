@@ -128,19 +128,45 @@ def read_expected(base: str) -> str:
 # 测试台（等价 golden.rs 的 base_config + load_all_templates + 公共变量）
 # ---------------------------------------------------------------------------
 
-def load_shared_templates(cfg: fm.FmConfiguration) -> None:
-    """注册 tests/suite/templates/ 下全部 UTF-8 模板（相对路径，剥版权头）。
+def remove_ftl_copyright_bytes(ftl: bytes) -> bytes:
+    """字节版版权剥离（镜像 Rust remove_ftl_copyright_comment_bytes / common/mod.rs:88）：
+    ASCII 小写查找 "copyright"，取其前最后一个注释起始标记，截到结束标记后并吞一换行。
+    对任意编码安全（标记与版权词均为 ASCII）。"""
+    lower = bytes(b | 0x20 if 65 <= b <= 90 else b for b in ftl)
+    idx = lower.find(b"copyright")
+    if idx < 0:
+        return ftl
+    before = lower[:idx]
+    ab = before.rfind(b"<#--")
+    sb = before.rfind(b"[#--")
+    if ab < 0 and sb < 0:
+        return ftl
+    if sb > ab:
+        start, end_marker = sb, b"--]"
+    else:
+        start, end_marker = ab, b"-->"
+    end = lower.find(end_marker, idx)
+    if end < 0:
+        return ftl
+    out = ftl[:start] + ftl[end + len(end_marker):]
+    # 吞掉紧随的一个换行
+    if out[start:start + 1] == b"\r":
+        out = out[:start] + out[start + 2:]
+    elif out[start:start + 1] == b"\n":
+        out = out[:start] + out[start + 1:]
+    return out
 
-    非 UTF-8 字节的模板（charset-in-header 系列）跳过——其用例本身已 SKIP。
+
+def load_shared_templates(cfg: fm.FmConfiguration) -> None:
+    """注册 tests/suite/templates/ 下全部模板（相对路径，字节版剥版权头）。
+
+    2026-08-16 起全量按原始字节注册（put_template_bytes）——镜像 Rust
+    load_all_templates（common/mod.rs:75-86）：非 UTF-8 模板（charset-in-header
+    系列）不再跳过，read_encoded 按声明编码解码。
     """
     for p in sorted(SHARED_DIR.rglob("*.ftl")):
-        raw = p.read_bytes()
-        try:
-            src = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
         rel = p.relative_to(SHARED_DIR).as_posix()
-        cfg.put_template(rel, strip_ftl_copyright(src))
+        cfg.put_template_bytes(rel, remove_ftl_copyright_bytes(p.read_bytes()))
 
 
 def build_config() -> fm.FmConfiguration:
@@ -171,6 +197,10 @@ CASE_SETTINGS = {
     # manifest 用例级 strict_syntax 覆盖 harness 默认（true）
     "non-strict-syntax": {"strict_syntax": "N"},
     "strictinheader": {"strict_syntax": "N"},
+    # 编码类（process_bytes / put_template_bytes 翻转，2026-08-16）
+    "charset-in-header": {"input_encoding": "ISO-8859-5", "clear_encoding_map": "Y"},
+    "output-encoding2": {"output_encoding": "UTF-16"},
+    "output-encoding3": {"output_encoding": "ISO-8859-1", "url_escaping_charset": "UTF-16"},
 }
 
 
@@ -182,6 +212,14 @@ def apply_settings(cfg: fm.FmConfiguration, settings: dict) -> None:
         elif k == "strict_syntax":
             # golden.rs：v == "Y" || v == "1"（兼容 bool 形态）
             cfg.set_strict_syntax(v in (True, "Y", "1", "true"))
+        elif k == "input_encoding":
+            cfg.set_input_encoding(v)
+        elif k == "output_encoding":
+            cfg.set_output_encoding(v)
+        elif k == "url_escaping_charset":
+            cfg.set_url_escaping_charset(v)
+        elif k == "clear_encoding_map":
+            pass  # Rust golden 同款 no-op（common/mod.rs:213）
         elif k == "auto_import":
             # Java SettingStringParser.parseAsImportList："path as ns" 逗号分隔
             for item in v.split(","):
@@ -223,21 +261,41 @@ def localized_template_name(cfg: fm.FmConfiguration, name: str) -> str:
     return name
 
 
+#: 输出为非 UTF-8 编码的用例（process_bytes 字节路径；expected 为转码字节文件）
+BYTES_OUTPUT_CASES = {"output-encoding2", "output-encoding3"}
+
+
+def decode_output_bytes(data: bytes, encoding: str) -> str:
+    """按 output_encoding 解码转码字节为 str（镜像 Rust common/mod.rs decode_bytes）。"""
+    enc = (encoding or "UTF-8").upper()
+    if enc == "ISO-8859-1":
+        return data.decode("latin-1")
+    if "UTF-16" in enc:
+        bom_be = data[:2] == b"\xfe\xff"
+        bom_le = data[:2] == b"\xff\xfe"
+        if bom_be or bom_le:
+            data = data[2:]
+            return data.decode("utf-16-be" if bom_be else "utf-16-le")
+        return data.decode("utf-16-le" if "LE" in enc else "utf-16-be")
+    return data.decode("utf-8", errors="replace")
+
+
 def render_case(base: str):
     """渲染用例模板。成功返回 (out, None)；失败返回 (None, 错误消息)。"""
     ftl = CASES_DIR / base / f"{base}.ftl"
     if not ftl.exists():
         return None, "目录内无 <base>.ftl（manifest 变体模板名）"
     raw = ftl.read_bytes()
-    try:
-        src = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return None, "模板为非 UTF-8 字节（input_encoding 设置 Java 特有）"
     cfg = build_config()
     # 应用用例级设置（须在 put_template / get_template 之前）
     if base in CASE_SETTINGS:
         apply_settings(cfg, CASE_SETTINGS[base])
-    cfg.put_template(f"{base}.ftl", strip_ftl_copyright(src))
+    # 非 UTF-8 模板（charset-in-header：ISO-8859-5 字节）按原始字节注册
+    try:
+        src = raw.decode("utf-8")
+        cfg.put_template(f"{base}.ftl", strip_ftl_copyright(src))
+    except UnicodeDecodeError:
+        cfg.put_template_bytes(f"{base}.ftl", remove_ftl_copyright_bytes(raw))
     # 局部化模板查找（locale 非 en_US 时尝试变体名）
     tpl_name = localized_template_name(cfg, f"{base}.ftl")
     try:
@@ -245,6 +303,11 @@ def render_case(base: str):
     except fm.FreeMarkerError as e:
         return None, f"解析失败：{e}"
     try:
+        if base in BYTES_OUTPUT_CASES:
+            # output_encoding 非 UTF-8：经 process_bytes 取转码字节，再按该编码
+            # 解码回 str 比较（镜像 Rust render_case 的 decode 回路，common/mod.rs:256-261）
+            out_bytes = template.process_bytes({})
+            return decode_output_bytes(out_bytes, cfg.output_encoding), None
         return template.process({}), None
     except fm.FreeMarkerError as e:
         return None, f"渲染失败：{e}"
@@ -298,7 +361,8 @@ PASS_CASES = {
     "listliteral", "localization", "loopvariable", "macros-return", "macros2",
     "nested", "new-defaultresolver", "new-unrestricted", "newlines1", "newlines2",
     "non-strict-syntax", "noparse", "number-literal", "numerical-cast",
-    "output-encoding1", "precedence", "root", "strictinheader",
+    "charset-in-header", "output-encoding1", "output-encoding2", "output-encoding3",
+    "precedence", "root", "strictinheader",
     "string-builtins2", "stringliteral", "variables", "whitespace-trim",
     "wstrip-in-header",
 }
@@ -365,7 +429,6 @@ SKIP_REASONS = {
     "url": "no_output 用例，依赖 Java 测试台指令 assert",
 
     # --- 模板字节/文件名（非引擎能力）---
-    "charset-in-header": "模板为非 UTF-8 字节（ISO-8859-5，input_encoding 设置 Java 特有）",
     "xml-ns_prefix-scope": "目录内无 <base>.ftl（manifest 变体模板名 xml-ns_prefix-scope-main.ftl）",
     "xmlns2": "目录内无 <base>.ftl（manifest 变体：与 xmlns1 同模板）",
 
@@ -397,8 +460,6 @@ SKIP_REASONS = {
 
     # --- 依赖 Java 配置设置（部分已翻转，剩余保持 SKIP）---
     "classic-compatible": "classic_compatible=Y 设置 + Java 数据模型（beansArray/...）",
-    "output-encoding2": "output_encoding=UTF-16 设置（Java Writer 输出编码，Python API 固定 UTF-8 str）",
-    "output-encoding3": "output_encoding=ISO-8859-1 设置（Java Writer 输出编码，Python API 固定 UTF-8 str）",
 
     # --- jython25 未迁移的 Java 运行时 ---
     "transforms": "transform 指令需要 JythonRuntime（java.lang.ClassNotFoundException；jython25 未迁移）",
