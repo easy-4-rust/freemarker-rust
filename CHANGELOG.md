@@ -4,7 +4,10 @@
 [语义化版本](https://semver.org/lang/zh-CN/)（晋级规则见
 [docs/superpowers/specs/2026-08-03-versioning-design.md](docs/superpowers/specs/2026-08-03-versioning-design.md)）。
 
-## [Unreleased]
+## [0.1.0] - 2026-09-03
+
+> 首个稳定化版本（0.x 收官）：beta.0 内容 + 字节 API + 三项缺陷修复 + A2 治理。
+> crates.io / PyPI / GitHub Release 三渠道齐备。
 
 ### Added
 - pyo3 字节 API：`FmTemplate.process_bytes`（按 output_encoding 转码的原始字节输出）、

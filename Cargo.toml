@@ -4,7 +4,7 @@ members = ["freemarker", "freemarker-test", "freemarker-pyo3"]
 default-members = ["freemarker"]
 
 [workspace.package]
-version = "0.1.0-beta.0"
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 license = "Apache-2.0"
