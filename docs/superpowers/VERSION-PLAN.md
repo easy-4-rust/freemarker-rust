@@ -18,7 +18,8 @@
 | 公共 API 基线 | 0 diff（locked） | `docs/release/api-baseline.txt` |
 | proptest fuzz | 10000 cases | expression + parser target |
 | criterion 基准 | 5 metrics | 见 `docs/release/benchmarks.md` |
-| pyo3 API 面 | **35 方法**（原 7） | 2026-08-15 Stage 2；发布仍属 0.1.0 |
+| pyo3 API 面 | **35 方法**（原 7） | PyPI 已上线 0.1.0b0（5 平台 abi3 wheel） |
+| crates.io | freemarker **0.1.0-beta.0** | 2026-09-03 发布（release.yml 新流水线首航） |
 
 ### 1.0 晋级条件 8 项状态
 
@@ -61,7 +62,10 @@
 - [x] 公共 API 面经至少 1 个 beta 版本无变更（✅ 冻结窗口 2026-08-15 起，api-baseline CI 门禁守护，beta.0→今 diff=0）
 - [x] 用户文档（README + API docs + 迁移指南）完整（✅ 2026-08-16：docs/user-guide.md 508 行差异矩阵 + docs/api-stability.md + examples/×7 可运行示例，c71af40）
 - [x] pyo3 绑定实际发布到 PyPI（✅ 2026-08-16 提前完成：freemarker-pyo3 0.1.0b0 上线，5 平台 abi3 wheel + sdist，端到端验证）
-- [ ] crates.io 发布 `freemarker` crate（⏳ 待维护者 token：beta.0 版本就绪，cargo publish --dry-run 通过）
+- [x] crates.io 发布 `freemarker` crate（✅ 2026-09-03：`freemarker 0.1.0-beta.0` 经 release.yml 新流水线上线——wxrust 模板适配的五段流水线（validate-tag → 全门禁 → dry-run → publish → create-release）5/5 job 成功，[crates.io](https://crates.io/crates/freemarker) max_version=0.1.0-beta.0 实测验证。发布矩阵至此完整：crates.io + PyPI + GitHub Release 三渠道齐备）
+
+> **0.1.0 入口条件 5/5 全部达成（2026-09-03）**。后续按 §2.3 推进 1.0：beta 间隔期、
+> 12 个 >800 行文件拆分（结构对照 spec §8 债务表）、drift gate 硬阈值、社区反馈。
 
 **预计时间**：2026-08 下旬 ~ 2026-09
 
