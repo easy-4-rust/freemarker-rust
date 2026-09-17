@@ -234,25 +234,27 @@ ebcbca8 refactor(layout): 4 个 built_in/range_model 命名尾巴对齐 + range 
 
 ---
 
-## >800 行文件债务（1.0 前清偿）
+## >800 行文件债务（1.0 前清偿）—— ✅ 已全部清偿（2026-09-17）
 
 > grammar.rs 6838 行已于 Stage 3 拆分为 13 个 ≤800 行文件（2026-08-15）。
-> 以下为项目中剩余 >800 行文件，需在 1.0 前按相同模式拆分。
+> 剩余 12 个 >800 行文件已于 2026-09-17 全部按相同模式（#[path] 聚合 / tests
+> 独立文件）拆分清偿，拆分后全部 ≤800 行；行为零变化、公开 API 行级零 diff
+> （docs/release/api-baseline.txt 未变）。
 
-| 文件 | 行数 | 职责 | 拆分优先级 |
-|------|------|------|-----------|
-| `core/environment.rs` | 3358 | 模板执行环境（变量作用域、设置、输出） | P0 |
-| `core/built_ins_for_sequences.rs` | 1777 | 序列内建方法（sort/reverse/chunk 等） | P1 |
-| `parser/lexer.rs` | 1659 | 词法分析器（5 词法状态） | P1 |
-| `xml/node.rs` | 1290 | XML 节点模型 | P2 |
-| `core/exec.rs` | 1231 | 指令执行（Element 渲染） | P1 |
-| `core/eval.rs` | 1218 | 表达式求值 | P1 |
-| `builtins/iso_date_format.rs` | 1122 | ISO 日期格式化 | P2 |
-| `core/built_ins_for_strings_basic.rs` | 1075 | 字符串基础内建方法 | P2 |
-| `core/built_in.rs` | 1000 | 内建方法基类与注册 | P2 |
-| `builtins/java_date_format.rs` | 969 | Java 日期格式化 | P2 |
-| `builtins/format.rs` | 853 | ?format 内建方法 | P3 |
-| `core/built_ins_for_strings_regexp.rs` | 852 | 字符串正则内建方法 | P3 |
+| 文件 | 原行数 | 拆分结果（均已 ≤800） | 优先级 |
+|------|------|----------------------|--------|
+| `core/environment.rs` | 3358 | 8 文件（主 713 + loop/macros/variables/invoke/macro_args/models/stack_trace） | P0 |
+| `core/built_ins_for_sequences.rs` | 1777 | 3 文件（主 655 + sort 495 + tests 651） | P1 |
+| `parser/lexer.rs` | 1678 | 4 文件（主 600 + expr 523 + scan 257 + tests 329） | P1 |
+| `xml/node.rs` | 1409 | 3 文件（主 658 + query 591 + tests 183） | P2 |
+| `core/exec.rs` | 1231 | 2 文件（主 564 + tests 676） | P1 |
+| `core/eval.rs` | 1218 | 2 文件（主 232 + tests 994） | P1 |
+| `builtins/iso_date_format.rs` | 1122 | 3 文件（主 344 + parse 571 + tests 232） | P2 |
+| `core/built_ins_for_strings_basic.rs` | 1075 | 2 文件（主 742 + tests 337） | P2 |
+| `core/built_in.rs` | 1000 | 2 文件（主 654 + helpers 382） | P2 |
+| `builtins/java_date_format.rs` | 969 | 2 文件（主 778 + tests 195） | P2 |
+| `builtins/format.rs` | 967 | 2 文件（主 754 + tests 217） | P3 |
+| `core/built_ins_for_strings_regexp.rs` | 852 | 2 文件（主 697 + tests 158） | P3 |
 
 ---
 

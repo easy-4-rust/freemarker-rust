@@ -77,7 +77,7 @@
 - [ ] versioning.md §3.1 全部 8 项条件在 beta 阶段重新验证通过
 - [ ] 至少 2 个 beta 版本间隔 >= 2 周
 - [ ] 社区反馈无重大 API 设计缺陷
-- [ ] 性能基准设硬阈值（criterion drift gate）
+- [x] 性能基准设硬阈值（criterion drift gate，2026-09-17：CI bench-drift-gate job ±5%）
 
 **预计时间**：2026-09 ~ 2026-10
 
