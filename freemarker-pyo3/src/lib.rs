@@ -688,13 +688,13 @@ mod tests {
         });
     }
 
-    /// 根数据模型传非 dict（int）：通用模型带 hash 角色（Java JythonModel 继承链），
-    /// `${x}` 走 getattr→get_item 双通道，int 的 get_item 抛 TypeError → 模型错误
+    /// 根数据模型传非 dict（int）：桥层对非 hash 根统一拒绝（086cca5，
+    /// 对齐 Java `Template.process` 要求 `TemplateHashModel` 根的语义）
     #[test]
     fn root_non_dict_reports_model_error() {
         let mut cfg = FmConfiguration::new();
         let err = render(&mut cfg, "r.ftl", "${x}", "42").unwrap_err();
-        assert!(err.to_string().contains("TypeError"), "{err}");
+        assert!(err.to_string().contains("must be a hash"), "{err}");
     }
 
     /// 大整数 + 数值算术渲染（BigInt wrap → FTL 算术 → 输出）

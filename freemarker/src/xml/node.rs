@@ -1287,10 +1287,8 @@ mod tests {
 
     #[test]
     fn node_list_model_keeps_hash_navigation_role() {
-        let doc = parse_xml(
-            "<root><a><b><c>one</c></b></a><a><b><c>two</c></b></a></root>",
-        )
-        .unwrap();
+        let doc =
+            parse_xml("<root><a><b><c>one</c></b></a><a><b><c>two</c></b></a></root>").unwrap();
         let template = Template::new(
             "xml-test.ftl".to_string(),
             Vec::new(),
@@ -1300,14 +1298,38 @@ mod tests {
         let mut out = Vec::new();
         let mut env = Environment::new(&template, TModel::nothing(), &mut out);
 
-        let root = doc.node_hash.as_ref().unwrap().get(&mut env, "root").unwrap().unwrap();
-        let a = root.node_hash.as_ref().unwrap().get(&mut env, "a").unwrap().unwrap();
+        let root = doc
+            .node_hash
+            .as_ref()
+            .unwrap()
+            .get(&mut env, "root")
+            .unwrap()
+            .unwrap();
+        let a = root
+            .node_hash
+            .as_ref()
+            .unwrap()
+            .get(&mut env, "a")
+            .unwrap()
+            .unwrap();
         assert_eq!(a.sequence.as_ref().unwrap().size().unwrap(), 2);
         assert!(a.node_hash.is_some());
 
-        let b = a.node_hash.as_ref().unwrap().get(&mut env, "b").unwrap().unwrap();
+        let b = a
+            .node_hash
+            .as_ref()
+            .unwrap()
+            .get(&mut env, "b")
+            .unwrap()
+            .unwrap();
         assert_eq!(b.sequence.as_ref().unwrap().size().unwrap(), 2);
-        let c = b.node_hash.as_ref().unwrap().get(&mut env, "c").unwrap().unwrap();
+        let c = b
+            .node_hash
+            .as_ref()
+            .unwrap()
+            .get(&mut env, "c")
+            .unwrap()
+            .unwrap();
         assert_eq!(c.sequence.as_ref().unwrap().size().unwrap(), 2);
 
         let missing = a
