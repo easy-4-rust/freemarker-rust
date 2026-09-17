@@ -2444,8 +2444,14 @@ pub fn freemarker::Environment<'a>::do_auto_imports_and_includes(&mut self) -> f
 pub fn freemarker::Environment<'a>::get_custom_state(&self, &str) -> core::option::Option<freemarker::TModel>
 pub fn freemarker::Environment<'a>::get_lazy_auto_imports(&self) -> core::option::Option<bool>
 pub fn freemarker::Environment<'a>::get_lazy_imports(&self) -> bool
+pub fn freemarker::Environment<'a>::import_lib(&mut self, &str, &str) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::import_lib_explicit(&mut self, &str, &str, bool) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::include_named(&mut self, &str, bool, bool, core::option::Option<alloc::string::String>) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::include_template(&mut self, &freemarker::Template) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::register_macro_def(&mut self, &freemarker::core::MacroDef)
 pub fn freemarker::Environment<'a>::remove_auto_import(&mut self, &str)
 pub fn freemarker::Environment<'a>::remove_auto_include(&mut self, &str)
+pub fn freemarker::Environment<'a>::resolve_template_name(&self, &str) -> alloc::string::String
 pub fn freemarker::Environment<'a>::set_custom_state(&mut self, &str, core::option::Option<freemarker::TModel>) -> core::option::Option<freemarker::TModel>
 pub fn freemarker::Environment<'a>::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
 pub fn freemarker::Environment<'a>::set_lazy_imports(&mut self, bool)
@@ -2462,18 +2468,13 @@ pub fn freemarker::Environment<'a>::get_loop_context(&self, core::option::Option
 pub fn freemarker::Environment<'a>::get_macro(&self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::core::MacroValue>>
 pub fn freemarker::Environment<'a>::get_main_namespace(&self) -> alloc::rc::Rc<freemarker::core::Namespace>
 pub fn freemarker::Environment<'a>::get_variable(&self, &str) -> freemarker::Result<freemarker::TModel>
-pub fn freemarker::Environment<'a>::import_lib(&mut self, &str, &str) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::import_lib_explicit(&mut self, &str, &str, bool) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::include_named(&mut self, &str, bool, bool, core::option::Option<alloc::string::String>) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::include_template(&mut self, &freemarker::Template) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::new(&'a freemarker::Template, freemarker::TModel, &'a mut dyn core::io::write::Write) -> Self
-pub fn freemarker::Environment<'a>::process(&mut self) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::register_macro_def(&mut self, &freemarker::core::MacroDef)
-pub fn freemarker::Environment<'a>::resolve_template_name(&self, &str) -> alloc::string::String
-pub fn freemarker::Environment<'a>::run_elements(&mut self, &[freemarker::core::Element]) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::set_global_variable(&mut self, &str, freemarker::TModel)
 pub fn freemarker::Environment<'a>::set_local_variable(&mut self, &str, freemarker::TModel) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::set_variable(&mut self, &str, freemarker::TModel)
+impl<'a> freemarker::Environment<'a>
+pub fn freemarker::Environment<'a>::new(&'a freemarker::Template, freemarker::TModel, &'a mut dyn core::io::write::Write) -> Self
+pub fn freemarker::Environment<'a>::process(&mut self) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::run_elements(&mut self, &[freemarker::core::Element]) -> freemarker::Result<()>
 impl<'a> !core::marker::Freeze for freemarker::Environment<'a>
 impl<'a> !core::marker::Send for freemarker::Environment<'a>
 impl<'a> !core::marker::Sync for freemarker::Environment<'a>
@@ -5861,8 +5862,14 @@ pub fn freemarker::Environment<'a>::do_auto_imports_and_includes(&mut self) -> f
 pub fn freemarker::Environment<'a>::get_custom_state(&self, &str) -> core::option::Option<freemarker::TModel>
 pub fn freemarker::Environment<'a>::get_lazy_auto_imports(&self) -> core::option::Option<bool>
 pub fn freemarker::Environment<'a>::get_lazy_imports(&self) -> bool
+pub fn freemarker::Environment<'a>::import_lib(&mut self, &str, &str) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::import_lib_explicit(&mut self, &str, &str, bool) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::include_named(&mut self, &str, bool, bool, core::option::Option<alloc::string::String>) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::include_template(&mut self, &freemarker::Template) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::register_macro_def(&mut self, &freemarker::core::MacroDef)
 pub fn freemarker::Environment<'a>::remove_auto_import(&mut self, &str)
 pub fn freemarker::Environment<'a>::remove_auto_include(&mut self, &str)
+pub fn freemarker::Environment<'a>::resolve_template_name(&self, &str) -> alloc::string::String
 pub fn freemarker::Environment<'a>::set_custom_state(&mut self, &str, core::option::Option<freemarker::TModel>) -> core::option::Option<freemarker::TModel>
 pub fn freemarker::Environment<'a>::set_lazy_auto_imports(&mut self, core::option::Option<bool>)
 pub fn freemarker::Environment<'a>::set_lazy_imports(&mut self, bool)
@@ -5879,18 +5886,13 @@ pub fn freemarker::Environment<'a>::get_loop_context(&self, core::option::Option
 pub fn freemarker::Environment<'a>::get_macro(&self, &str) -> core::option::Option<alloc::rc::Rc<freemarker::core::MacroValue>>
 pub fn freemarker::Environment<'a>::get_main_namespace(&self) -> alloc::rc::Rc<freemarker::core::Namespace>
 pub fn freemarker::Environment<'a>::get_variable(&self, &str) -> freemarker::Result<freemarker::TModel>
-pub fn freemarker::Environment<'a>::import_lib(&mut self, &str, &str) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::import_lib_explicit(&mut self, &str, &str, bool) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::include_named(&mut self, &str, bool, bool, core::option::Option<alloc::string::String>) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::include_template(&mut self, &freemarker::Template) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::new(&'a freemarker::Template, freemarker::TModel, &'a mut dyn core::io::write::Write) -> Self
-pub fn freemarker::Environment<'a>::process(&mut self) -> freemarker::Result<()>
-pub fn freemarker::Environment<'a>::register_macro_def(&mut self, &freemarker::core::MacroDef)
-pub fn freemarker::Environment<'a>::resolve_template_name(&self, &str) -> alloc::string::String
-pub fn freemarker::Environment<'a>::run_elements(&mut self, &[freemarker::core::Element]) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::set_global_variable(&mut self, &str, freemarker::TModel)
 pub fn freemarker::Environment<'a>::set_local_variable(&mut self, &str, freemarker::TModel) -> freemarker::Result<()>
 pub fn freemarker::Environment<'a>::set_variable(&mut self, &str, freemarker::TModel)
+impl<'a> freemarker::Environment<'a>
+pub fn freemarker::Environment<'a>::new(&'a freemarker::Template, freemarker::TModel, &'a mut dyn core::io::write::Write) -> Self
+pub fn freemarker::Environment<'a>::process(&mut self) -> freemarker::Result<()>
+pub fn freemarker::Environment<'a>::run_elements(&mut self, &[freemarker::core::Element]) -> freemarker::Result<()>
 impl<'a> !core::marker::Freeze for freemarker::Environment<'a>
 impl<'a> !core::marker::Send for freemarker::Environment<'a>
 impl<'a> !core::marker::Sync for freemarker::Environment<'a>
