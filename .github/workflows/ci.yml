@@ -187,3 +187,56 @@ jobs:
           files: lcov.info
           fail_ci_if_error: false
           target: 85%
+
+  bench-drift-gate:
+    name: Perf drift gate (criterion ±5%)
+    runs-on: ubuntu-latest
+    env:
+      # 漂移阈值（%）：critcmp 超过即门禁失败。shared runner 噪声实测偏紧时可上调，
+      # 上调须同步 docs/release/benchmarks.md 门禁策略并在 PR 说明。
+      DRIFT_THRESHOLD: "5"
+      # 覆盖顶级 -D warnings：基线 ref commit 的 bench 编译不受当前告警策略约束
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 取基线 commit：push 用被推掉的父提交，PR 用目标分支头；fetch-depth=0 统一拿全历史
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install critcmp
+        uses: taiki-e/install-action@v2
+        with:
+          tool: critcmp
+
+      - name: Resolve baseline ref
+        id: base
+        run: |
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "ref=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "ref=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 同一 job 内先后跑 ref/cur 两组基线（同机同时段），规避跨 run 假回归
+      # （easydoc-rust 实测：跨 run 对比零改动 +29.5% 噪声）
+      - name: Benchmark baseline (ref)
+        run: |
+          git checkout "${{ steps.base.outputs.ref }}"
+          cargo bench -p freemarker --bench simple_render -- --save-baseline drift-ref
+
+      - name: Benchmark current (HEAD)
+        run: |
+          git checkout "${{ steps.base.outputs.head }}"
+          cargo bench -p freemarker --bench simple_render -- --save-baseline drift-cur
+
+      - name: Compare medians (±${{ env.DRIFT_THRESHOLD }}%)
+        run: critcmp drift-ref drift-cur -t "$DRIFT_THRESHOLD"

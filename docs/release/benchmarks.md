@@ -22,8 +22,13 @@ cargo bench -p freemarker --bench simple_render -- --warm-up-time 3 --measuremen
 
 ## 门禁策略
 
-- 当前**不**设硬阈值（alpha 阶段，0.1.0 不承诺性能契约）；
-- 1.0 晋级时（versioning.md §3）设 `thrpt/median ± 5%` 漂移门禁（criterion 集成进 CI 失败报警）；
+- **drift gate 已生效（2026-09-17，1.0 晋级项）**：CI `bench-drift-gate` job 在同一 runner
+  上先后采集 ref（push 前父提交 / PR 目标分支）与 HEAD 两组 criterion 基线，
+  `critcmp -t 5` 比对中位数，变化超过 **±5%** 判定门禁失败；
+- 同 job 双跑防跨 run 假回归（easydoc-rust 实测：跨 run 对比零改动 +29.5% 噪声）；
+  critcmp 对置信区间重叠（统计不显著）的变化不误报——高方差基准（如 macro_call_100）
+  宽松是刻意权衡，误报比漏报更伤 CI 信任；
+- 阈值调整：改 job env `DRIFT_THRESHOLD` 并同步本节（shared runner 噪声实测偏紧时才上调）；
 - 性能回归优先于基准快照比对，由 criterion `benchmarks` 子命令支持。
 
 ## 已知热点
