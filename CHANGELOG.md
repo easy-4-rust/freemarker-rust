@@ -4,6 +4,33 @@
 [语义化版本](https://semver.org/lang/zh-CN/)（晋级规则见
 [docs/superpowers/specs/2026-08-03-versioning-design.md](docs/superpowers/specs/2026-08-03-versioning-design.md)）。
 
+## [0.1.1] - 2026-09-18
+
+> 首个外部 PR 合入 + 1.0 晋级工程项：两项 FreeMarker 兼容性修复、12 大文件
+> 债务清偿（§8 表）、criterion drift gate 硬阈值。公开 API 行级零 diff
+> （api-baseline 未变），行为变化仅为兼容性修复本身。
+
+### Added
+- criterion drift gate 硬阈值（1.0 晋级项）：CI `bench-drift-gate` job 在同一
+  runner 先后采集 ref/HEAD 两组基线，`critcmp ±5%` 比对中位数（同 job 双跑
+  规避跨 run 假回归）
+
+### Fixed
+- 方括号标签语法（`[#...]`）中 `>`/`>=` 保持比较运算符语义，仅 `]` 结束标签
+  （对齐 Java 方括号语法；PR #1 @branch-cache）
+- XML 节点查询序列链式导航：`doc.root.a.b.c` 穿过多节点中间结果继续 hash 导航、
+  空结果继续导航返回空不报错（对齐 Java `freemarker.ext.dom.NodeListModel`；
+  PR #1 @branch-cache）
+- clippy 1.98 `drain_collect` lint（stable 漂移引入的既有红灯）
+- pyo3 `root_non_dict_reports_model_error` 断言同步 086cca5 统一拒绝语义
+  （既有红灯）
+
+### Changed
+- 12 个 >800 行大文件全部拆分 ≤800 行（1.0 前债务清偿，§8 表）：公开 API
+  行级零 diff、行为零变化
+- CI 触发过滤恢复 `[main, master, dev]` 并保留 `workflow_dispatch`（修正 PR #1
+  引入的全分支触发；同时补齐目标为 `dev` 的 PR 不触发 CI 的缺口）
+
 ## [0.1.0] - 2026-09-03
 
 > 首个稳定化版本（0.x 收官）：beta.0 内容 + 字节 API + 三项缺陷修复 + A2 治理。

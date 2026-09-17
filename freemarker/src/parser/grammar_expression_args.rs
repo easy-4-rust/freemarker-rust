@@ -64,7 +64,7 @@ impl<'a> Parser<'a> {
     /// 结束后缓冲与词法位置一并恢复（对调用方完全无副作用）。
     pub(crate) fn at_lambda_start(&mut self) -> Result<bool> {
         let save = self.lexer.save();
-        let saved_buf: Vec<(Tok, u32, u32, u32, u32)> = self.buf.drain(..).collect();
+        let saved_buf: Vec<(Tok, u32, u32, u32, u32)> = std::mem::take(&mut self.buf);
         let t = self.next_tok()?.0;
         let ok = match t {
             Tok::Ident(_) => self.peek_tok()?.0 == Tok::LambdaArrow,

@@ -9,7 +9,7 @@
 
 | 指标 | 当前值 | 备注 |
 |------|--------|------|
-| 当前版本 | `0.1.0` | 2026-09-03（0.x 收官；三渠道发布齐备） |
+| 当前版本 | `0.1.1` | 2026-09-18（首个外部 PR + 1.0 工程项；crates.io） |
 | golden MIRRORED | **113/128**（88%） | 0 FAIL / 0 BLOCKED，15 项永久 NA |
 | builtins 覆盖 | **183/183**（100%） | Java 2.3.34 全集 |
 | 测试数 | **997** workspace + pytest 81 | cargo test / pytest（2026-08-15 实测） |
@@ -19,7 +19,7 @@
 | proptest fuzz | 10000 cases | expression + parser target |
 | criterion 基准 | 5 metrics | 见 `docs/release/benchmarks.md` |
 | pyo3 API 面 | **35 方法**（原 7） | PyPI 已上线 0.1.0b0（5 平台 abi3 wheel） |
-| crates.io | freemarker **0.1.0** | 2026-09-03 发布（release.yml 流水线） |
+| crates.io | freemarker **0.1.1** | 2026-09-18 发布（release.yml 流水线）；0.1.0 于 2026-09-03 |
 
 ### 1.0 晋级条件 8 项状态
 
@@ -77,7 +77,7 @@
 - [ ] versioning.md §3.1 全部 8 项条件在 beta 阶段重新验证通过
 - [ ] 至少 2 个 beta 版本间隔 >= 2 周
 - [ ] 社区反馈无重大 API 设计缺陷
-- [ ] 性能基准设硬阈值（criterion drift gate）
+- [x] 性能基准设硬阈值（criterion drift gate，2026-09-17：CI bench-drift-gate job ±5%）
 
 **预计时间**：2026-09 ~ 2026-10
 
