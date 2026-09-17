@@ -614,13 +614,14 @@ impl Lexer {
                     }
                 } else {
                     match ctx {
-                        // DIRECTIVE_END：`>` 结束标签（`>=` 不可能 —— `>` 已结束标签）
-                        ExprCtx::Tag { .. } => {
+                        // 角度语法 DIRECTIVE_END：`>` 结束标签（`>=` 不可能 —— `>` 已结束标签）
+                        ExprCtx::Tag { square: false } => {
                             self.bump();
                             Tok::TagEnd
                         }
-                        // 插值内 `>` 是 NATURAL_GT（DIRECTIVE_END 动作的 postInterpolation 分支）
-                        ExprCtx::Interp => {
+                        // 方括号语法：标签仅由 `]` 结束，故 `>`/`>=` 为 NATURAL_GT/GTE。
+                        // 插值内 `>` 同样是 NATURAL_GT（DIRECTIVE_END 动作的 postInterpolation 分支）。
+                        ExprCtx::Tag { square: true } | ExprCtx::Interp => {
                             self.bump();
                             if self.peek() == Some('=') {
                                 self.bump();
@@ -1474,6 +1475,23 @@ mod tests {
         // 标签内 `>=` 不是 GTE（`>` 结束标签，`=` 留作文本）—— 与 Java 一致
         assert!(!ts.contains(&Tok::Gte));
         assert_eq!(ts[1], Tok::TagEnd);
+
+        let mut l = lex("t", "a > b]", true);
+        let ts = tokens(&mut l, ExprCtx::Tag { square: true });
+        assert_eq!(
+            ts,
+            vec![
+                Tok::Ident("a".into()),
+                Tok::Gt,
+                Tok::Ident("b".into()),
+                Tok::TagEnd,
+                Tok::Eof
+            ]
+        );
+
+        let mut l = lex("t", "a >= b]", true);
+        let ts = tokens(&mut l, ExprCtx::Tag { square: true });
+        assert!(ts.contains(&Tok::Gte));
     }
 
     #[test]

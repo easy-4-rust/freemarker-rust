@@ -1054,8 +1054,64 @@ impl crate::template::TemplateScalarModel for XmlNode {
 
 impl NodeHashModel for XmlNode {
     fn get(&self, env: &mut Environment, key: &str) -> Result<Option<TModel>> {
-        self.hash_get(env, key)
+        Ok(self.hash_get(env, key)?.map(ensure_node_list))
     }
+}
+
+/// FreeMarker `NodeListModel` 语义：查询结果既是节点序列，又支持继续用哈希键
+/// （子元素名/@attr/XPath 子集）导航——对每个成员节点求键、拼接为新节点列表
+/// （空列表 → 空结果，不报错；对应 Java `freemarker.ext.dom.NodeListModel.get`）。
+struct NodeListModel {
+    nodes: Vec<TModel>,
+}
+
+impl NodeHashModel for NodeListModel {
+    fn get(&self, env: &mut Environment, key: &str) -> Result<Option<TModel>> {
+        let mut merged: Vec<TModel> = Vec::new();
+        for nm in &self.nodes {
+            if let Some(nh) = &nm.node_hash {
+                if let Some(res) = nh.get(env, key)? {
+                    flatten_node_result(&mut merged, res);
+                }
+            }
+        }
+        Ok(Some(make_node_list(merged)))
+    }
+}
+
+fn flatten_node_result(out: &mut Vec<TModel>, m: TModel) {
+    if let Some(seq) = &m.sequence {
+        let n = seq.size().unwrap_or(0);
+        for i in 0..n {
+            if let Ok(item) = seq.get(i) {
+                out.push(item);
+            }
+        }
+    } else {
+        out.push(m);
+    }
+}
+
+fn make_node_list(nodes: Vec<TModel>) -> TModel {
+    let mut out = TModel::from_sequence(nodes.clone());
+    out.node_hash = Some(Rc::new(NodeListModel { nodes }) as Rc<dyn NodeHashModel>);
+    out
+}
+
+fn ensure_node_list(m: TModel) -> TModel {
+    if m.node_hash.is_none() {
+        if let Some(seq) = &m.sequence {
+            let n = seq.size().unwrap_or(0);
+            let mut nodes = Vec::with_capacity(n);
+            for i in 0..n {
+                if let Ok(item) = seq.get(i) {
+                    nodes.push(item);
+                }
+            }
+            return make_node_list(nodes);
+        }
+    }
+    m
 }
 
 /// XML 解析入口 —— 对应 Java `NodeModel.parse(InputSource)`（simplify：注释/PI 移除）
@@ -1227,6 +1283,47 @@ mod tests {
             markup_with_prefixes(&doc, m),
             "<book xmlns=\"http://example.com/eBook\">\n  <title>Test Book</title>\n</book>"
         );
+    }
+
+    #[test]
+    fn node_list_model_keeps_hash_navigation_role() {
+        let doc = parse_xml(
+            "<root><a><b><c>one</c></b></a><a><b><c>two</c></b></a></root>",
+        )
+        .unwrap();
+        let template = Template::new(
+            "xml-test.ftl".to_string(),
+            Vec::new(),
+            HashMap::new(),
+            Rc::new(Configuration::new()),
+        );
+        let mut out = Vec::new();
+        let mut env = Environment::new(&template, TModel::nothing(), &mut out);
+
+        let root = doc.node_hash.as_ref().unwrap().get(&mut env, "root").unwrap().unwrap();
+        let a = root.node_hash.as_ref().unwrap().get(&mut env, "a").unwrap().unwrap();
+        assert_eq!(a.sequence.as_ref().unwrap().size().unwrap(), 2);
+        assert!(a.node_hash.is_some());
+
+        let b = a.node_hash.as_ref().unwrap().get(&mut env, "b").unwrap().unwrap();
+        assert_eq!(b.sequence.as_ref().unwrap().size().unwrap(), 2);
+        let c = b.node_hash.as_ref().unwrap().get(&mut env, "c").unwrap().unwrap();
+        assert_eq!(c.sequence.as_ref().unwrap().size().unwrap(), 2);
+
+        let missing = a
+            .node_hash
+            .as_ref()
+            .unwrap()
+            .get(&mut env, "missing")
+            .unwrap()
+            .unwrap()
+            .node_hash
+            .as_ref()
+            .unwrap()
+            .get(&mut env, "child")
+            .unwrap()
+            .unwrap();
+        assert_eq!(missing.sequence.as_ref().unwrap().size().unwrap(), 0);
     }
 }
 
